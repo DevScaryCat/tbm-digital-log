@@ -37,7 +37,6 @@ export default function DashboardPage() {
             const { data } = await supabase.from('tbm_logs').select('*').order('date', { ascending: false })
             if (data) {
                 setLogs(data)
-                // 오늘 날짜 데이터 확인
                 const todayLogs = data.filter(log => isSameDay(parseISO(log.date), new Date()))
                 if (todayLogs.length > 0) setSelectedLogs(todayLogs)
             }
@@ -46,19 +45,17 @@ export default function DashboardPage() {
         loadData()
     }, [router])
 
-    // 날짜 클릭
     const handleDayClick = (date: Date) => {
+        // Range 모드일 때는 클릭 이벤트 무시 (선택 로직이 다름)
         if (isRangeMode) return;
 
         setSelectedDate(date)
         const logsOnDay = logs.filter(log => isSameDay(parseISO(log.date), date))
 
-        // 기록이 있으면 상세 보기, 없으면 작성 유도
         setSelectedLogs(logsOnDay)
         setIsDrawerOpen(true)
     }
 
-    // 일괄 다운로드
     const handleBatchDownload = () => {
         if (!dateRange?.from || !dateRange?.to) return alert("기간을 선택해주세요.")
 
@@ -77,15 +74,23 @@ export default function DashboardPage() {
         router.push("/report/batch")
     }
 
-    // 범위 내 개수
     const rangeCount = dateRange?.from && dateRange?.to ? logs.filter(log => {
         const d = parseISO(log.date).getTime()
         return d >= dateRange!.from!.getTime() && d <= dateRange!.to!.getTime()
     }).length : 0;
 
-    // ⭐️ [핵심] 일지가 있는 날짜 판별 함수 (Matcher)
     const hasLogMatcher = (date: Date) => {
         return logs.some(log => isSameDay(parseISO(log.date), date))
+    }
+
+    // ⭐️ 공통으로 사용할 Modifiers 설정
+    const commonModifiers = { hasLog: hasLogMatcher }
+    const commonModifiersClassNames = {
+        hasLog: "font-extrabold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-slate-900 after:rounded-full data-[selected=true]:after:bg-white"
+    }
+    const commonClassNames = {
+        day_selected: "bg-slate-900 text-white hover:bg-slate-800 focus:bg-slate-900",
+        day_today: "bg-slate-100 text-slate-900 font-bold",
     }
 
     if (loading) return <div className="min-h-screen flex justify-center items-center bg-slate-50"><Loader2 className="animate-spin w-10 h-10 text-slate-500" /></div>
@@ -121,30 +126,30 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="border border-slate-200 rounded-xl p-2 shadow-sm bg-white flex justify-center">
-                        <Calendar
-                            mode={isRangeMode ? "range" : "single"}
-                            selected={isRangeMode ? dateRange : selectedDate}
-                            onSelect={isRangeMode ? setDateRange : undefined}
-                            onDayClick={!isRangeMode ? handleDayClick : undefined}
-                            locale={ko}
-                            className="w-full"
-
-                            // ⭐️ [수정] modifiers 사용 (공식 방식)
-                            modifiers={{ hasLog: hasLogMatcher }}
-
-                            // ⭐️ [수정] modifiersClassNames로 스타일 적용 (Tailwind)
-                            // - font-extrabold: 날짜 굵게
-                            // - after:...: 하단에 점(Dot) 생성
-                            modifiersClassNames={{
-                                hasLog: "font-extrabold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-slate-900 after:rounded-full data-[selected=true]:after:bg-white"
-                            }}
-
-                            // 기본 스타일 (선택된 날짜 Slate 색상)
-                            classNames={{
-                                day_selected: "bg-slate-900 text-white hover:bg-slate-800 focus:bg-slate-900",
-                                day_today: "bg-slate-100 text-slate-900 font-bold",
-                            }}
-                        />
+                        {/* ⭐️ [수정] 모드에 따라 Calendar 컴포넌트를 분리하여 렌더링 (타입 에러 해결) */}
+                        {isRangeMode ? (
+                            <Calendar
+                                mode="range"
+                                selected={dateRange}
+                                onSelect={setDateRange}
+                                locale={ko}
+                                className="w-full"
+                                modifiers={commonModifiers}
+                                modifiersClassNames={commonModifiersClassNames}
+                                classNames={commonClassNames}
+                            />
+                        ) : (
+                            <Calendar
+                                mode="single"
+                                selected={selectedDate}
+                                onDayClick={handleDayClick}
+                                locale={ko}
+                                className="w-full"
+                                modifiers={commonModifiers}
+                                modifiersClassNames={commonModifiersClassNames}
+                                classNames={commonClassNames}
+                            />
+                        )}
                     </div>
 
                     {isRangeMode && dateRange?.from && (
