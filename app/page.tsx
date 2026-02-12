@@ -12,13 +12,12 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from "@/components/ui/drawer"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, Wand2, Keyboard, Upload, CalendarIcon, Clock, AlertCircle, RefreshCw, FileText } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload } from "lucide-react"
 
 // 날씨 유틸리티
 function getWeatherLabel(code: number): string {
@@ -60,19 +59,19 @@ export default function TBMPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(1) // 총 6단계
   const [savedLogId, setSavedLogId] = useState<string | null>(null)
 
-  // ⭐️ [수정] recognition 상태 변수 선언 (에러 원인 해결)
-  const [recognition, setRecognition] = useState<any>(null)
-
-  // 상태 관리
+  // 녹음 관련 상태
   const [isRecording, setIsRecording] = useState(false)
-  const [transcript, setTranscript] = useState("")
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const audioChunks = useRef<Blob[]>([])
+
+  // 파일 업로드 참조
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [isProcessingSTT, setIsProcessingSTT] = useState(false) // STT 로딩
   const [isProcessingAI, setIsProcessingAI] = useState(false) // AI 로딩
-  const [isTestMode, setIsTestMode] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [isSignOpen, setIsSignOpen] = useState(false)
   const [currentSignTarget, setCurrentSignTarget] = useState<{ type: 'participant' | 'instructor', id?: number } | null>(null)
@@ -93,7 +92,7 @@ export default function TBMPage() {
     temperature: "",
     companyName: "",
     location: "현장 사무실",
-    educationType: "정기 안전교육",
+    educationType: "TBM",
     instructorName: "",
     educationContent: "",
     remarks: "",
@@ -104,7 +103,7 @@ export default function TBMPage() {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
   const minutes = ["00", "10", "20", "30", "40", "50"]
 
-  // 초기화 및 권한 설정
+  // 초기화
   useEffect(() => {
     const initPage = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -115,7 +114,7 @@ export default function TBMPage() {
       setFormData(prev => ({
         ...prev,
         companyName: userCompany,
-        instructorName: session.user.email?.split("@")[0] || "",
+        instructorName: prev.educationType === "TBM" ? "" : (session.user.email?.split("@")[0] || ""),
         startTime: getCurrentTime()
       }))
 
@@ -137,24 +136,6 @@ export default function TBMPage() {
           () => console.log("위치 권한 없음")
         )
       }
-
-      // 브라우저 음성 인식 지원 여부 확인 및 초기화
-      if (typeof window !== "undefined" && (window as any).webkitSpeechRecognition) {
-        const SpeechRecognition = (window as any).webkitSpeechRecognition
-        const rec = new SpeechRecognition()
-        rec.lang = "ko-KR"
-        rec.continuous = true
-        rec.interimResults = true
-        rec.onresult = (event: any) => {
-          let interimTranscript = ""
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            interimTranscript += event.results[i][0].transcript
-          }
-          setTranscript(interimTranscript)
-        }
-        setRecognition(rec)
-      }
-
       setIsLoading(false)
     }
     initPage()
@@ -164,16 +145,18 @@ export default function TBMPage() {
     if (currentStep === 1) {
       if (!formData.date) return "교육 일자를 선택해주세요.";
       if (!formData.location) return "교육 장소를 입력해주세요.";
-      if (!formData.instructorName) return "강사명을 입력해주세요.";
-      if (!instructorSignature) return "강사 서명을 완료해주세요.";
-    }
-    if (currentStep === 2) {
-      if (!formData.educationContent || formData.educationContent.length < 5) return "교육 내용을 입력하거나 녹음해주세요.";
+      if (formData.educationType !== "TBM") {
+        if (!formData.instructorName) return "교육실시자명을 입력해주세요.";
+        if (!instructorSignature) return "교육실시자 서명을 완료해주세요.";
+      }
     }
     if (currentStep === 3) {
-      if (!formData.photo) return "현장 사진 촬영은 필수입니다.";
+      if (!formData.educationContent || formData.educationContent.length < 5) return "교육 내용을 입력하거나 AI 요약을 진행해주세요.";
     }
     if (currentStep === 4) {
+      if (!formData.photo) return "현장 사진 촬영은 필수입니다.";
+    }
+    if (currentStep === 5) {
       const missingSign = formData.participants.find(p => !p.signature);
       if (missingSign) return `${missingSign.name || '참석자'} 님의 서명이 누락되었습니다.`;
       if (formData.participants.some(p => !p.name)) return "참석자 이름을 모두 입력해주세요.";
@@ -184,11 +167,11 @@ export default function TBMPage() {
   const handleNext = () => {
     const errorMsg = validateStep(step);
     if (errorMsg) { alert(errorMsg); return; }
-    setStep(prev => Math.min(5, prev + 1));
+    setStep(prev => Math.min(6, prev + 1));
   }
 
   const saveToDatabase = async () => {
-    const errorMsg = validateStep(4);
+    const errorMsg = validateStep(5);
     if (errorMsg) { alert(errorMsg); return; }
 
     setIsSaving(true)
@@ -214,8 +197,8 @@ export default function TBMPage() {
           location: formData.location,
           company_name: formData.companyName,
           education_type: formData.educationType,
-          instructor_name: formData.instructorName,
-          instructor_signature: instructorSignature,
+          instructor_name: formData.educationType === "TBM" ? "TBM (자율)" : formData.instructorName,
+          instructor_signature: formData.educationType === "TBM" ? null : instructorSignature,
           education_content: formData.educationContent,
           remarks: formData.remarks,
           photo_url: formData.photo
@@ -237,7 +220,7 @@ export default function TBMPage() {
       if (partError) throw partError
 
       setSavedLogId(logData.id)
-      setStep(5)
+      setStep(6)
 
     } catch (e: any) {
       alert("저장 실패: " + e.message)
@@ -245,6 +228,162 @@ export default function TBMPage() {
       setIsSaving(false)
     }
   }
+
+  // AI 요약 요청
+  const requestAISummary = async (text: string) => {
+    if (!text) return;
+    setIsProcessingAI(true)
+    try {
+      const res = await fetch('/api/ai/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+      const data = await res.json()
+
+      if (res.ok) {
+        setFormData(prev => ({
+          ...prev,
+          educationContent: data.educationContent || "",
+          remarks: data.remarks || ""
+        }))
+        // AI 요약 완료 후 자동으로 다음 스텝(확인/수정)으로 이동
+        setStep(3);
+      } else {
+        alert("AI 분석 오류: " + (data.error || "알 수 없는 오류"))
+      }
+    } catch (e) {
+      console.error(e)
+      alert("AI 서버 연결 실패")
+    } finally {
+      setIsProcessingAI(false)
+    }
+  }
+
+  // ⭐️ [복구] 파일 업로드 핸들러
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsProcessingSTT(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "음성 인식 실패")
+      }
+
+      if (data.transcript) {
+        requestAISummary(data.transcript)
+      }
+
+    } catch (e: any) {
+      console.error(e)
+      alert("파일 처리 오류: " + e.message)
+    } finally {
+      setIsProcessingSTT(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  // 녹음된 오디오 Blob 처리
+  const processAudioBlob = async (blob: Blob) => {
+    const file = new File([blob], "recording.webm", { type: blob.type })
+    setIsProcessingSTT(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) throw new Error(data.error || "음성 인식 실패")
+
+      if (data.transcript) {
+        requestAISummary(data.transcript)
+      } else {
+        alert("음성이 인식되지 않았습니다. 다시 녹음해주세요.")
+      }
+
+    } catch (e: any) {
+      console.error(e)
+      alert("음성 처리 오류: " + e.message)
+    } finally {
+      setIsProcessingSTT(false)
+    }
+  }
+
+  // 녹음 토글
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop()
+        setIsRecording(false)
+      }
+    } else {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("현재 브라우저가 마이크를 지원하지 않습니다.")
+        return
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const recorder = new MediaRecorder(stream)
+        audioChunks.current = []
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.current.push(event.data)
+          }
+        }
+
+        recorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+          processAudioBlob(audioBlob)
+          stream.getTracks().forEach(track => track.stop())
+        }
+
+        recorder.start()
+        setMediaRecorder(recorder)
+        setIsRecording(true)
+      } catch (err) {
+        console.error(err)
+        alert("마이크 권한이 필요합니다.")
+      }
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
+
+  const openSignModal = (target: { type: 'participant' | 'instructor', id?: number }) => { setCurrentSignTarget(target); setIsSignOpen(true) }
+
+  const saveSignature = () => {
+    if (sigCanvas.current && currentSignTarget) {
+      const dataURL = sigCanvas.current.toDataURL()
+      if (currentSignTarget.type === 'participant' && currentSignTarget.id) {
+        setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === currentSignTarget.id ? { ...p, signature: dataURL } : p) }))
+      } else { setInstructorSignature(dataURL) }
+      setIsSignOpen(false)
+    }
+  }
+
+  const addParticipant = () => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))
+  const updateParticipant = (id: number, field: keyof Participant, value: any) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } : p) }))
+  const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
   const CustomTimePicker = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
     const [h, m] = value.split(':')
@@ -281,109 +420,6 @@ export default function TBMPage() {
       </Popover>
     )
   }
-
-  // AI 요약 요청
-  const requestAISummary = async (text: string) => {
-    if (!text) return;
-    setIsProcessingAI(true)
-    try {
-      const res = await fetch('/api/ai/summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      })
-      const data = await res.json()
-
-      if (res.ok) {
-        setFormData(prev => ({
-          ...prev,
-          educationContent: data.educationContent || "",
-          remarks: data.remarks || ""
-        }))
-      } else {
-        alert("AI 분석 오류: " + (data.error || "알 수 없는 오류"))
-      }
-    } catch (e) {
-      console.error(e)
-      alert("AI 서버 연결 실패")
-    } finally {
-      setIsProcessingAI(false)
-    }
-  }
-
-  // ⭐️ [진짜] 파일 업로드 및 STT 호출 (Deepgram)
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setIsProcessingSTT(true)
-    setTranscript("")
-
-    try {
-      const formData = new FormData()
-      formData.append("file", file)
-
-      // 실제 백엔드 API (/api/stt) 호출
-      const res = await fetch('/api/stt', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || "음성 인식 실패")
-      }
-
-      setTranscript(data.transcript)
-
-      // 변환된 텍스트가 있으면 AI 요약 요청
-      if (data.transcript) {
-        requestAISummary(data.transcript)
-      }
-
-    } catch (e: any) {
-      console.error(e)
-      alert("음성 처리 오류: " + e.message)
-    } finally {
-      setIsProcessingSTT(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    }
-  }
-
-  // 녹음 토글 (PC용 - 모바일은 지원 안 할 수 있으므로 경고 처리)
-  const toggleRecording = () => {
-    if (!recognition) {
-      alert("현재 브라우저는 음성 인식을 지원하지 않습니다. (파일 업로드를 이용해주세요)")
-      return
-    }
-    if (isRecording) {
-      recognition.stop()
-      setIsRecording(false)
-      requestAISummary(transcript)
-    } else {
-      setTranscript("")
-      recognition.start()
-      setIsRecording(true)
-    }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
-
-  const openSignModal = (target: { type: 'participant' | 'instructor', id?: number }) => { setCurrentSignTarget(target); setIsSignOpen(true) }
-  const saveSignature = () => {
-    if (sigCanvas.current && currentSignTarget) {
-      const dataURL = sigCanvas.current.toDataURL()
-      if (currentSignTarget.type === 'participant' && currentSignTarget.id) {
-        setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === currentSignTarget.id ? { ...p, signature: dataURL } : p) }))
-      } else { setInstructorSignature(dataURL) }
-      setIsSignOpen(false)
-    }
-  }
-
-  const addParticipant = () => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))
-  const updateParticipant = (id: number, field: keyof Participant, value: any) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } : p) }))
-  const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
   if (isLoading) return <div className="min-h-screen flex justify-center items-center"><Loader2 className="animate-spin w-10 h-10 text-slate-500" /></div>
 
@@ -443,96 +479,131 @@ export default function TBMPage() {
                   <Select value={formData.educationType} onValueChange={(val) => setFormData(prev => ({ ...prev, educationType: val }))}>
                     <SelectTrigger className="h-12 text-lg bg-white border-slate-300"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="TBM">TBM (작업 전 안전점검)</SelectItem>
                       <SelectItem value="정기 안전교육">정기 안전교육</SelectItem>
                       <SelectItem value="특별안전보건교육">특별안전보건교육</SelectItem>
                       <SelectItem value="신규 채용시 교육">신규 채용시 교육</SelectItem>
                       <SelectItem value="작업내용 변경시 교육">작업내용 변경시 교육</SelectItem>
-                      <SelectItem value="기타">기타</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label>강사명</Label><Input name="instructorName" value={formData.instructorName} onChange={handleChange} className="h-12 text-lg border-slate-300" placeholder="이름 입력" /></div>
-                {instructorSignature ? (
-                  <div onClick={() => openSignModal({ type: 'instructor' })} className="h-14 border border-green-500 bg-green-50 rounded-lg flex items-center justify-center cursor-pointer relative overflow-hidden"><img src={instructorSignature} alt="서명" className="h-full object-contain" /><div className="absolute right-2 bottom-1 text-xs text-green-700 font-bold bg-white/80 px-1 rounded">강사 서명 완료</div></div>
-                ) : (
-                  <Button variant="outline" className="w-full h-14 border-dashed border-2 border-slate-300 text-slate-500 text-lg hover:bg-slate-50" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 강사 서명하기</Button>
+
+                {formData.educationType !== "TBM" && (
+                  <>
+                    <div className="space-y-1.5"><Label>교육실시자</Label><Input name="instructorName" value={formData.instructorName} onChange={handleChange} className="h-12 text-lg border-slate-300" placeholder="이름 입력" /></div>
+                    {instructorSignature ? (
+                      <div onClick={() => openSignModal({ type: 'instructor' })} className="h-14 border border-green-500 bg-green-50 rounded-lg flex items-center justify-center cursor-pointer relative overflow-hidden"><img src={instructorSignature} alt="서명" className="h-full object-contain" /><div className="absolute right-2 bottom-1 text-xs text-green-700 font-bold bg-white/80 px-1 rounded">교육실시자 서명 완료</div></div>
+                    ) : (
+                      <Button variant="outline" className="w-full h-14 border-dashed border-2 border-slate-300 text-slate-500 text-lg hover:bg-slate-50" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 교육실시자 서명하기</Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           )}
 
-          {/* STEP 2: 교육 내용 */}
+          {/* STEP 2: 교육 자료 및 녹음/업로드 */}
           {step === 2 && (
-            <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">2</span> 교육 내용
+            <div className="animate-in slide-in-from-right-4 duration-300 relative min-h-[60vh] flex flex-col">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-4">
+                <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">2</span> 교육 자료 확인 및 녹음
               </h2>
-              <Tabs defaultValue="record" className="w-full h-full">
-                <TabsList className="grid w-full grid-cols-2 h-12 mb-4 bg-slate-100">
-                  <TabsTrigger value="record" className="text-base data-[state=active]:bg-white data-[state=active]:shadow-sm">🎙️ 녹음/입력</TabsTrigger>
-                  <TabsTrigger value="material" className="text-base data-[state=active]:bg-white data-[state=active]:shadow-sm">📘 교육자료</TabsTrigger>
-                </TabsList>
 
-                <TabsContent value="record" className="space-y-4 flex flex-col">
-                  <div className="flex gap-2">
-                    <Button onClick={() => setIsTestMode(!isTestMode)} variant="outline" size="sm" className="flex-1 h-10 border-slate-300"><Keyboard className="mr-2 h-4 w-4" />텍스트</Button>
-                    <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm" className="flex-1 h-10 border-slate-300"><Upload className="mr-2 h-4 w-4" />오디오 파일</Button>
-                    <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                  </div>
+              <div className="flex-1 border-2 border-slate-200 rounded-xl overflow-hidden relative min-h-[500px]">
+                <iframe src="https://sites.google.com/musinsalogistics.co.kr/healthandsafety?usp=sharing" className="w-full h-full absolute inset-0" />
+              </div>
 
-                  {isTestMode ? (
-                    <textarea className="w-full p-3 border border-slate-300 rounded-lg h-32 text-base focus:ring-2 focus:ring-slate-500 focus:outline-none" placeholder="교육 내용을 입력하세요..." value={transcript} onChange={(e) => setTranscript(e.target.value)} />
-                  ) : (
-                    <div className="h-32 bg-slate-50 rounded-lg flex flex-col items-center justify-center border-2 border-dashed border-slate-300 relative">
-                      {!recognition && <div className="absolute top-2 right-2 text-xs text-red-500 flex items-center"><AlertCircle className="w-3 h-3 mr-1" /> 모바일 미지원 (파일 권장)</div>}
-                      <Button onClick={toggleRecording} disabled={isProcessingAI || isProcessingSTT} className={cn("w-16 h-16 rounded-full shadow-lg transition-all", isRecording ? "bg-red-500 hover:bg-red-600 animate-pulse" : "bg-slate-900 hover:bg-slate-800")}>
-                        {isRecording ? <StopCircle className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
-                      </Button>
-                      <span className="text-sm text-slate-500 mt-2">
-                        {isProcessingSTT ? "음성 변환 중..." : isRecording ? "녹음 중..." : "터치하여 녹음 시작 (또는 파일)"}
-                      </span>
-                    </div>
-                  )}
-
-                  <Button onClick={() => requestAISummary(transcript)} disabled={isProcessingAI || isProcessingSTT} className="w-full bg-slate-900 hover:bg-slate-800 text-white h-12 text-lg">
-                    {isProcessingAI ? <Loader2 className="animate-spin mr-2" /> : <Wand2 className="mr-2" />} AI 요약 적용
+              {/* ⭐️ 우측 상단 고정 컨트롤 (녹음 + 업로드) */}
+              <div className="absolute top-12 right-2 z-10 flex flex-col items-end gap-3 pointer-events-none">
+                {/* 파일 업로드 버튼 */}
+                <div className="pointer-events-auto shadow-md rounded-full">
+                  <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessingSTT || isProcessingAI || isRecording}
+                    className="w-12 h-12 rounded-full flex items-center justify-center bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+                    title="오디오 파일 업로드"
+                  >
+                    <Upload className="w-5 h-5" />
                   </Button>
+                </div>
 
-                  <div className="space-y-1 flex-1">
-                    <Label>교육 내용 (요약)</Label>
-                    <textarea
-                      className="w-full p-3 border-2 border-slate-200 rounded-lg bg-slate-50 min-h-[180px] text-base leading-relaxed focus:bg-white focus:border-slate-400 transition-colors resize-none"
-                      value={formData.educationContent}
-                      onChange={handleChange}
-                      name="educationContent"
-                      placeholder="AI 분석 결과가 여기에 표시됩니다."
-                    />
+                {/* 녹음 버튼 */}
+                <div className="pointer-events-auto shadow-2xl rounded-full">
+                  <Button
+                    onClick={toggleRecording}
+                    disabled={isProcessingSTT || isProcessingAI}
+                    className={cn(
+                      "w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 border-4 border-white",
+                      isRecording ? "bg-red-500 hover:bg-red-600 animate-pulse scale-110" : "bg-slate-900 hover:bg-slate-800"
+                    )}
+                  >
+                    {isProcessingSTT || isProcessingAI ? (
+                      <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    ) : isRecording ? (
+                      <StopCircle className="w-8 h-8 text-white" />
+                    ) : (
+                      <Mic className="w-8 h-8 text-white" />
+                    )}
+                  </Button>
+                </div>
+
+                {/* 상태 메시지 */}
+                {(isProcessingSTT || isProcessingAI || isRecording) && (
+                  <div className="bg-black/70 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm pointer-events-auto">
+                    {isProcessingSTT ? "변환 중..." : isProcessingAI ? "요약 중..." : "녹음 중"}
                   </div>
-
-                  <div className="space-y-1 pb-4">
-                    <Label>특이사항 (안내/전파)</Label>
-                    <textarea
-                      name="remarks"
-                      value={formData.remarks}
-                      onChange={handleChange}
-                      className="w-full p-3 border border-slate-300 rounded-lg h-24 text-base bg-white resize-none"
-                      placeholder="전달사항이나 공지사항이 여기에 표시됩니다."
-                    />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="material" className="h-[400px]">
-                  <iframe src="https://sites.google.com/musinsalogistics.co.kr/healthandsafety?usp=sharing" className="w-full h-full rounded-lg border" />
-                </TabsContent>
-              </Tabs>
+                )}
+              </div>
             </div>
           )}
 
-          {/* STEP 3: 사진 */}
+          {/* STEP 3: 내용 확인 및 수정 */}
           {step === 3 && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">3</span> 현장 사진
+                <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">3</span> 내용 확인 및 수정
+              </h2>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="flex justify-between">
+                    <span>교육 내용 (요약)</span>
+                    <span className="text-xs text-slate-400 font-normal">자동 요약된 내용입니다.</span>
+                  </Label>
+                  <textarea
+                    className="w-full p-3 border-2 border-slate-200 rounded-lg bg-slate-50 min-h-[200px] text-base leading-relaxed focus:bg-white focus:border-slate-400 transition-colors resize-none"
+                    value={formData.educationContent}
+                    onChange={handleChange}
+                    name="educationContent"
+                    placeholder="녹음 내용이 요약되어 여기에 표시됩니다."
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>특이사항 (안내/전파)</Label>
+                  <textarea
+                    name="remarks"
+                    value={formData.remarks}
+                    onChange={handleChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg h-32 text-base bg-white resize-none"
+                    placeholder="전달사항이나 공지사항이 여기에 표시됩니다."
+                  />
+                </div>
+
+                <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-700 flex items-start gap-2">
+                  <FileText className="w-5 h-5 shrink-0 mt-0.5" />
+                  <p>내용이 올바르지 않다면 직접 수정해주세요. 다음 단계로 넘어가면 서명을 진행합니다.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: 사진 */}
+          {step === 4 && (
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">4</span> 현장 사진
               </h2>
               <div className="aspect-square bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center relative overflow-hidden active:bg-slate-200 transition-colors">
                 {formData.photo ? (
@@ -554,12 +625,12 @@ export default function TBMPage() {
             </div>
           )}
 
-          {/* STEP 4: 명단 */}
-          {step === 4 && (
+          {/* STEP 5: 명단 */}
+          {step === 5 && (
             <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">4</span> 명단 ({formData.participants.length}명)
+                  <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">5</span> 명단 ({formData.participants.length}명)
                 </h2>
                 <Button size="sm" onClick={() => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))} className="bg-slate-900 hover:bg-slate-800"><Plus className="w-4 h-4" /> 추가</Button>
               </div>
@@ -586,8 +657,8 @@ export default function TBMPage() {
             </div>
           )}
 
-          {/* STEP 5: 완료 */}
-          {step === 5 && (
+          {/* STEP 6: 완료 */}
+          {step === 6 && (
             <div className="flex flex-col items-center justify-center h-[60vh] animate-in zoom-in duration-300">
               <CheckCircle2 className="w-24 h-24 text-green-600 mb-6" />
               <h2 className="text-2xl font-bold text-slate-900 mb-2">저장 완료!</h2>
@@ -607,10 +678,10 @@ export default function TBMPage() {
         </div>
 
         {/* 하단 버튼 */}
-        {step < 5 && (
+        {step < 6 && (
           <div className="absolute bottom-0 left-0 w-full bg-white border-t p-4 flex gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} disabled={step === 1} className="flex-1 h-12 text-lg border-slate-300">이전</Button>
-            {step < 4 ? (
+            {step < 5 ? (
               <Button onClick={handleNext} className="flex-[2] h-12 text-lg bg-slate-900 hover:bg-slate-800 text-white">다음 단계</Button>
             ) : (
               <Button onClick={saveToDatabase} disabled={isSaving} className="flex-[2] h-12 text-lg bg-green-600 hover:bg-green-700 text-white font-bold">
@@ -627,7 +698,7 @@ export default function TBMPage() {
         <DrawerContent className="h-[80vh]">
           <DrawerHeader><DrawerTitle className="text-center text-xl">서명해 주세요</DrawerTitle></DrawerHeader>
           <div className="p-4 flex-1 bg-slate-50">
-            <div className="border-2 border-slate-300 rounded-xl bg-white h-full shadow-inner touch-none">
+            <div className="border-2 border-slate-300 rounded-xl bg-white h-full shadow-inner" style={{ touchAction: "none" }}>
               <SignatureCanvas ref={sigCanvas} canvasProps={{ className: "w-full h-full" }} />
             </div>
           </div>

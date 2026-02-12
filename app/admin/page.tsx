@@ -1,4 +1,3 @@
-// app/admin/page.tsx
 "use client"
 
 import { useState } from "react"
@@ -9,17 +8,16 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Loader2, CheckCircle, Send, Lock } from "lucide-react"
 
 export default function AdminPage() {
-    // 인증 상태 관리
+    // 인증 상태
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [secretKey, setSecretKey] = useState("")
 
-    // 폼 상태
+    // 입력 폼
     const [form, setForm] = useState({ siteName: "", managerEmail: "", desiredId: "" })
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState<any>(null)
 
-    // 1. 관리자 비밀번호 확인 함수 (간단하게 프론트에서 먼저 체크하지 않고 API로 바로 쏘는 방식이 더 안전하지만, 
-    // 여기서는 API 호출 시 헤더에 실어 보내는 방식으로 구현)
+    // 1. 관리자 비밀번호 확인 (간이 인증)
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault()
         if (secretKey) {
@@ -29,39 +27,64 @@ export default function AdminPage() {
 
     // 2. 계정 생성 요청
     const handleCreate = async () => {
+        if (!form.siteName || !form.managerEmail || !form.desiredId) {
+            alert("모든 정보를 입력해주세요.")
+            return
+        }
+
         setLoading(true)
         setResult(null)
+
         try {
+            // 랜덤 비밀번호 생성
+            const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-2);
+
+            // 아이디 조합 (@tbm.com)
+            const fullEmailId = `${form.desiredId}@tbm.com`
+
+            // 서버로 보낼 데이터 구성
+            const payload = {
+                email: fullEmailId,
+                password: randomPassword,
+                name: form.siteName,
+                company: form.siteName,
+                managerEmail: form.managerEmail // 담당자 이메일 필수
+            }
+
             const res = await fetch('/api/admin/create', {
                 method: 'POST',
-                body: JSON.stringify(form),
+                body: JSON.stringify(payload),
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-admin-secret-key': secretKey // ⭐️ 헤더에 비밀번호 실어 보냄
+                    'x-admin-secret-key': secretKey
                 }
             })
             const data = await res.json()
 
             if (res.status === 401) {
-                alert("관리자 비밀번호가 틀렸습니다!")
-                setIsAuthenticated(false) // 다시 로그인 창으로
+                alert("관리자 비밀번호가 틀렸습니다.")
+                setIsAuthenticated(false)
                 return
             }
 
             if (data.success) {
-                setResult(data)
-                alert("계정이 생성되었습니다! 🚀")
+                setResult({
+                    userId: fullEmailId,
+                    password: randomPassword
+                })
+                alert("계정이 생성되고 메일이 발송되었습니다! ✅")
             } else {
-                alert("실패: " + data.error)
+                alert("실패: " + (data.error || "알 수 없는 오류"))
             }
         } catch (e) {
-            alert("에러 발생")
+            console.error(e)
+            alert("서버 통신 오류가 발생했습니다.")
         } finally {
             setLoading(false)
         }
     }
 
-    // --- [화면 1] 비밀번호 입력창 (잠김 상태) ---
+    // --- 로그인 화면 ---
     if (!isAuthenticated) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
@@ -71,7 +94,7 @@ export default function AdminPage() {
                             <Lock className="w-8 h-8 text-slate-900" />
                         </div>
                         <CardTitle>관리자 접근 제한</CardTitle>
-                        <CardDescription>마스터 비밀번호를 입력하세요.</CardDescription>
+                        <CardDescription>마스터 키를 입력하세요.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={handleLogin} className="space-y-4">
@@ -92,19 +115,19 @@ export default function AdminPage() {
         )
     }
 
-    // --- [화면 2] 계정 생성 폼 (열림 상태) ---
+    // --- 생성 폼 화면 ---
     return (
         <div className="min-h-screen p-8 bg-slate-100 flex justify-center items-start">
             <Card className="w-full max-w-lg border-2 border-slate-200 shadow-xl">
                 <CardHeader className="bg-slate-50 border-b">
                     <CardTitle className="flex items-center gap-2">
-                        👷 현장 계정 발급 시스템
+                        👷 현장 계정 발급
                     </CardTitle>
-                    <CardDescription>현장명과 이메일을 입력하면 ID/PW가 자동 발송됩니다.</CardDescription>
+                    <CardDescription>현장 정보를 입력하면 계정이 자동 생성됩니다.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6 pt-6">
                     <div className="space-y-2">
-                        <Label className="font-bold">현장명 (회사명)</Label>
+                        <Label className="font-bold">현장명 (업체명)</Label>
                         <Input
                             placeholder="예: 무신사 로지스틱스 1센터"
                             value={form.siteName}
@@ -121,14 +144,13 @@ export default function AdminPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label className="font-bold">사용할 아이디</Label>
+                        <Label className="font-bold">희망 아이디</Label>
                         <div className="flex items-center gap-2">
                             <Input
                                 placeholder="예: site01"
                                 value={form.desiredId}
                                 onChange={e => setForm({ ...form, desiredId: e.target.value })}
                             />
-                            <span className="text-slate-400 font-medium">@tbm.com (자동)</span>
                         </div>
                     </div>
 
@@ -139,7 +161,7 @@ export default function AdminPage() {
                     {result && (
                         <div className="mt-6 p-6 bg-green-50 text-green-800 rounded-lg border border-green-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
                             <div className="font-bold flex items-center gap-2 text-xl mb-4 text-green-700">
-                                <CheckCircle className="w-6 h-6" /> 발급 성공!
+                                <CheckCircle className="w-6 h-6" /> 발급 완료
                             </div>
                             <div className="space-y-1 text-lg">
                                 <div className="flex justify-between border-b border-green-200 pb-1">
@@ -152,7 +174,7 @@ export default function AdminPage() {
                                 </div>
                             </div>
                             <p className="text-sm text-green-600 mt-4 text-center">
-                                * 이 정보가 담당자 이메일로 전송되었습니다.
+                                * 담당자 이메일({form.managerEmail})로 전송되었습니다.
                             </p>
                         </div>
                     )}
