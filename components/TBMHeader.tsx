@@ -31,7 +31,7 @@ export function TBMHeader() {
         <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2 cursor-pointer" onClick={() => router.push('/')}>
                 <ShieldCheck className="w-6 h-6 text-slate-800" />
-                TBM 디지털 일지
+                TBM 일지
             </h1>
 
             <DropdownMenu>

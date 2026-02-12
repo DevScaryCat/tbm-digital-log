@@ -54,10 +54,10 @@ export async function POST(request: Request) {
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: managerEmail,
-      subject: `[TBM 디지털 일지] ${name}님, 관리자 계정이 생성되었습니다.`,
+      subject: `[TBM 일지] ${name}님, 관리자 계정이 생성되었습니다.`,
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <h2 style="color: #03c75a;">TBM 디지털 일지 계정 발급</h2>
+          <h2 style="color: #03c75a;">TBM 일지 계정 발급</h2>
           <p>안녕하세요, <strong>${name}</strong>님 (${company}).</p>
           <p>요청하신 현장 관리자 계정이 생성되었습니다.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />

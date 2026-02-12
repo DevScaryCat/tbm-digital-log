@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TBM 디지털 일지",
+  title: "TBM 일지",
   description: "현장 안전 점검 TBM 일지",
 };
 

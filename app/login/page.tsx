@@ -49,7 +49,7 @@ export default function LoginPage() {
                     <div className="mx-auto bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mb-2">
                         <HardHat className="w-8 h-8 text-orange-600" />
                     </div>
-                    <CardTitle className="text-3xl font-extrabold text-slate-900">TBM 디지털 일지</CardTitle>
+                    <CardTitle className="text-3xl font-extrabold text-slate-900">TBM 일지</CardTitle>
                     <CardDescription className="text-lg">
                         발급받은 현장 아이디로 로그인하세요.
                     </CardDescription>

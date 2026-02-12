@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen } from "lucide-react"
 
 // 날씨 유틸리티
 function getWeatherLabel(code: number): string {
@@ -59,7 +59,7 @@ export default function TBMPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [step, setStep] = useState(1) // 총 6단계
+  const [step, setStep] = useState(1)
   const [savedLogId, setSavedLogId] = useState<string | null>(null)
 
   // 녹음 관련 상태
@@ -67,11 +67,10 @@ export default function TBMPage() {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const audioChunks = useRef<Blob[]>([])
 
-  // 파일 업로드 참조
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [isProcessingSTT, setIsProcessingSTT] = useState(false) // STT 로딩
-  const [isProcessingAI, setIsProcessingAI] = useState(false) // AI 로딩
+  const [isProcessingSTT, setIsProcessingSTT] = useState(false)
+  const [isProcessingAI, setIsProcessingAI] = useState(false)
 
   const [isSignOpen, setIsSignOpen] = useState(false)
   const [currentSignTarget, setCurrentSignTarget] = useState<{ type: 'participant' | 'instructor', id?: number } | null>(null)
@@ -103,7 +102,6 @@ export default function TBMPage() {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
   const minutes = ["00", "10", "20", "30", "40", "50"]
 
-  // 초기화
   useEffect(() => {
     const initPage = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -229,7 +227,6 @@ export default function TBMPage() {
     }
   }
 
-  // AI 요약 요청
   const requestAISummary = async (text: string) => {
     if (!text) return;
     setIsProcessingAI(true)
@@ -247,7 +244,6 @@ export default function TBMPage() {
           educationContent: data.educationContent || "",
           remarks: data.remarks || ""
         }))
-        // AI 요약 완료 후 자동으로 다음 스텝(확인/수정)으로 이동
         setStep(3);
       } else {
         alert("AI 분석 오류: " + (data.error || "알 수 없는 오류"))
@@ -260,7 +256,6 @@ export default function TBMPage() {
     }
   }
 
-  // ⭐️ [복구] 파일 업로드 핸들러
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -295,7 +290,6 @@ export default function TBMPage() {
     }
   }
 
-  // 녹음된 오디오 Blob 처리
   const processAudioBlob = async (blob: Blob) => {
     const file = new File([blob], "recording.webm", { type: blob.type })
     setIsProcessingSTT(true)
@@ -327,7 +321,6 @@ export default function TBMPage() {
     }
   }
 
-  // 녹음 토글
   const toggleRecording = async () => {
     if (isRecording) {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -502,18 +495,30 @@ export default function TBMPage() {
             </div>
           )}
 
-          {/* STEP 2: 교육 자료 및 녹음/업로드 */}
+          {/* STEP 2: 교육 자료 및 녹음/업로드 (Iframe 제거, 버튼 링크로 대체) */}
           {step === 2 && (
             <div className="animate-in slide-in-from-right-4 duration-300 relative min-h-[60vh] flex flex-col">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-4">
                 <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">2</span> 교육 자료 확인 및 녹음
               </h2>
 
-              <div className="flex-1 border-2 border-slate-200 rounded-xl overflow-hidden relative min-h-[500px]">
-                <iframe src="https://sites.google.com/musinsalogistics.co.kr/healthandsafety?usp=sharing" className="w-full h-full absolute inset-0" />
+              {/* ⭐️ 교육자료 링크 버튼 (Iframe 대체) */}
+              <div className="flex-1 border-2 border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center p-6 text-center relative min-h-[500px]">
+                <BookOpen className="w-20 h-20 text-slate-300 mb-6" />
+                <h3 className="text-xl font-bold text-slate-800 mb-2">안전보건 교육자료</h3>
+                <p className="text-slate-500 mb-8 max-w-xs leading-relaxed">
+                  구글 사이트 보안 정책으로 인해<br />
+                  교육자료는 새 창에서 확인해야 합니다.
+                </p>
+                <Button
+                  onClick={() => window.open("https://sites.google.com/musinsalogistics.co.kr/healthandsafety", '_blank')}
+                  className="h-14 px-8 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-full"
+                >
+                  <ExternalLink className="mr-2 w-5 h-5" /> 자료 보러가기
+                </Button>
               </div>
 
-              {/* ⭐️ 우측 상단 고정 컨트롤 (녹음 + 업로드) */}
+              {/* 우측 상단 고정 컨트롤 (녹음 + 업로드) */}
               <div className="absolute top-12 right-2 z-10 flex flex-col items-end gap-3 pointer-events-none">
                 {/* 파일 업로드 버튼 */}
                 <div className="pointer-events-auto shadow-md rounded-full">
