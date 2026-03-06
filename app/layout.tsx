@@ -29,6 +29,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <footer className="w-full text-center py-4 text-xs text-slate-400 border-t border-slate-200 bg-white">
+          © {new Date().getFullYear()} EHS Friends. All rights reserved.
+        </footer>
       </body>
     </html>
   );

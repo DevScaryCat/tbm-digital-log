@@ -147,12 +147,12 @@ export default function ReportPage() {
                         </tr>
                         <tr className="h-16">
                             <td className="border border-black text-center" colSpan={2}>{log.company_name}</td>
-                            <td className="border border-black text-center font-bold text-lg" colSpan={2}>{log.instructor_name}</td>
+                            <td className="border border-black text-center font-bold text-lg" colSpan={2}></td>
                             <td className="border border-black text-center p-1 relative h-16 w-32">
                                 {log.instructor_signature ? (
                                     <img src={log.instructor_signature} className="absolute inset-0 w-full h-full object-contain p-1" />
                                 ) : (
-                                    <span className="text-gray-300">서명 없음</span>
+                                    <span className="text-gray-300"></span>
                                 )}
                             </td>
                         </tr>

@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { HardHat, Lightbulb, Mic, MessageSquareWarning, Zap, LogOut, UserCircle, Loader2 } from "lucide-react"
 
 export default function MainPage() {
@@ -21,6 +22,7 @@ export default function MainPage() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [companyInput, setCompanyInput] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
+  const [privacyAgreed, setPrivacyAgreed] = useState(false)
 
   // 로그인 상태 확인 및 데이터 불러오기
   useEffect(() => {
@@ -113,10 +115,22 @@ export default function MainPage() {
           </div>
 
           <div className="w-full space-y-4 pt-8">
-            <Button onClick={handleKakaoLogin} className="w-full h-16 bg-[#FEE500] hover:bg-[#FEE500]/90 text-black text-xl font-bold rounded-2xl shadow-lg flex items-center justify-center transition-transform active:scale-95">
+            <div className="flex items-start gap-3 bg-white/10 backdrop-blur-sm rounded-xl p-4">
+              <Checkbox
+                id="privacy-agree"
+                checked={privacyAgreed}
+                onCheckedChange={(checked) => setPrivacyAgreed(checked === true)}
+                className="mt-0.5 border-white/50 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
+              />
+              <label htmlFor="privacy-agree" className="text-sm text-slate-300 leading-relaxed cursor-pointer">
+                <a href="/privacy" target="_blank" className="text-orange-400 underline underline-offset-2 font-semibold">개인정보처리방침</a> 및{" "}
+                <a href="/terms" target="_blank" className="text-orange-400 underline underline-offset-2 font-semibold">서비스 이용약관</a>에 동의합니다.
+              </label>
+            </div>
+            <Button onClick={handleKakaoLogin} disabled={!privacyAgreed} className="w-full h-16 bg-[#FEE500] hover:bg-[#FEE500]/90 text-black text-xl font-bold rounded-2xl shadow-lg flex items-center justify-center transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
               <MessageSquareWarning className="w-6 h-6 mr-2 fill-black" /> 카카오 계정으로 로그인
             </Button>
-            <Button onClick={() => router.push('/login')} variant="outline" className="w-full h-16 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-800 text-xl font-bold rounded-2xl flex items-center justify-center transition-transform active:scale-95">
+            <Button onClick={() => router.push('/login')} disabled={!privacyAgreed} variant="outline" className="w-full h-16 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-800 text-xl font-bold rounded-2xl flex items-center justify-center transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
               <UserCircle className="w-6 h-6 mr-2 text-slate-800" /> 일반 계정으로 로그인
             </Button>
           </div>

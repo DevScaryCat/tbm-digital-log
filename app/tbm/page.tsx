@@ -12,12 +12,12 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from "@/components/ui/drawer"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen, X, Pause, Play, Send } from "lucide-react"
 
 // 날씨 유틸리티
 function getWeatherLabel(code: number): string {
@@ -41,8 +41,6 @@ interface Participant {
 interface TBMData {
     date: Date | undefined
     startTime: string
-    durationHour: string
-    durationMinute: string
     weather: string
     temperature: string
     companyName: string
@@ -66,6 +64,8 @@ export default function TBMPage() {
     const [isRecording, setIsRecording] = useState(false)
     const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
     const audioChunks = useRef<Blob[]>([])
+    const [accumulatedBlobs, setAccumulatedBlobs] = useState<Blob[]>([])
+    const [recordingCount, setRecordingCount] = useState(0)
 
     const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -85,8 +85,6 @@ export default function TBMPage() {
     const [formData, setFormData] = useState<TBMData>({
         date: new Date(),
         startTime: getCurrentTime(),
-        durationHour: "0",
-        durationMinute: "10",
         weather: "불러오는 중...",
         temperature: "",
         companyName: "",
@@ -177,13 +175,7 @@ export default function TBMPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) throw new Error("로그인 필요")
 
-            const [startH, startM] = formData.startTime.split(':').map(Number);
-            const durationH = parseInt(formData.durationHour) || 0;
-            const durationM = parseInt(formData.durationMinute) || 0;
-            let totalMinutes = (startH * 60) + startM + (durationH * 60) + durationM;
-            const endH = Math.floor(totalMinutes / 60) % 24;
-            const endM = totalMinutes % 60;
-            const formattedEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
 
             const { data: logData, error: logError } = await supabase
                 .from('tbm_logs')
@@ -191,7 +183,7 @@ export default function TBMPage() {
                     user_id: session.user.id,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
-                    end_time: formattedEndTime,
+                    end_time: null,
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,
@@ -321,43 +313,53 @@ export default function TBMPage() {
         }
     }
 
-    const toggleRecording = async () => {
-        if (isRecording) {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop()
-                setIsRecording(false)
-            }
-        } else {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("현재 브라우저가 마이크를 지원하지 않습니다.")
-                return
-            }
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-                const recorder = new MediaRecorder(stream)
-                audioChunks.current = []
-
-                recorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.current.push(event.data)
-                    }
-                }
-
-                recorder.onstop = () => {
-                    const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-                    processAudioBlob(audioBlob)
-                    stream.getTracks().forEach(track => track.stop())
-                }
-
-                recorder.start()
-                setMediaRecorder(recorder)
-                setIsRecording(true)
-            } catch (err) {
-                console.error(err)
-                alert("마이크 권한이 필요합니다.")
-            }
+    const stopRecording = () => {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop()
+            setIsRecording(false)
         }
+    }
+
+    const startRecording = async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("현재 브라우저가 마이크를 지원하지 않습니다.")
+            return
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            const recorder = new MediaRecorder(stream)
+            audioChunks.current = []
+
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.current.push(event.data)
+                }
+            }
+
+            recorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+                setAccumulatedBlobs(prev => [...prev, audioBlob])
+                setRecordingCount(prev => prev + 1)
+                stream.getTracks().forEach(track => track.stop())
+            }
+
+            recorder.start()
+            setMediaRecorder(recorder)
+            setIsRecording(true)
+        } catch (err) {
+            console.error(err)
+            alert("마이크 권한이 필요합니다.")
+        }
+    }
+
+    const submitRecording = async () => {
+        if (accumulatedBlobs.length === 0) {
+            alert("녹음된 내용이 없습니다.")
+            return
+        }
+        const mergedBlob = new Blob(accumulatedBlobs, { type: 'audio/webm' })
+        processAudioBlob(mergedBlob)
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
@@ -448,23 +450,14 @@ export default function TBMPage() {
                                     </Popover>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3 items-end">
-                                    <div className="space-y-1.5">
-                                        <div className="flex justify-between">
-                                            <Label>시작 시간</Label>
-                                            <Button variant="ghost" size="sm" className="h-6 px-1 text-slate-500" onClick={() => setFormData(prev => ({ ...prev, startTime: getCurrentTime() }))}>
-                                                <RefreshCw className="w-3 h-3 mr-1" /> 현시간
-                                            </Button>
-                                        </div>
-                                        <CustomTimePicker value={formData.startTime} onChange={(val) => setFormData(prev => ({ ...prev, startTime: val }))} />
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between">
+                                        <Label>시작 시간</Label>
+                                        <Button variant="ghost" size="sm" className="h-6 px-1 text-slate-500" onClick={() => setFormData(prev => ({ ...prev, startTime: getCurrentTime() }))}>
+                                            <RefreshCw className="w-3 h-3 mr-1" /> 현시간
+                                        </Button>
                                     </div>
-                                    <div className="space-y-1.5">
-                                        <Label>소요 시간</Label>
-                                        <div className="flex items-center gap-2 h-12">
-                                            <div className="relative flex-1"><Input type="number" inputMode="numeric" className="h-12 text-center text-lg font-bold border-slate-300 pr-8" value={formData.durationHour} onChange={(e) => setFormData(prev => ({ ...prev, durationHour: e.target.value }))} /><span className="absolute right-2 top-3 text-slate-500 text-sm">시간</span></div>
-                                            <div className="relative flex-1"><Input type="number" inputMode="numeric" className="h-12 text-center text-lg font-bold border-slate-300 pr-6" value={formData.durationMinute} onChange={(e) => setFormData(prev => ({ ...prev, durationMinute: e.target.value }))} /><span className="absolute right-2 top-3 text-slate-500 text-sm">분</span></div>
-                                        </div>
-                                    </div>
+                                    <CustomTimePicker value={formData.startTime} onChange={(val) => setFormData(prev => ({ ...prev, startTime: val }))} />
                                 </div>
 
                                 <div className="space-y-1.5"><Label>교육 장소</Label><Input name="location" value={formData.location} onChange={handleChange} className="h-12 text-lg border-slate-300" /></div>
@@ -505,42 +498,22 @@ export default function TBMPage() {
 
                             <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-6 text-center flex flex-col items-center justify-center min-h-[400px] shadow-inner relative">
 
-                                {/* 1단계: 녹음 시작 전 상태 */}
-                                {!isRecording ? (
-                                    <div className="w-full flex flex-col items-center space-y-8 animate-in zoom-in duration-300">
-                                        <div className="bg-slate-900 text-white px-4 py-2 rounded-full font-bold text-sm shadow-md">
-                                            1단계 : 먼저 녹음을 시작하세요
-                                        </div>
-
-                                        <Button
-                                            onClick={toggleRecording}
-                                            disabled={isProcessingSTT || isProcessingAI}
-                                            className="w-40 h-40 rounded-full shadow-2xl bg-slate-900 hover:bg-slate-800 flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
-                                        >
-                                            {isProcessingSTT || isProcessingAI ? (
-                                                <Loader2 className="w-12 h-12 text-white animate-spin" />
-                                            ) : (
-                                                <>
-                                                    <Mic className="w-16 h-16 text-white" />
-                                                    <span className="text-white font-extrabold text-xl">녹음 시작</span>
-                                                </>
-                                            )}
-                                        </Button>
-
-                                        <div className="mt-8 pt-6 border-t border-slate-200 w-full">
-                                            <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                                            <Button variant="ghost" onClick={() => fileInputRef.current?.click()} className="text-slate-500 font-medium">
-                                                <Upload className="w-5 h-5 mr-2" /> (또는) 기존 녹음 파일 업로드
-                                            </Button>
-                                        </div>
+                                {/* 처리 중 상태 */}
+                                {(isProcessingSTT || isProcessingAI) ? (
+                                    <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
+                                        <Loader2 className="w-16 h-16 text-slate-500 animate-spin" />
+                                        <p className="text-lg font-bold text-slate-700">
+                                            {isProcessingSTT ? "음성을 텍스트로 변환 중..." : "AI가 교육내용을 요약 중..."}
+                                        </p>
+                                        <p className="text-sm text-slate-400">잠시만 기다려주세요.</p>
                                     </div>
-                                ) : (
+                                ) : isRecording ? (
 
-                                    /* 2단계: 녹음 중 상태 (자료 보기 활성화) */
+                                    /* 녹음 중 상태 */
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
                                         <div className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm">
                                             <span className="w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
-                                            2단계 : 녹음이 진행 중입니다
+                                            녹음이 진행 중입니다 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
                                         </div>
 
                                         <Button
@@ -550,16 +523,69 @@ export default function TBMPage() {
                                             <BookOpen className="mr-2 w-6 h-6" /> 교육 자료 열기 (새 창)
                                         </Button>
                                         <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                                            새 창에서 자료를 읽으며 교육을 진행하세요.<br />완료 후 다시 돌아와 아래 버튼으로 종료합니다.
+                                            새 창에서 자료를 읽으며 교육을 진행하세요.<br />일시정지 후 이어서 녹음할 수 있습니다.
                                         </p>
 
                                         <Button
-                                            onClick={toggleRecording}
+                                            onClick={stopRecording}
                                             className="w-32 h-32 rounded-full shadow-xl bg-red-500 hover:bg-red-600 flex flex-col items-center justify-center gap-2 mt-4 transition-transform active:scale-95"
                                         >
-                                            <StopCircle className="w-12 h-12 text-white" />
-                                            <span className="text-white font-extrabold text-lg">녹음 종료</span>
+                                            <Pause className="w-12 h-12 text-white" />
+                                            <span className="text-white font-extrabold text-lg">일시정지</span>
                                         </Button>
+                                    </div>
+
+                                ) : recordingCount > 0 ? (
+
+                                    /* 일시정지 상태 (녹음 완료분 있음) */
+                                    <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
+                                        <div className="bg-orange-100 text-orange-700 border border-orange-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm">
+                                            <Pause className="w-4 h-4" />
+                                            녹음 일시정지 · {recordingCount}회 녹음됨
+                                        </div>
+
+                                        <div className="w-full space-y-3">
+                                            <Button
+                                                onClick={startRecording}
+                                                className="w-full h-16 text-lg bg-slate-900 hover:bg-slate-800 text-white shadow-lg rounded-2xl flex items-center justify-center transition-transform active:scale-95"
+                                            >
+                                                <Play className="mr-2 w-6 h-6" /> 이어서 녹음하기
+                                            </Button>
+                                            <Button
+                                                onClick={submitRecording}
+                                                className="w-full h-16 text-lg bg-green-600 hover:bg-green-700 text-white shadow-lg rounded-2xl flex items-center justify-center transition-transform active:scale-95 font-bold"
+                                            >
+                                                <Send className="mr-2 w-6 h-6" /> 녹음 완료 → AI 요약
+                                            </Button>
+                                        </div>
+
+                                        <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                                            추가 녹음이 필요하면 &quot;이어서 녹음하기&quot;를,<br />최종 완료되었으면 &quot;AI 요약&quot; 버튼을 누르세요.
+                                        </p>
+                                    </div>
+
+                                ) : (
+
+                                    /* 초기 상태 (녹음 시작 전) */
+                                    <div className="w-full flex flex-col items-center space-y-8 animate-in zoom-in duration-300">
+                                        <div className="bg-slate-900 text-white px-4 py-2 rounded-full font-bold text-sm shadow-md">
+                                            먼저 녹음을 시작하세요
+                                        </div>
+
+                                        <Button
+                                            onClick={startRecording}
+                                            className="w-40 h-40 rounded-full shadow-2xl bg-slate-900 hover:bg-slate-800 flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+                                        >
+                                            <Mic className="w-16 h-16 text-white" />
+                                            <span className="text-white font-extrabold text-xl">녹음 시작</span>
+                                        </Button>
+
+                                        <div className="mt-8 pt-6 border-t border-slate-200 w-full">
+                                            <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
+                                            <Button variant="ghost" onClick={() => fileInputRef.current?.click()} className="text-slate-500 font-medium">
+                                                <Upload className="w-5 h-5 mr-2" /> (또는) 기존 녹음 파일 업로드
+                                            </Button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -734,21 +760,23 @@ export default function TBMPage() {
 
             </div>
 
-            {/* 서명 Drawer */}
-            <Drawer open={isSignOpen} onOpenChange={setIsSignOpen}>
-                <DrawerContent className="h-[80vh] max-w-lg mx-auto">
-                    <DrawerHeader><DrawerTitle className="text-center text-xl">서명해 주세요</DrawerTitle></DrawerHeader>
-                    <div className="p-4 flex-1 bg-slate-50">
+            {/* 서명 Dialog (모바일 스크롤 이슈 해결) */}
+            <Dialog open={isSignOpen} onOpenChange={setIsSignOpen}>
+                <DialogContent showCloseButton={true} className="max-w-lg w-[calc(100%-2rem)] h-[80vh] max-h-[80vh] flex flex-col p-0 gap-0">
+                    <DialogHeader className="p-4 border-b shrink-0">
+                        <DialogTitle className="text-center text-xl">서명해 주세요</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-4 flex-1 bg-slate-50 min-h-0">
                         <div className="border-2 border-slate-300 rounded-xl bg-white h-full shadow-inner" style={{ touchAction: "none" }}>
                             <SignatureCanvas ref={sigCanvas} canvasProps={{ className: "w-full h-full" }} />
                         </div>
                     </div>
-                    <DrawerFooter className="flex-row gap-3 border-t bg-white">
+                    <DialogFooter className="flex-row gap-3 border-t bg-white p-4 shrink-0">
                         <Button variant="outline" onClick={() => sigCanvas.current?.clear()} className="flex-1 h-12 text-lg">지우기</Button>
                         <Button onClick={saveSignature} className="flex-1 h-12 text-lg bg-slate-900 text-white">확인</Button>
-                    </DrawerFooter>
-                </DrawerContent>
-            </Drawer>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
