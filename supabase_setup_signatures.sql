@@ -13,18 +13,21 @@ create table if not exists public.tbm_pending_signatures (
 alter table public.tbm_pending_signatures enable row level security;
 
 -- Allow anonymous users to insert signatures (since workers scanning the QR code might not be logged in)
+drop policy if exists "Anyone can insert a pending signature" on public.tbm_pending_signatures;
 create policy "Anyone can insert a pending signature"
   on public.tbm_pending_signatures
   for insert
   with check (true);
 
 -- Allow everyone to read pending signatures
+drop policy if exists "Anyone can view pending signatures" on public.tbm_pending_signatures;
 create policy "Anyone can view pending signatures"
   on public.tbm_pending_signatures
   for select
   using (true);
 
 -- Allow everyone to delete pending signatures (for cleanup)
+drop policy if exists "Anyone can delete pending signatures" on public.tbm_pending_signatures;
 create policy "Anyone can delete pending signatures"
   on public.tbm_pending_signatures
   for delete

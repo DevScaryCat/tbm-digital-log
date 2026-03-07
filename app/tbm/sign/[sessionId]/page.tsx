@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import SignatureCanvas from "react-signature-canvas"
 import { Button } from "@/components/ui/button"
@@ -10,9 +10,10 @@ import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { CheckCircle2, Loader2 } from "lucide-react"
 
-export default function SignPage({ params }: { params: { sessionId: string } }) {
+export default function SignPage() {
     const router = useRouter()
-    const { sessionId } = params
+    const urlParams = useParams()
+    const sessionId = urlParams.sessionId as string
 
     const [name, setName] = useState("")
     const [gender, setGender] = useState<"M" | "F">("M")
@@ -28,13 +29,25 @@ export default function SignPage({ params }: { params: { sessionId: string } }) 
         const checkSession = async () => {
             const { data, error } = await supabase
                 .from('tbm_pending_signatures')
-                .select('id')
+                .select('name, created_at')
                 .eq('session_id', sessionId)
-                .eq('name', 'CLOSED_SESSION')
+                .in('name', ['OPEN_SESSION', 'CLOSED_SESSION'])
+                .order('created_at', { ascending: false })
                 .limit(1)
 
-            if (data && data.length > 0) {
+            if (!data || data.length === 0) {
+                // 잘못된 링크이거나 만료 마커가 쓰여지기 전 삭제된 세션
                 setIsExpired(true)
+            } else if (data[0].name === 'CLOSED_SESSION') {
+                setIsExpired(true)
+            } else if (data[0].name === 'OPEN_SESSION') {
+                const createdAt = new Date(data[0].created_at).getTime()
+                const now = Date.now()
+                const diffMinutes = (now - createdAt) / (1000 * 60)
+
+                if (diffMinutes >= 30) {
+                    setIsExpired(true)
+                }
             }
             setIsLoading(false)
         }

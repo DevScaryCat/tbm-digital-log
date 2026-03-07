@@ -146,6 +146,14 @@ export default function TBMPage() {
             if (!currentSessionId) {
                 currentSessionId = uuidv4();
                 setSessionId(currentSessionId);
+
+                // 30분 타이머 기록을 위한 오픈 마커 추가
+                supabase.from('tbm_pending_signatures').insert({
+                    session_id: currentSessionId,
+                    name: "OPEN_SESSION",
+                    gender: "M",
+                    signature: "init"
+                }).then(() => console.log("Session opened"));
             }
 
             console.log("Listening for signatures on session:", currentSessionId);
@@ -164,6 +172,9 @@ export default function TBMPage() {
                         console.log("New signature received:", newSignature);
 
                         setFormData(prev => {
+                            // OPEN_SESSION 마커 등은 UI 배열에 무시
+                            if (newSignature.name === "OPEN_SESSION" || newSignature.name === "CLOSED_SESSION") return prev;
+
                             // 명단 맨 끝의 비어있는 "이름 없는" 항목을 덮어쓸지, 아니면 그냥 추가할지 결정
                             // 편의상 빈 줄이 있으면 덮어쓰고, 아니면 맨 아래에 추가
                             const participants = [...prev.participants];
@@ -267,8 +278,14 @@ export default function TBMPage() {
             const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)
             if (partError) throw partError
 
-            // 발급했던 원격 서명 고유 링크(QR) 만료 처리
+            // 발급했던 원격 서명 고유 링크(QR) 만료 처리 및 기존 쓰레기 데이터 파기
             if (sessionId) {
+                // 1. 임시 테이블의 기존 서명 이미지 데이터 전부 파기하여 용량 확보
+                await supabase.from('tbm_pending_signatures')
+                    .delete()
+                    .eq('session_id', sessionId);
+
+                // 2. 폐기 마커 등록 (URL로 접속하는 것을 완벽 차단)
                 await supabase.from('tbm_pending_signatures').insert({
                     session_id: sessionId,
                     name: "CLOSED_SESSION",
