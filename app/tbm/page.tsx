@@ -252,7 +252,7 @@ export default function TBMPage() {
                     user_id: session.user.id,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
-                    end_time: null,
+                    end_time: new Date().toTimeString().slice(0, 5),
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,

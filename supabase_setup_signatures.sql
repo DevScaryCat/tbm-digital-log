@@ -32,3 +32,17 @@ create policy "Anyone can delete pending signatures"
   on public.tbm_pending_signatures
   for delete
   using (true);
+
+-- Enable Realtime for the new table so the frontend can receive live updates
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+    AND schemaname = 'public'
+    AND tablename = 'tbm_pending_signatures'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.tbm_pending_signatures;
+  END IF;
+END $$;
