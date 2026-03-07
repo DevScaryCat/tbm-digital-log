@@ -17,7 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen, X, Pause, Play, Send } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen, X, Pause, Play, Send, QrCode, Copy } from "lucide-react"
+import { v4 as uuidv4 } from "uuid"
+import { QRCodeCanvas } from "qrcode.react"
 
 // 날씨 유틸리티
 function getWeatherLabel(code: number): string {
@@ -59,6 +61,7 @@ export default function TBMPage() {
     const [isSaving, setIsSaving] = useState(false)
     const [step, setStep] = useState(1)
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
+    const [sessionId, setSessionId] = useState<string | null>(null)
 
     // 녹음 관련 상태
     const [isRecording, setIsRecording] = useState(false)
@@ -137,6 +140,61 @@ export default function TBMPage() {
         initPage()
     }, [router])
 
+    useEffect(() => {
+        if (step === 5) {
+            let currentSessionId = sessionId;
+            if (!currentSessionId) {
+                currentSessionId = uuidv4();
+                setSessionId(currentSessionId);
+            }
+
+            console.log("Listening for signatures on session:", currentSessionId);
+
+            const channel = supabase.channel(`public:tbm_pending_signatures:${currentSessionId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'tbm_pending_signatures',
+                        filter: `session_id=eq.${currentSessionId}`
+                    },
+                    (payload) => {
+                        const newSignature = payload.new;
+                        console.log("New signature received:", newSignature);
+
+                        setFormData(prev => {
+                            // 명단 맨 끝의 비어있는 "이름 없는" 항목을 덮어쓸지, 아니면 그냥 추가할지 결정
+                            // 편의상 빈 줄이 있으면 덮어쓰고, 아니면 맨 아래에 추가
+                            const participants = [...prev.participants];
+                            const emptyIndex = participants.findIndex(p => p.name === "" && !p.signature);
+
+                            const newParticipant = {
+                                id: Date.now() + Math.random(), // 고유 ID 부여
+                                name: newSignature.name,
+                                gender: newSignature.gender as "M" | "F",
+                                status: "present" as const,
+                                signature: newSignature.signature
+                            };
+
+                            if (emptyIndex !== -1) {
+                                participants[emptyIndex] = newParticipant;
+                            } else {
+                                participants.push(newParticipant);
+                            }
+
+                            return { ...prev, participants };
+                        });
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            }
+        }
+    }, [step, sessionId]);
+
     const validateStep = (currentStep: number) => {
         if (currentStep === 1) {
             if (!formData.date) return "교육 일자를 선택해주세요.";
@@ -208,6 +266,16 @@ export default function TBMPage() {
 
             const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)
             if (partError) throw partError
+
+            // 발급했던 원격 서명 고유 링크(QR) 만료 처리
+            if (sessionId) {
+                await supabase.from('tbm_pending_signatures').insert({
+                    session_id: sessionId,
+                    name: "CLOSED_SESSION",
+                    gender: "M",
+                    signature: "expired"
+                })
+            }
 
             setSavedLogId(logData.id)
             setStep(6)
@@ -694,13 +762,46 @@ export default function TBMPage() {
 
                     {/* STEP 5: 명단 */}
                     {step === 5 && (
-                        <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex justify-between items-center">
                                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                                     <span className="bg-slate-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm">5</span> 명단 ({formData.participants.length}명)
                                 </h2>
-                                <Button size="sm" onClick={() => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))} className="bg-slate-900 hover:bg-slate-800"><Plus className="w-4 h-4" /> 추가</Button>
+                                <Button size="sm" onClick={() => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))} className="bg-slate-900 hover:bg-slate-800"><Plus className="w-4 h-4" /> 수동 추가</Button>
                             </div>
+
+                            {/* QR 코드 원격 서명 섹션 */}
+                            <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 flex flex-col items-center justify-center text-center space-y-3">
+                                <div className="flex items-center gap-2 text-blue-800 font-bold mb-1">
+                                    <QrCode className="w-5 h-5" /> 작업자 각자 스마트폰으로 서명받기
+                                </div>
+
+                                {sessionId && (
+                                    <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+                                        <QRCodeCanvas
+                                            value={typeof window !== "undefined" ? `${window.location.origin}/tbm/sign/${sessionId}` : ""}
+                                            size={140}
+                                            level={"H"}
+                                        />
+                                    </div>
+                                )}
+
+                                <p className="text-sm text-blue-700 font-medium">작업자에게 위 QR을 보여주거나<br />아래 링크를 복사하여 카톡 등으로 전송하세요.</p>
+
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        if (typeof window !== "undefined" && sessionId) {
+                                            navigator.clipboard.writeText(`${window.location.origin}/tbm/sign/${sessionId}`)
+                                            alert("서명 링크가 복사되었습니다.")
+                                        }
+                                    }}
+                                    className="bg-white border-blue-300 text-blue-700 hover:bg-blue-100"
+                                >
+                                    <Copy className="w-4 h-4 mr-2" /> 서명 링크 복사
+                                </Button>
+                            </div>
+
                             <div className="space-y-3">
                                 {formData.participants.map((p, idx) => (
                                     <div key={p.id} className="bg-white p-3 border border-slate-200 rounded-xl shadow-sm flex flex-col gap-3">
@@ -715,7 +816,7 @@ export default function TBMPage() {
                                                 <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-3 py-2 text-sm font-bold rounded-md transition-all", p.gender === 'F' ? 'bg-white text-pink-600 shadow-sm' : 'text-slate-400')}>여</button>
                                             </div>
                                             <div className="flex-1" onClick={() => openSignModal({ type: 'participant', id: p.id })}>
-                                                {p.signature ? <div className="h-10 bg-green-50 border border-green-500 rounded-lg flex items-center justify-center"><img src={p.signature} className="h-full object-contain" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-slate-400 border-slate-300">서명하기</Button>}
+                                                {p.signature ? <div className="h-10 bg-green-50 border border-green-500 rounded-lg flex items-center justify-center"><img src={p.signature} className="h-full object-contain" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-slate-400 border-slate-300">내 폰으로 직접 받기</Button>}
                                             </div>
                                         </div>
                                     </div>
