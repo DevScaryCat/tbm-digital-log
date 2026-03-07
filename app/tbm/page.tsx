@@ -539,15 +539,14 @@ export default function TBMPage() {
     if (isLoading) return <div className="min-h-screen flex justify-center items-center"><Loader2 className="animate-spin w-10 h-10 text-slate-500" /></div>
 
     return (
-        <div className="bg-slate-50 min-h-[100dvh] flex items-center justify-center sm:py-8">
-            {/* 화면 꽉 차되 스크롤 가능한 앱 스타일 레이아웃 */}
-            <div className="max-w-lg w-full mx-auto bg-white sm:shadow-2xl sm:rounded-[2rem] relative flex flex-col h-[100dvh] sm:h-[85vh] sm:max-h-[900px] overflow-hidden border-x sm:border">
-                <div className="p-4 bg-white border-b shrink-0 z-50 relative">
+        <div className="bg-slate-50 min-h-screen sm:py-8 flex sm:block items-center justify-center">
+            {/* 전체 페이지를 스크롤하는 자연스러운 레이아웃 (최소 높이 85vh 보장, 자유롭게 늘어남) */}
+            <div className="max-w-lg w-full mx-auto bg-white sm:shadow-2xl sm:rounded-[2rem] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border mb-[env(safe-area-inset-bottom)]">
+                <div className="p-4 bg-white border-b sticky top-0 z-50 sm:rounded-t-[2rem]">
                     <TBMHeader />
                 </div>
 
-                {/* 이 영역 내부만 독립적으로 스크롤됩니다. */}
-                <div className="p-4 space-y-6 flex-1 overflow-y-auto scroll-smooth pb-12">
+                <div className="p-4 space-y-6 flex-1 pb-12">
 
                     {/* STEP 1: 기본 정보 */}
                     {step === 1 && (
@@ -898,15 +897,15 @@ export default function TBMPage() {
 
                 </div>
 
-                {/* 하단 버튼 (스크롤과 무관하게 항상 하단 고정) */}
+                {/* 하단 버튼 (전체 페이지 스크롤 시 하단에 고정) */}
                 {step < 6 && (
-                    <div className="bg-white border-t p-4 flex gap-3 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] shrink-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                        <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} disabled={step === 1} className="flex-1 h-14 text-lg border-slate-300">이전</Button>
+                    <div className="bg-white border-t p-4 flex gap-3 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)] sticky bottom-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-b-[2rem]">
+                        <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} disabled={step === 1} className="flex-1 h-16 text-lg border-slate-300">이전</Button>
                         {step < 5 ? (
-                            <Button onClick={handleNext} className="flex-[2] h-14 text-lg bg-slate-900 hover:bg-slate-800 text-white">다음 단계</Button>
+                            <Button onClick={handleNext} className="flex-[2] h-16 text-xl bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-transform active:scale-95">다음 단계</Button>
                         ) : (
-                            <Button onClick={saveToDatabase} disabled={isSaving} className="flex-[2] h-14 text-lg bg-green-600 hover:bg-green-700 text-white font-bold">
-                                {isSaving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
+                            <Button onClick={saveToDatabase} disabled={isSaving} className="flex-[2] h-16 text-xl bg-green-600 hover:bg-green-700 text-white font-bold shadow-md transition-transform active:scale-95">
+                                {isSaving ? <Loader2 className="animate-spin w-6 h-6 mr-2" /> : <Save className="mr-2 w-6 h-6" />} 완료 및 저장
                             </Button>
                         )}
                     </div>
