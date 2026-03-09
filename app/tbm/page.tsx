@@ -252,9 +252,15 @@ export default function TBMPage() {
             if (!formData.photo) return "현장 사진 촬영은 필수입니다.";
         }
         if (currentStep === 5) {
-            const missingSign = formData.participants.find(p => !p.signature);
+            // 아무것도 입력하지 않은 기본 제공 빈 칸은 검사 및 저장에서 제외
+            const validParticipants = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
+
+            if (validParticipants.length === 0) return "최소 1명 이상의 참석자 서명이 필요합니다.";
+
+            const missingSign = validParticipants.find(p => !p.signature);
             if (missingSign) return `${missingSign.name || '참석자'} 님의 서명이 누락되었습니다.`;
-            if (formData.participants.some(p => !p.name)) return "참석자 이름을 모두 입력해주세요.";
+
+            if (validParticipants.some(p => !p.name.trim())) return "참석자 이름을 모두 입력해주세요.";
         }
         return null;
     }
@@ -297,7 +303,10 @@ export default function TBMPage() {
 
             if (logError) throw logError
 
-            const participantsData = formData.participants.map(p => ({
+            // 아무것도 안건드린 빈칸 제거
+            const validParticipantsForDB = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
+
+            const participantsData = validParticipantsForDB.map(p => ({
                 log_id: logData.id,
                 name: p.name,
                 gender: p.gender,
