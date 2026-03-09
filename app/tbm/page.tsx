@@ -210,10 +210,9 @@ export default function TBMPage() {
                             // OPEN_SESSION 마커 등은 UI 배열에 무시
                             if (newSignature.name === "OPEN_SESSION" || newSignature.name === "CLOSED_SESSION") return prev;
 
-                            // 명단 맨 끝의 비어있는 "이름 없는" 항목을 덮어쓸지, 아니면 그냥 추가할지 결정
-                            // 편의상 빈 줄이 있으면 덮어쓰고, 아니면 맨 아래에 추가
+                            // 빈 줄을 덮어쓰지 않고 무조건 새 줄로 맨 아래에 추가합니다.
+                            // (관리자가 빈 줄에 수동 서명 중일 때 겹쳐서 날아가는 버그 방지)
                             const participants = [...prev.participants];
-                            const emptyIndex = participants.findIndex(p => p.name === "" && !p.signature);
 
                             const newParticipant = {
                                 id: Date.now() + Math.random(), // 고유 ID 부여
@@ -223,11 +222,7 @@ export default function TBMPage() {
                                 signature: newSignature.signature
                             };
 
-                            if (emptyIndex !== -1) {
-                                participants[emptyIndex] = newParticipant;
-                            } else {
-                                participants.push(newParticipant);
-                            }
+                            participants.push(newParticipant);
 
                             return { ...prev, participants };
                         });
@@ -637,13 +632,23 @@ export default function TBMPage() {
                                         </div>
 
                                         <Button
-                                            onClick={() => window.open("https://sites.google.com/musinsalogistics.co.kr/healthandsafety", '_blank')}
-                                            className="w-full h-16 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xl rounded-2xl flex items-center justify-center animate-bounce"
+                                            onClick={() => {
+                                                const url = "https://sites.google.com/musinsalogistics.co.kr/healthandsafety";
+                                                const ua = navigator.userAgent.toLowerCase();
+                                                if (ua.includes("kakao")) {
+                                                    // 카카오톡 웹뷰에서 외부 브라우저 띄우기 (다운로드 문제 방지)
+                                                    window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
+                                                } else {
+                                                    window.open(url, '_blank');
+                                                }
+                                            }}
+                                            className="w-full h-16 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xl rounded-2xl flex items-center justify-center animate-bounce transition-transform active:scale-95"
                                         >
                                             <BookOpen className="mr-2 w-6 h-6" /> 교육 자료 열기 (새 창)
                                         </Button>
-                                        <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                                            새 창에서 자료를 읽으며 교육을 진행하세요.<br />일시정지 후 이어서 녹음할 수 있습니다.
+                                        <p className="text-sm text-slate-500 font-medium leading-relaxed bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                            💡 새 창에서 자료를 읽으며 교육을 진행하세요.<br />
+                                            <span className="text-blue-600/80 text-xs">※ 카톡/텔레그램 등에서 자료 다운로드가 튕길 경우, 우측 상단 메뉴 <b>(⋮)</b>에서 <b>'다른 브라우저로 열기'</b>를 선택해 주세요.</span>
                                         </p>
 
                                         <Button
