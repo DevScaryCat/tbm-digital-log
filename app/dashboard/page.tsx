@@ -34,7 +34,7 @@ export default function DashboardPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) { router.push("/login"); return }
 
-            const { data } = await supabase.from('tbm_logs').select('*').order('date', { ascending: false })
+            const { data } = await supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').order('date', { ascending: false })
             if (data) {
                 setLogs(data)
                 const todayLogs = data.filter(log => isSameDay(parseISO(log.date), new Date()))

@@ -20,7 +20,7 @@ export default function TBMHistoryPage() {
 
             const { data } = await supabase
                 .from('tbm_logs')
-                .select('*')
+                .select('id, education_type, date, location, company_name, start_time, created_at')
                 .eq('user_id', session.user.id)
                 .order('created_at', { ascending: false })
 
