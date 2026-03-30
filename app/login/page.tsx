@@ -91,6 +91,13 @@ export default function LoginPage() {
                         <Button type="submit" className="w-full h-14 text-xl bg-orange-600 hover:bg-orange-700 font-bold shadow-md transition-all active:scale-[0.98]" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : "로그인 하기"}
                         </Button>
+
+                        <div className="mt-6 text-center text-sm text-slate-600 border-t border-slate-100 pt-6">
+                            아직 현장 계정이 없으신가요?{" "}
+                            <a href="/signup" className="font-bold text-orange-600 hover:underline">
+                                회원가입 하기
+                            </a>
+                        </div>
                     </form>
                 </CardContent>
             </Card>
