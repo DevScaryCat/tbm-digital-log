@@ -150,28 +150,46 @@ export default function TBMPage() {
     }, [sessionId, step]);
 
     useEffect(() => {
-        const cleanupSession = () => {
+        // 컴포넌트가 Next.js 라우터 이동으로 언마운트될 때만 세션을 닫습니다.
+        // beforeunload에서 닫으면 탭 전환/모바일 백그라운드 전환만으로도 세션이 닫혀
+        // 작업자가 서명 링크 접속 시 "만료된 서명 링크" 에러가 발생하는 버그가 있었습니다.
+        return () => {
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
             // 6단계(저장 완료)가 아닌데 세션이 발급되어 있다면 사용자가 중도 포기/이탈한 것
             if (currentSession && currentStep !== 6) {
-                console.log("Abandoning session: ", currentSession);
-                supabase.from('tbm_pending_signatures').insert({
+                console.log("Abandoning session (unmount): ", currentSession);
+                // sendBeacon을 사용해 페이지 이동 중에도 요청이 전송되도록 보장
+                const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tbm_pending_signatures`;
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+                };
+                const body = JSON.stringify({
                     session_id: currentSession,
                     name: "CLOSED_SESSION",
                     gender: "M",
                     signature: "abandoned"
-                }).then();
+                });
+                // sendBeacon은 페이지 언로드 중에도 안정적으로 전송됨
+                try {
+                    const blob = new Blob([body], { type: 'application/json' });
+                    const beaconUrl = `${url}?apikey=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`;
+                    if (!navigator.sendBeacon(beaconUrl, blob)) {
+                        // sendBeacon 실패 시 fallback
+                        fetch(url, { method: 'POST', headers, body, keepalive: true }).catch(() => {});
+                    }
+                } catch {
+                    // 최후의 fallback
+                    supabase.from('tbm_pending_signatures').insert({
+                        session_id: currentSession,
+                        name: "CLOSED_SESSION",
+                        gender: "M",
+                        signature: "abandoned"
+                    }).then();
+                }
             }
-        };
-
-        // 브라우저 탭을 닫거나 새로고침할 때
-        window.addEventListener('beforeunload', cleanupSession);
-
-        // Next.js 라우터 이동 등으로 컴포넌트가 언마운트될 때
-        return () => {
-            window.removeEventListener('beforeunload', cleanupSession);
-            cleanupSession();
         };
     }, []);
 
@@ -629,7 +647,7 @@ export default function TBMPage() {
                                         <p className="text-lg font-bold text-slate-700">
                                             {isProcessingSTT ? "음성을 텍스트로 변환 중..." : "AI가 교육내용을 요약 중..."}
                                         </p>
-                                        <p className="text-sm text-slate-400">잠시만 기다려주세요.</p>
+                                        <p className="text-sm text-slate-400">AI가 정리한 내용을 확인하시고, 수정할 수 있습니다.</p>
                                     </div>
                                 ) : isRecording ? (
 

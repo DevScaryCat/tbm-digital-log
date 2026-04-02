@@ -1,13 +1,14 @@
 // app/login/page.tsx
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { AlertCircle, Loader2, HardHat } from "lucide-react"
 
 export default function LoginPage() {
@@ -16,6 +17,20 @@ export default function LoginPage() {
     const [password, setPassword] = useState("")
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [rememberMe, setRememberMe] = useState(false)
+
+    // 저장된 아이디/비밀번호 불러오기
+    useEffect(() => {
+        const saved = localStorage.getItem("tbm_saved_login")
+        if (saved) {
+            try {
+                const { id, pw } = JSON.parse(saved)
+                setUserId(id || "")
+                setPassword(pw || "")
+                setRememberMe(true)
+            } catch {}
+        }
+    }, [])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -32,6 +47,13 @@ export default function LoginPage() {
             })
 
             if (error) throw error
+
+            // 아이디/비밀번호 저장 처리
+            if (rememberMe) {
+                localStorage.setItem("tbm_saved_login", JSON.stringify({ id: userId, pw: password }))
+            } else {
+                localStorage.removeItem("tbm_saved_login")
+            }
 
             router.push("/")
         } catch (err: any) {
@@ -79,6 +101,18 @@ export default function LoginPage() {
                                 required
                                 className="h-14 text-lg bg-slate-50 border-slate-300"
                             />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="rememberMe"
+                                checked={rememberMe}
+                                onCheckedChange={(checked) => setRememberMe(checked === true)}
+                                className="data-[state=checked]:bg-orange-600 data-[state=checked]:border-orange-600"
+                            />
+                            <label htmlFor="rememberMe" className="text-sm text-slate-600 cursor-pointer select-none">
+                                아이디 / 비밀번호 저장
+                            </label>
                         </div>
 
                         {error && (

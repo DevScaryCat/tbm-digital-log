@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { HardHat, Lightbulb, Mic, MessageSquareWarning, Zap, LogOut, UserCircle, Loader2 } from "lucide-react"
+import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2 } from "lucide-react"
 
 export default function MainPage() {
   const router = useRouter()
@@ -17,7 +17,6 @@ export default function MainPage() {
   // 진짜 데이터를 담을 상태(State) 3가지
   const [tbmCount, setTbmCount] = useState(0)
   const [suggestionCount, setSuggestionCount] = useState(0)
-  const [aiCount, setAiCount] = useState(0) // ⭐️ AI 특허 건수 추가
 
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [companyInput, setCompanyInput] = useState("")
@@ -53,10 +52,6 @@ export default function MainPage() {
       // 2. 제안 개수
       const { count: sug } = await supabase.from('suggestions').select('*', { count: 'exact', head: true }).eq('user_id', userId)
       if (sug !== null) setSuggestionCount(sug)
-
-      // 3. ⭐️ AI 특허 개수 추가
-      const { count: ai } = await supabase.from('ai_assets').select('*', { count: 'exact', head: true }).eq('user_id', userId)
-      if (ai !== null) setAiCount(ai)
     } catch (e) {
       console.error("통계 에러:", e)
     }
@@ -81,7 +76,6 @@ export default function MainPage() {
     setUser(null)
     setTbmCount(0)
     setSuggestionCount(0)
-    setAiCount(0)
   }
 
   // 온보딩 현장명 저장
@@ -168,10 +162,6 @@ export default function MainPage() {
               <div className="text-[11px] text-slate-400 font-medium mb-1">현장 제안</div>
               <div className="text-lg font-bold text-orange-400">{suggestionCount}건</div>
             </div>
-            <div onClick={() => router.push('/history/ai-consulting')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
-              <div className="text-[11px] text-slate-400 font-medium mb-1">AI 특허</div>
-              <div className="text-lg font-bold text-purple-400">{aiCount}건</div>
-            </div>
           </div>
         </div>
 
@@ -193,13 +183,6 @@ export default function MainPage() {
             </CardContent>
           </Card>
 
-          <Card onClick={() => router.push('/ai-consulting')} className="border-0 bg-gradient-to-br from-purple-600 to-indigo-800 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer active:scale-[0.98] overflow-hidden group">
-            <CardContent className="p-8 flex items-center justify-between relative">
-              <div className="z-10"><h3 className="text-3xl font-extrabold mb-2">AI 컨설팅</h3><p className="text-purple-200 text-base font-medium">아이디어 특허 평가 & 명세서 생성</p></div>
-              <div className="bg-white/20 p-4 rounded-full z-10 backdrop-blur-sm group-hover:scale-110 transition-transform"><Zap className="w-10 h-10 text-white" /></div>
-              <div className="absolute -right-6 -top-6 text-purple-500/30"><Lightbulb className="w-40 h-40" /></div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
