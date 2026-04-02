@@ -17,6 +17,7 @@ export default function MainPage() {
   // 진짜 데이터를 담을 상태(State) 3가지
   const [tbmCount, setTbmCount] = useState(0)
   const [suggestionCount, setSuggestionCount] = useState(0)
+  const [statsLoading, setStatsLoading] = useState(true)
 
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [companyInput, setCompanyInput] = useState("")
@@ -42,18 +43,21 @@ export default function MainPage() {
     checkSession()
   }, [])
 
-  // Supabase에서 내가 작성한 데이터 개수 가져오기
+  // Supabase에서 내가 작성한 데이터 개수 가져오기 (인덱스 활용)
   const fetchUserStats = async (userId: string) => {
+    setStatsLoading(true)
     try {
-      // 1. TBM 개수
-      const { count: tbm } = await supabase.from('tbm_logs').select('*', { count: 'exact', head: true }).eq('user_id', userId)
+      // 1. TBM 개수 - user_id 인덱스 활용
+      const { count: tbm } = await supabase.from('tbm_logs').select('id', { count: 'exact', head: true }).eq('user_id', userId)
       if (tbm !== null) setTbmCount(tbm)
 
-      // 2. 제안 개수
-      const { count: sug } = await supabase.from('suggestions').select('*', { count: 'exact', head: true }).eq('user_id', userId)
+      // 2. 제안 개수 - user_id 인덱스 활용
+      const { count: sug } = await supabase.from('suggestions').select('id', { count: 'exact', head: true }).eq('user_id', userId)
       if (sug !== null) setSuggestionCount(sug)
     } catch (e) {
       console.error("통계 에러:", e)
+    } finally {
+      setStatsLoading(false)
     }
   }
 
@@ -156,11 +160,11 @@ export default function MainPage() {
           <div className="bg-slate-800 rounded-2xl flex text-center divide-x divide-slate-700 border border-slate-700 shadow-inner overflow-hidden">
             <div onClick={() => router.push('/history/tbm')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
               <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 완료</div>
-              <div className="text-lg font-bold text-green-400">{tbmCount}건</div>
+              <div className="text-lg font-bold text-green-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-green-400" /> : `${tbmCount}건`}</div>
             </div>
             <div onClick={() => router.push('/history/suggestion')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
               <div className="text-[11px] text-slate-400 font-medium mb-1">현장 제안</div>
-              <div className="text-lg font-bold text-orange-400">{suggestionCount}건</div>
+              <div className="text-lg font-bold text-orange-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-orange-400" /> : `${suggestionCount}건`}</div>
             </div>
           </div>
         </div>

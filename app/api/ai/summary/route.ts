@@ -79,12 +79,50 @@ export async function POST(request: Request) {
     try {
       result = JSON.parse(rawResponse);
       
+      // AI가 간혹 educationContent 안에 JSON 객체를 문자열로 넣는 경우 대응
+      // 예: educationContent = '{"educationContent": "...", "remarks": "..."}'
+      if (typeof result.educationContent === 'string') {
+        try {
+          const nested = JSON.parse(result.educationContent);
+          if (nested && typeof nested === 'object' && nested.educationContent !== undefined) {
+            result.educationContent = nested.educationContent || "";
+            if (nested.remarks) result.remarks = nested.remarks;
+          }
+        } catch {
+          // nested JSON이 아닌 경우 무시 - 정상적인 문자열
+        }
+      }
+
+      // educationContent가 객체(JSON)인 경우 문자열로 변환
+      if (typeof result.educationContent === 'object' && result.educationContent !== null) {
+        console.warn("educationContent is object, converting:", result.educationContent);
+        // 내부에 educationContent 키가 있으면 그것을 사용
+        if (result.educationContent.educationContent) {
+          const inner = result.educationContent;
+          result.educationContent = inner.educationContent || "";
+          if (inner.remarks && !result.remarks) result.remarks = inner.remarks;
+        } else {
+          result.educationContent = "";
+        }
+      }
+
       // 혹시라도 이중 이스케이프되어 문자열에 그대로 노출된 "\\n"을 실제 줄바꿈 문자로 변환
       if (typeof result.educationContent === 'string') {
         result.educationContent = result.educationContent.replace(/\\n/g, '\n');
       }
       if (typeof result.remarks === 'string') {
         result.remarks = result.remarks.replace(/\\n/g, '\n');
+      }
+
+      // remarks가 객체인 경우 빈 문자열로 처리
+      if (typeof result.remarks === 'object') {
+        result.remarks = "";
+      }
+
+      // educationContent가 빈 문자열이면 안내 메시지
+      if (!result.educationContent || result.educationContent.trim() === "") {
+        result.educationContent = "";
+        result.remarks = result.remarks || "음성 내용이 충분하지 않아 요약이 생성되지 않았습니다. 직접 입력해주세요.";
       }
     } catch (e) {
       console.error("JSON Parse Error. Raw output:", rawResponse);

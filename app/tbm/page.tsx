@@ -373,10 +373,34 @@ export default function TBMPage() {
             const data = await res.json()
 
             if (res.ok) {
+                let educationContent = data.educationContent || ""
+                let remarks = data.remarks || ""
+
+                // 클라이언트 측 추가 방어: educationContent가 JSON 문자열인 경우 파싱
+                if (typeof educationContent === 'string' && educationContent.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(educationContent)
+                        if (parsed && typeof parsed === 'object') {
+                            educationContent = parsed.educationContent || ""
+                            if (parsed.remarks && !remarks) remarks = parsed.remarks
+                        }
+                    } catch {
+                        // JSON이 아니면 그냥 사용
+                    }
+                }
+
+                // 객체가 들어온 경우 처리
+                if (typeof educationContent === 'object') {
+                    educationContent = ""
+                }
+                if (typeof remarks === 'object') {
+                    remarks = ""
+                }
+
                 setFormData(prev => ({
                     ...prev,
-                    educationContent: data.educationContent || "",
-                    remarks: data.remarks || ""
+                    educationContent,
+                    remarks
                 }))
                 setStep(3);
             } else {
