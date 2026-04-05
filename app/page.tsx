@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2 } from "lucide-react"
+import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users } from "lucide-react"
 
 export default function MainPage() {
   const router = useRouter()
@@ -156,7 +156,7 @@ export default function MainPage() {
             </Button>
           </div>
 
-          {/* ⭐️ 현황 요약 카드 (3칸으로 분할 및 링크 연결 완료) */}
+          {/* ⭐️ 현황 요약 카드 */}
           <div className="bg-slate-800 rounded-2xl flex text-center divide-x divide-slate-700 border border-slate-700 shadow-inner overflow-hidden">
             <div onClick={() => router.push('/history/tbm')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
               <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 완료</div>
@@ -169,21 +169,51 @@ export default function MainPage() {
           </div>
         </div>
 
-        {/* 핵심 3대 기능 버튼 */}
-        <div className="flex-1 p-4 space-y-4 mt-4 overflow-y-auto">
-          <Card onClick={() => router.push('/tbm')} className="border-0 bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer active:scale-[0.98] overflow-hidden group">
-            <CardContent className="p-8 flex items-center justify-between relative">
-              <div className="z-10"><h3 className="text-3xl font-extrabold mb-2">TBM 작성</h3><p className="text-blue-200 text-base font-medium">오늘의 작업 전 안전점검 (필수)</p></div>
-              <div className="bg-white/20 p-4 rounded-full z-10 backdrop-blur-sm group-hover:scale-110 transition-transform"><HardHat className="w-10 h-10 text-white" /></div>
-              <div className="absolute -right-6 -top-6 text-blue-500/30"><HardHat className="w-40 h-40" /></div>
+        {/* 핵심 기능 메뉴 (화이트 톤) */}
+        <div className="flex-1 p-5 space-y-4 mt-2 overflow-y-auto">
+          
+          <Card 
+            onClick={() => router.push('/tbm')} 
+            className="border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98] rounded-2xl shadow-sm group"
+          >
+            <CardContent className="p-6 flex items-center justify-between">
+              <div className="space-y-1 z-10">
+                <h3 className="text-xl font-bold text-slate-900 group-hover:text-blue-700 transition-colors">TBM 일지 작성</h3>
+                <p className="text-slate-500 text-sm font-medium">작업 전 안전점검 목록 및 사진 등 기록</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-blue-600 group-hover:scale-105 transition-transform z-10">
+                <HardHat className="w-7 h-7" />
+              </div>
             </CardContent>
           </Card>
 
-          <Card onClick={() => router.push('/suggestion')} className="border-0 bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer active:scale-[0.98] overflow-hidden group">
-            <CardContent className="p-8 flex items-center justify-between relative">
-              <div className="z-10"><h3 className="text-3xl font-extrabold mb-2">현장 제안함</h3><p className="text-emerald-100 text-base font-medium">말로 하는 민원 및 위험요소 신고</p></div>
-              <div className="bg-white/20 p-4 rounded-full z-10 backdrop-blur-sm group-hover:scale-110 transition-transform"><Mic className="w-10 h-10 text-white" /></div>
-              <div className="absolute -right-6 -top-6 text-emerald-400/30"><Mic className="w-40 h-40" /></div>
+          <Card 
+            onClick={() => alert('회의록 기능은 현재 준비 중입니다.')} 
+            className="border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98] rounded-2xl shadow-sm group"
+          >
+            <CardContent className="p-6 flex items-center justify-between">
+              <div className="space-y-1 z-10">
+                <h3 className="text-xl font-bold text-slate-900 group-hover:text-purple-700 transition-colors">TBM 회의록 작성</h3>
+                <p className="text-slate-500 text-sm font-medium">안전보건관련 논의 및 회의 기록 작성</p>
+              </div>
+              <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl text-purple-600 group-hover:scale-105 transition-transform z-10">
+                <Users className="w-7 h-7" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card 
+            onClick={() => router.push('/suggestion')} 
+            className="border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98] rounded-2xl shadow-sm group"
+          >
+            <CardContent className="p-6 flex items-center justify-between">
+              <div className="space-y-1 z-10">
+                <h3 className="text-xl font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">현장 제안함</h3>
+                <p className="text-slate-500 text-sm font-medium">안전 건의사항, 위험요인 신고(음성 지원)</p>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-emerald-600 group-hover:scale-105 transition-transform z-10">
+                <Mic className="w-7 h-7" />
+              </div>
             </CardContent>
           </Card>
 
