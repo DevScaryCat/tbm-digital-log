@@ -16,7 +16,7 @@ export default function MainPage() {
 
   // 진짜 데이터를 담을 상태(State) 3가지
   const [tbmCount, setTbmCount] = useState(0)
-  const [suggestionCount, setSuggestionCount] = useState(0)
+  const [tbmMinutesCount, setTbmMinutesCount] = useState(0)
   const [statsLoading, setStatsLoading] = useState(true)
 
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -51,9 +51,9 @@ export default function MainPage() {
       const { count: tbm } = await supabase.from('tbm_logs').select('id', { count: 'exact', head: true }).eq('user_id', userId)
       if (tbm !== null) setTbmCount(tbm)
 
-      // 2. 제안 개수 - user_id 인덱스 활용
-      const { count: sug } = await supabase.from('suggestions').select('id', { count: 'exact', head: true }).eq('user_id', userId)
-      if (sug !== null) setSuggestionCount(sug)
+      // 2. TBM 회의록 개수 (임시 0 처리 또는 추후 테이블 연동)
+      // const { count: minutes } = await supabase.from('tbm_minutes').select('id', { count: 'exact', head: true }).eq('user_id', userId)
+      setTbmMinutesCount(0)
     } catch (e) {
       console.error("통계 에러:", e)
     } finally {
@@ -79,7 +79,7 @@ export default function MainPage() {
     await supabase.auth.signOut()
     setUser(null)
     setTbmCount(0)
-    setSuggestionCount(0)
+    setTbmMinutesCount(0)
   }
 
   // 온보딩 현장명 저장
@@ -162,9 +162,9 @@ export default function MainPage() {
               <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 완료</div>
               <div className="text-lg font-bold text-green-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-green-400" /> : `${tbmCount}건`}</div>
             </div>
-            <div onClick={() => router.push('/history/suggestion')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
-              <div className="text-[11px] text-slate-400 font-medium mb-1">현장 제안</div>
-              <div className="text-lg font-bold text-orange-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-orange-400" /> : `${suggestionCount}건`}</div>
+            <div onClick={() => alert('회의록 내역 보기는 준비 중입니다.')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
+              <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 회의록</div>
+              <div className="text-lg font-bold text-purple-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-purple-400" /> : `${tbmMinutesCount}건`}</div>
             </div>
           </div>
         </div>
@@ -198,21 +198,6 @@ export default function MainPage() {
               </div>
               <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl text-purple-600 group-hover:scale-105 transition-transform z-10">
                 <Users className="w-7 h-7" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card 
-            onClick={() => router.push('/suggestion')} 
-            className="border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98] rounded-2xl shadow-sm group"
-          >
-            <CardContent className="p-6 flex items-center justify-between">
-              <div className="space-y-1 z-10">
-                <h3 className="text-xl font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">현장 제안함</h3>
-                <p className="text-slate-500 text-sm font-medium">안전 건의사항, 위험요인 신고(음성 지원)</p>
-              </div>
-              <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-emerald-600 group-hover:scale-105 transition-transform z-10">
-                <Mic className="w-7 h-7" />
               </div>
             </CardContent>
           </Card>
