@@ -34,12 +34,41 @@ export default function DashboardPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) { router.push("/login"); return }
 
-            const { data } = await supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').order('date', { ascending: false })
-            if (data) {
-                setLogs(data)
-                const todayLogs = data.filter(log => isSameDay(parseISO(log.date), new Date()))
-                if (todayLogs.length > 0) setSelectedLogs(todayLogs)
+            const [{ data: logsData }, { data: minutesData }] = await Promise.all([
+                supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').order('date', { ascending: false }),
+                supabase.from('tbm_minutes').select('id, date, process_name, start_time, end_time, location, leader_name').order('date', { ascending: false })
+            ])
+
+            const combinedLogs: any[] = []
+            
+            if (logsData) {
+                combinedLogs.push(...logsData.map(log => ({
+                    ...log,
+                    type: 'log',
+                    display_type: log.education_type || 'TBM'
+                })))
             }
+
+            if (minutesData) {
+                combinedLogs.push(...minutesData.map(min => ({
+                    id: min.id,
+                    date: min.date,
+                    education_type: 'TBM 회의록',
+                    display_type: min.process_name || 'TBM 회의록',
+                    start_time: min.start_time,
+                    end_time: min.end_time,
+                    location: min.location,
+                    instructor_name: min.leader_name,
+                    type: 'minute'
+                })))
+            }
+
+            // 날짜 최신순 정렬
+            combinedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+            setLogs(combinedLogs)
+            const todayLogs = combinedLogs.filter(log => isSameDay(parseISO(log.date), new Date()))
+            if (todayLogs.length > 0) setSelectedLogs(todayLogs)
             setLoading(false)
         }
         loadData()
@@ -63,6 +92,7 @@ export default function DashboardPage() {
         const to = dateRange.to.getTime()
 
         const targetLogs = logs.filter(log => {
+            if (log.type === 'minute') return false; // 아직 회의록 일괄 인쇄는 지원하지 않음
             const d = parseISO(log.date).getTime()
             return d >= from && d <= to
         })
@@ -193,11 +223,11 @@ export default function DashboardPage() {
                             </div>
                         ) : (
                             selectedLogs.map((log) => (
-                                <Card key={log.id} onClick={() => router.push(`/report/${log.id}`)} className="cursor-pointer active:scale-[0.98] transition-transform border-l-4 border-l-slate-900 shadow-sm hover:shadow-md">
+                                <Card key={log.id} onClick={() => router.push(log.type === 'minute' ? `/report/minutes/${log.id}` : `/report/${log.id}`)} className="cursor-pointer active:scale-[0.98] transition-transform border-l-4 border-l-slate-900 shadow-sm hover:shadow-md">
                                     <CardContent className="p-4 flex items-center justify-between">
                                         <div>
                                             <div className="flex items-center gap-2 mb-1">
-                                                <Badge className="bg-slate-900 hover:bg-slate-800">{log.education_type}</Badge>
+                                                <Badge className={cn("text-white", log.type === 'minute' ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800")}>{log.education_type}</Badge>
                                                 <span className="text-xs text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
                                                     {log.start_time?.slice(0, 5)} ~ {log.end_time?.slice(0, 5)}
                                                 </span>

@@ -70,6 +70,35 @@ export default function TBMPage() {
     const [accumulatedBlobs, setAccumulatedBlobs] = useState<Blob[]>([])
     const [recordingCount, setRecordingCount] = useState(0)
 
+    const [recordingTime, setRecordingTime] = useState(0)
+    const MAX_RECORDING_TIME = 1800; // 30 minutes in seconds
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isRecording) {
+            interval = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [isRecording]);
+
+    useEffect(() => {
+        if (recordingTime >= MAX_RECORDING_TIME && isRecording) {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                setIsRecording(false);
+            }
+            alert("최대 녹음 시간(30분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+        }
+    }, [recordingTime, isRecording, mediaRecorder]);
+
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const [isProcessingSTT, setIsProcessingSTT] = useState(false)
@@ -677,9 +706,10 @@ export default function TBMPage() {
 
                                     /* 녹음 중 상태 */
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
-                                        <div className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm">
-                                            <span className="w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
+                                        <div className="bg-red-100 text-red-600 border border-red-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
+                                            <span className="w-3 h-3 bg-red-600 rounded-full animate-ping shrink-0"></span>
                                             녹음이 진행 중입니다 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
+                                            <span className="ml-2 font-mono shrink-0">{formatTime(recordingTime)} / 30:00</span>
                                         </div>
 
                                         <Button
@@ -693,7 +723,7 @@ export default function TBMPage() {
                                                     window.open(url, '_blank');
                                                 }
                                             }}
-                                            className="w-full h-16 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xl rounded-2xl flex items-center justify-center animate-bounce transition-transform active:scale-95"
+                                            className="w-full h-16 text-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xl rounded-2xl flex items-center justify-center animate-bounce transition-transform active:scale-95 shrink-0"
                                         >
                                             <BookOpen className="mr-2 w-6 h-6" /> 교육 자료 열기 (새 창)
                                         </Button>
@@ -704,7 +734,7 @@ export default function TBMPage() {
 
                                         <Button
                                             onClick={stopRecording}
-                                            className="w-32 h-32 rounded-full shadow-xl bg-red-500 hover:bg-red-600 flex flex-col items-center justify-center gap-2 mt-4 transition-transform active:scale-95"
+                                            className="w-32 h-32 rounded-full shadow-xl bg-red-500 hover:bg-red-600 flex flex-col items-center justify-center gap-2 mt-4 transition-transform active:scale-95 shrink-0"
                                         >
                                             <Pause className="w-12 h-12 text-white" />
                                             <span className="text-white font-extrabold text-lg">일시정지</span>
@@ -715,9 +745,10 @@ export default function TBMPage() {
 
                                     /* 일시정지 상태 (녹음 완료분 있음) */
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
-                                        <div className="bg-orange-100 text-orange-700 border border-orange-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm">
-                                            <Pause className="w-4 h-4" />
-                                            녹음 일시정지 · {recordingCount}회 녹음됨
+                                        <div className="bg-orange-100 text-orange-700 border border-orange-200 px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
+                                            <Pause className="w-4 h-4 shrink-0" />
+                                            녹음 일시정지 · {recordingCount}회 
+                                            <span className="ml-2 font-mono shrink-0">{formatTime(recordingTime)} / 30:00</span>
                                         </div>
 
                                         <div className="w-full space-y-3">
@@ -750,7 +781,7 @@ export default function TBMPage() {
 
                                         <Button
                                             onClick={startRecording}
-                                            className="w-40 h-40 rounded-full shadow-2xl bg-slate-900 hover:bg-slate-800 flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+                                            className="w-40 h-40 rounded-full shadow-2xl bg-slate-900 hover:bg-slate-800 flex flex-col items-center justify-center gap-3 transition-transform active:scale-95 shrink-0"
                                         >
                                             <Mic className="w-16 h-16 text-white" />
                                             <span className="text-white font-extrabold text-xl">녹음 시작</span>

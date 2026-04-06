@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { LogOut, LayoutDashboard, User, ShieldCheck } from "lucide-react"
 
-export function TBMHeader() {
+export function TBMHeader({ title = "TBM 일지" }: { title?: string }) {
     const router = useRouter()
     const [userName, setUserName] = useState("사용자")
 
@@ -31,7 +31,7 @@ export function TBMHeader() {
         <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2 cursor-pointer" onClick={() => router.push('/')}>
                 <ShieldCheck className="w-6 h-6 text-slate-800" />
-                TBM 일지
+                {title}
             </h1>
 
             <DropdownMenu>

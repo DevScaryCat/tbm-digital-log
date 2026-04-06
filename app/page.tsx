@@ -51,9 +51,9 @@ export default function MainPage() {
       const { count: tbm } = await supabase.from('tbm_logs').select('id', { count: 'exact', head: true }).eq('user_id', userId)
       if (tbm !== null) setTbmCount(tbm)
 
-      // 2. TBM 회의록 개수 (임시 0 처리 또는 추후 테이블 연동)
-      // const { count: minutes } = await supabase.from('tbm_minutes').select('id', { count: 'exact', head: true }).eq('user_id', userId)
-      setTbmMinutesCount(0)
+      // 2. TBM 회의록 개수 - user_id 인덱스 활용
+      const { count: minutes } = await supabase.from('tbm_minutes').select('id', { count: 'exact', head: true }).eq('user_id', userId)
+      if (minutes !== null) setTbmMinutesCount(minutes)
     } catch (e) {
       console.error("통계 에러:", e)
     } finally {
@@ -162,7 +162,7 @@ export default function MainPage() {
               <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 완료</div>
               <div className="text-lg font-bold text-green-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-green-400" /> : `${tbmCount}건`}</div>
             </div>
-            <div onClick={() => alert('회의록 내역 보기는 준비 중입니다.')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
+            <div onClick={() => router.push('/history/tbm?tab=minutes')} className="flex-1 p-3 cursor-pointer hover:bg-slate-700/50 active:bg-slate-700 transition-colors">
               <div className="text-[11px] text-slate-400 font-medium mb-1">TBM 회의록</div>
               <div className="text-lg font-bold text-purple-400">{statsLoading ? <Loader2 className="w-5 h-5 animate-spin inline-block text-purple-400" /> : `${tbmMinutesCount}건`}</div>
             </div>
@@ -188,7 +188,7 @@ export default function MainPage() {
           </Card>
 
           <Card 
-            onClick={() => alert('회의록 기능은 현재 준비 중입니다.')} 
+            onClick={() => router.push('/tbm-minutes')} 
             className="border-2 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer active:scale-[0.98] rounded-2xl shadow-sm group"
           >
             <CardContent className="p-6 flex items-center justify-between">
