@@ -8,8 +8,8 @@ import { Printer, ArrowLeft, Loader2, Home } from "lucide-react"
 
 interface Hazard {
     factor: string;
-    risk: string;
-    countermeasure: string;
+    level: string;
+    measure: string;
 }
 
 export default function MinutesReportPage() {
@@ -135,10 +135,10 @@ export default function MinutesReportPage() {
                                         □ {hazard?.factor}
                                     </td>
                                     <td className="border border-black p-2 text-center font-bold text-red-600">
-                                        {hazard?.risk || '상/중/하'}
+                                        {hazard?.level || '상/중/하'}
                                     </td>
                                     <td className="border border-black p-2 align-top text-xs">
-                                        □ {hazard?.countermeasure}
+                                        □ {hazard?.measure}
                                     </td>
                                 </tr>
                             );
