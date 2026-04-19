@@ -20,6 +20,14 @@ export async function POST(request: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // 파일 용량 검사: 10MB 제한 (약 20~30분 분량 이상의 녹음 방지, 과도한 API 비용 청구 차단)
+    const MAX_FILE_SIZE_MB = 10;
+    if (buffer.length > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      return NextResponse.json({ 
+        error: `녹음 파일 용량이 너무 큽니다 (${MAX_FILE_SIZE_MB}MB 초과). API 비용 과다 청구를 방지하기 위해 20분을 초과하는 녹음은 처리하지 않습니다.` 
+      }, { status: 400 });
+    }
+
     // 4. Deepgram API 호출 (Nova-2 모델, 한국어 설정)
     const deepgramUrl = "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&language=ko";
 

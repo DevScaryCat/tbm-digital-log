@@ -68,27 +68,44 @@ export default function TBMMinutesPage() {
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
-    const MAX_RECORDING_TIME = 1800; // 30 minutes in seconds
+    const sessionStartTimeRef = useRef<number | null>(null);
+    const accumulatedTimeRef = useRef<number>(0);
+    const MAX_RECORDING_TIME = 1200; // 20 minutes in seconds
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (isRecording) {
+            if (!sessionStartTimeRef.current) {
+                sessionStartTimeRef.current = Date.now();
+            }
+
             interval = setInterval(() => {
-                setRecordingTime(prev => prev + 1);
+                if (sessionStartTimeRef.current) {
+                    const now = Date.now();
+                    const elapsed = Math.floor((now - sessionStartTimeRef.current) / 1000);
+                    const total = accumulatedTimeRef.current + elapsed;
+                    setRecordingTime(total);
+
+                    if (total >= MAX_RECORDING_TIME) {
+                        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                            mediaRecorder.stop();
+                            setIsRecording(false);
+                            alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+                        }
+                    }
+                }
             }, 1000);
+        } else {
+            if (sessionStartTimeRef.current) {
+                const now = Date.now();
+                const elapsed = Math.floor((now - sessionStartTimeRef.current) / 1000);
+                accumulatedTimeRef.current += elapsed;
+                sessionStartTimeRef.current = null;
+                setRecordingTime(accumulatedTimeRef.current);
+            }
         }
         return () => clearInterval(interval);
-    }, [isRecording]);
-
-    useEffect(() => {
-        if (recordingTime >= MAX_RECORDING_TIME && isRecording) {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-                setIsRecording(false);
-            }
-            alert("최대 녹음 시간(30분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
-        }
-    }, [recordingTime, isRecording, mediaRecorder]);
+    }, [isRecording, mediaRecorder]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
