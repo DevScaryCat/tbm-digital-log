@@ -63,7 +63,6 @@ export default function DashboardPage() {
                 })))
             }
 
-            // 날짜 최신순 정렬
             combinedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
             setLogs(combinedLogs)
@@ -75,7 +74,6 @@ export default function DashboardPage() {
     }, [router])
 
     const handleDayClick = (date: Date) => {
-        // Range 모드일 때는 클릭 이벤트 무시 (선택 로직이 다름)
         if (isRangeMode) return;
 
         setSelectedDate(date)
@@ -92,7 +90,7 @@ export default function DashboardPage() {
         const to = dateRange.to.getTime()
 
         const targetLogs = logs.filter(log => {
-            if (log.type === 'minute') return false; // 아직 회의록 일괄 인쇄는 지원하지 않음
+            if (log.type === 'minute') return false; 
             const d = parseISO(log.date).getTime()
             return d >= from && d <= to
         })
@@ -113,50 +111,89 @@ export default function DashboardPage() {
         return logs.some(log => isSameDay(parseISO(log.date), date))
     }
 
-    // ⭐️ 공통으로 사용할 Modifiers 설정
     const commonModifiers = { hasLog: hasLogMatcher }
     const commonModifiersClassNames = {
-        hasLog: "font-extrabold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-slate-900 after:rounded-full data-[selected=true]:after:bg-white"
+        hasLog: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:bg-expo-primary after:rounded-full data-[selected=true]:after:bg-white"
     }
     const commonClassNames = {
-        day_selected: "bg-slate-900 text-white hover:bg-slate-800 focus:bg-slate-900",
-        day_today: "bg-slate-100 text-slate-900 font-bold",
+        day_selected: "bg-expo-primary text-white hover:bg-expo-primary-active focus:bg-expo-primary rounded-[8px]",
+        day_today: "bg-expo-surface-strong text-expo-ink font-semibold rounded-[8px]",
     }
 
-    if (loading) return <div className="min-h-screen flex justify-center items-center bg-slate-50"><Loader2 className="animate-spin w-10 h-10 text-slate-500" /></div>
+    if (loading) return <div className="min-h-screen flex justify-center items-center bg-expo-canvas"><Loader2 className="animate-spin w-10 h-10 text-expo-ink" /></div>
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-24">
-            <div className="max-w-md mx-auto min-h-screen bg-white shadow-lg overflow-hidden relative">
-                <div className="p-4 border-b bg-white sticky top-0 z-10"><TBMHeader /></div>
+        <div className="min-h-screen bg-expo-surface-strong pb-24 font-sans text-expo-ink">
+            <div className="max-w-md mx-auto min-h-screen bg-white shadow-sm border-x border-expo-hairline overflow-hidden relative flex flex-col">
+                <div className="p-4 border-b border-expo-hairline bg-white sticky top-0 z-10"><TBMHeader title="일지 달력보기" /></div>
 
-                <div className="p-4 space-y-6">
+                <div className="p-6 space-y-6 flex-1 bg-expo-canvas-soft">
 
-                    <div className="flex items-center justify-between bg-slate-100 p-4 rounded-xl border border-slate-200">
-                        <div className="flex items-center gap-2">
-                            <CalendarIcon className="w-5 h-5 text-slate-600" />
-                            <div className="flex flex-col">
-                                <Label htmlFor="mode-switch" className="font-bold text-slate-800 text-base">
-                                    {isRangeMode ? "기간 다운로드 모드" : "일별 보기 모드"}
-                                </Label>
-                                <span className="text-xs text-slate-500">
-                                    {isRangeMode ? "시작일과 종료일을 선택하세요" : "날짜를 눌러 내용을 확인하세요"}
-                                </span>
-                            </div>
-                        </div>
-                        <Switch
-                            id="mode-switch"
-                            checked={isRangeMode}
-                            onCheckedChange={(chk) => {
-                                setIsRangeMode(chk);
+                    <div className="space-y-3">
+                        <div 
+                            className={cn("flex items-center justify-between bg-white p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", !isRangeMode ? "border-expo-ink ring-1 ring-expo-ink" : "border-expo-hairline")}
+                            onClick={() => {
+                                setIsRangeMode(false);
                                 setDateRange(undefined);
                                 setSelectedDate(new Date());
                             }}
-                        />
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={cn("p-2 rounded-[8px] transition-colors", !isRangeMode ? "bg-expo-surface-dark text-white" : "bg-expo-surface-strong text-expo-ink")}>
+                                    <CalendarIcon className="w-5 h-5" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <Label className="font-semibold text-expo-ink text-[15px] cursor-pointer pointer-events-none">
+                                        일별 보기
+                                    </Label>
+                                    <span className="text-[13px] text-expo-body">
+                                        날짜를 눌러 내용을 확인하세요
+                                    </span>
+                                </div>
+                            </div>
+                            <Switch
+                                checked={!isRangeMode}
+                                onCheckedChange={() => {
+                                    setIsRangeMode(false);
+                                    setDateRange(undefined);
+                                    setSelectedDate(new Date());
+                                }}
+                            />
+                        </div>
+
+                        <div 
+                            className={cn("flex items-center justify-between bg-white p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", isRangeMode ? "border-expo-ink ring-1 ring-expo-ink" : "border-expo-hairline")}
+                            onClick={() => {
+                                setIsRangeMode(true);
+                                setDateRange(undefined);
+                                setSelectedDate(new Date());
+                            }}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={cn("p-2 rounded-[8px] transition-colors", isRangeMode ? "bg-expo-surface-dark text-white" : "bg-expo-surface-strong text-expo-ink")}>
+                                    <Printer className="w-5 h-5" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <Label className="font-semibold text-expo-ink text-[15px] cursor-pointer pointer-events-none">
+                                        기간 다운로드
+                                    </Label>
+                                    <span className="text-[13px] text-expo-body">
+                                        시작일과 종료일을 선택하세요
+                                    </span>
+                                </div>
+                            </div>
+                            <Switch
+                                checked={isRangeMode}
+                                onCheckedChange={() => {
+                                    setIsRangeMode(true);
+                                    setDateRange(undefined);
+                                    setSelectedDate(new Date());
+                                }}
+                            />
+                        </div>
                     </div>
 
-                    <div className="border border-slate-200 rounded-xl p-2 shadow-sm bg-white flex justify-center">
-                        {/* ⭐️ [수정] 모드에 따라 Calendar 컴포넌트를 분리하여 렌더링 (타입 에러 해결) */}
+                    <div className="border border-expo-hairline rounded-[12px] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-white flex justify-center">
                         {isRangeMode ? (
                             <Calendar
                                 mode="range"
@@ -183,23 +220,23 @@ export default function DashboardPage() {
                     </div>
 
                     {isRangeMode && dateRange?.from && (
-                        <div className="bg-slate-900 p-4 rounded-xl shadow-lg text-white animate-in slide-in-from-bottom-2">
-                            <div className="flex justify-between items-center mb-3">
-                                <div className="font-bold text-lg">
+                        <div className="bg-expo-surface-dark p-5 rounded-[12px] shadow-[0_4px_12px_rgba(0,0,0,0.08)] text-white animate-in slide-in-from-bottom-4">
+                            <div className="flex justify-between items-center mb-4">
+                                <div className="font-semibold text-[16px]">
                                     {format(dateRange.from, "MM.dd")} ~ {dateRange.to ? format(dateRange.to, "MM.dd") : "-"}
                                 </div>
-                                <Badge variant="secondary" className="bg-slate-700 text-white border-0">
+                                <Badge variant="secondary" className="bg-[#1a1a1a] text-white border border-[#333] hover:bg-[#1a1a1a] px-2 py-0.5 text-[11px] font-semibold tracking-wide">
                                     {rangeCount}개 선택됨
                                 </Badge>
                             </div>
-                            <Button onClick={handleBatchDownload} className="w-full bg-white text-slate-900 hover:bg-slate-100 h-12 text-lg font-bold">
-                                <Printer className="mr-2 w-5 h-5" /> 일괄 다운로드 (PDF)
+                            <Button onClick={handleBatchDownload} className="w-full bg-white text-expo-ink hover:bg-expo-surface-strong h-10 text-[14px] font-medium rounded-[8px]">
+                                <Printer className="mr-2 w-4 h-4" /> 일괄 다운로드 (PDF)
                             </Button>
                         </div>
                     )}
 
                     {!isRangeMode && (
-                        <Button onClick={() => router.push('/')} className="w-full bg-slate-900 hover:bg-slate-800 text-white h-14 text-lg rounded-xl shadow-lg mt-2">
+                        <Button onClick={() => router.push('/')} className="w-full bg-expo-primary hover:bg-expo-primary-active text-white h-12 text-[15px] font-medium rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.04)] mt-2 transition-all">
                             <Plus className="mr-2 w-5 h-5" /> 오늘 일지 작성하기
                         </Button>
                     )}
@@ -207,49 +244,50 @@ export default function DashboardPage() {
             </div>
 
             <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-                <DrawerContent>
-                    <DrawerHeader>
-                        <DrawerTitle className="text-center text-xl pb-2 border-b flex items-center justify-center gap-2">
+                <DrawerContent className="bg-white border-t border-expo-hairline">
+                    <DrawerHeader className="border-b border-expo-hairline pb-4">
+                        <DrawerTitle className="text-center text-[18px] font-semibold flex items-center justify-center gap-2 text-expo-ink">
                             {selectedDate && format(selectedDate, "yyyy년 MM월 dd일")}
-                            <Badge variant="outline" className="ml-2">{selectedLogs.length}건</Badge>
+                            <Badge variant="outline" className="ml-1 border-expo-hairline-strong text-expo-body px-2 py-0.5 text-[11px] font-semibold tracking-wide rounded-[4px]">{selectedLogs.length}건</Badge>
                         </DrawerTitle>
                     </DrawerHeader>
 
-                    <div className="p-4 space-y-3 bg-slate-50 min-h-[300px] max-h-[60vh] overflow-y-auto">
+                    <div className="p-6 space-y-4 bg-expo-canvas-soft min-h-[300px] max-h-[60vh] overflow-y-auto">
                         {selectedLogs.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10">
-                                <FileText className="w-12 h-12 mb-2 opacity-20" />
-                                <p>작성된 일지가 없습니다.</p>
+                            <div className="h-full flex flex-col items-center justify-center text-expo-muted py-10">
+                                <FileText className="w-12 h-12 mb-3 opacity-20" />
+                                <p className="text-[14px]">작성된 일지가 없습니다.</p>
                             </div>
                         ) : (
                             selectedLogs.map((log) => (
-                                <Card key={log.id} onClick={() => router.push(log.type === 'minute' ? `/report/minutes/${log.id}` : `/report/${log.id}`)} className="cursor-pointer active:scale-[0.98] transition-transform border-l-4 border-l-slate-900 shadow-sm hover:shadow-md">
-                                    <CardContent className="p-4 flex items-center justify-between">
+                                <Card key={log.id} onClick={() => router.push(log.type === 'minute' ? `/report/minutes/${log.id}` : `/report/${log.id}`)} className="cursor-pointer active:scale-[0.98] transition-all border border-expo-hairline shadow-[0_4px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-expo-hairline-strong rounded-[12px] overflow-hidden bg-white">
+                                    <div className={cn("h-1 w-full", log.type === 'minute' ? "bg-[#8145b5]" : "bg-expo-primary")} />
+                                    <CardContent className="p-5 flex items-center justify-between">
                                         <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Badge className={cn("text-white", log.type === 'minute' ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800")}>{log.education_type}</Badge>
-                                                <span className="text-xs text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Badge className={cn("text-white font-medium text-[11px] px-2 py-0.5 rounded-[4px] border-none shadow-none hover:opacity-90", log.type === 'minute' ? "bg-[#8145b5]" : "bg-expo-surface-dark")}>{log.education_type}</Badge>
+                                                <span className="text-[12px] text-expo-body font-mono bg-expo-surface-strong px-2 py-0.5 rounded-[4px]">
                                                     {log.start_time?.slice(0, 5)} ~ {log.end_time?.slice(0, 5)}
                                                 </span>
                                             </div>
-                                            <div className="font-bold text-slate-800 text-lg">{log.location}</div>
-                                            <div className="text-sm text-slate-500 flex items-center gap-1">
-                                                <CheckCircle2 className="w-3 h-3" /> 강사: {log.instructor_name}
+                                            <div className="font-semibold text-expo-ink text-[16px] mb-1">{log.location}</div>
+                                            <div className="text-[13px] text-expo-body flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> 강사: {log.instructor_name}
                                             </div>
                                         </div>
-                                        <ChevronRight className="text-slate-300 w-6 h-6" />
+                                        <ChevronRight className="text-expo-muted-soft w-5 h-5" />
                                     </CardContent>
                                 </Card>
                             ))
                         )}
                     </div>
 
-                    <DrawerFooter>
-                        <Button onClick={() => router.push('/')} className="w-full h-12 text-lg bg-slate-900 hover:bg-slate-800 text-white">
+                    <DrawerFooter className="bg-white border-t border-expo-hairline pt-4 pb-8">
+                        <Button onClick={() => router.push('/')} className="w-full h-12 text-[14px] font-medium bg-expo-primary hover:bg-expo-primary-active text-white rounded-[8px]">
                             <Plus className="mr-2 w-4 h-4" /> 이 날짜에 추가 작성
                         </Button>
                         <DrawerClose asChild>
-                            <Button variant="outline" className="h-12 border-slate-300">닫기</Button>
+                            <Button variant="outline" className="h-12 border-expo-hairline-strong text-expo-ink font-medium rounded-[8px]">닫기</Button>
                         </DrawerClose>
                     </DrawerFooter>
                 </DrawerContent>

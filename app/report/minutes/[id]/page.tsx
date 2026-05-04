@@ -94,8 +94,10 @@ export default function MinutesReportPage() {
                         </tr>
                         <tr>
                             <td className="border border-black bg-gray-200 font-bold text-center h-20">작업내용</td>
-                            <td colSpan={3} className="border border-black p-3 align-top whitespace-pre-wrap font-medium">
-                                {minutes.work_content}
+                            <td colSpan={3} className="border border-black p-0 align-top">
+                                <div className="h-[20mm] p-3 whitespace-pre-wrap font-medium break-all overflow-hidden text-[13px]">
+                                    {minutes.work_content}
+                                </div>
                             </td>
                         </tr>
                         <tr className="h-12">
@@ -131,13 +133,13 @@ export default function MinutesReportPage() {
                             const hazard = minutes.hazards?.[i];
                             return (
                                 <tr key={i} className="min-h-[40px]">
-                                    <td colSpan={2} className="border border-black p-2 align-top text-xs">
+                                    <td colSpan={2} className="border border-black p-2 align-top text-xs break-all">
                                         □ {hazard?.factor}
                                     </td>
                                     <td className="border border-black p-2 text-center font-bold text-red-600">
                                         {hazard?.level || '상/중/하'}
                                     </td>
-                                    <td className="border border-black p-2 align-top text-xs">
+                                    <td className="border border-black p-2 align-top text-xs break-all">
                                         □ {hazard?.measure}
                                     </td>
                                 </tr>
@@ -170,8 +172,10 @@ export default function MinutesReportPage() {
                             </td>
                         </tr>
                         <tr>
-                            <td colSpan={4} className="border border-black p-3 h-28 align-top whitespace-pre-wrap text-sm leading-relaxed">
-                                {minutes.instructions}
+                            <td colSpan={4} className="border border-black p-0 align-top">
+                                <div className="h-[28mm] p-3 whitespace-pre-wrap text-sm leading-relaxed break-all overflow-hidden text-[13px]">
+                                    {minutes.instructions}
+                                </div>
                             </td>
                         </tr>
 

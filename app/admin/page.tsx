@@ -129,7 +129,7 @@ export default function AdminPage() {
                     <div className="space-y-2">
                         <Label className="font-bold">현장명 (업체명)</Label>
                         <Input
-                            placeholder="예: 무신사 로지스틱스 1센터"
+                            placeholder="소속 현장명 (또는 업체명)"
                             value={form.siteName}
                             onChange={e => setForm({ ...form, siteName: e.target.value })}
                         />

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { AlertCircle, Loader2, HardHat, CheckCircle } from "lucide-react"
 import Link from "next/link"
+import { cn } from "@/lib/utils"
 
 export default function SignupPage() {
     const router = useRouter()
@@ -59,13 +60,13 @@ export default function SignupPage() {
 
     if (success) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                <Card className="w-full max-w-md border-0 shadow-xl bg-white text-center py-10">
+            <div className="min-h-screen flex items-center justify-center bg-expo-surface-strong p-4 font-sans text-expo-ink">
+                <Card className="w-full max-w-md border border-expo-hairline shadow-[0_8px_32px_rgba(0,0,0,0.04)] bg-white text-center py-10 rounded-[24px]">
                     <CardContent className="space-y-4 flex flex-col items-center">
-                        <CheckCircle className="w-16 h-16 text-green-500 mb-2" />
-                        <h2 className="text-2xl font-bold text-slate-800">회원가입 완료!</h2>
-                        <p className="text-slate-600">성공적으로 계정이 생성되었습니다.<br/>잠시 후 로그인 페이지로 이동합니다.</p>
-                        <Button variant="outline" className="mt-4" onClick={() => router.push("/login")}>
+                        <CheckCircle className="w-16 h-16 text-[#16a34a] mb-2" />
+                        <h2 className="text-[24px] font-bold text-expo-ink tracking-tight">회원가입 완료!</h2>
+                        <p className="text-[15px] text-expo-muted font-medium">성공적으로 계정이 생성되었습니다.<br/>잠시 후 로그인 페이지로 이동합니다.</p>
+                        <Button variant="outline" className="mt-4 border-expo-hairline-strong text-expo-ink hover:bg-expo-surface-strong rounded-[12px] h-12 px-6 font-semibold" onClick={() => router.push("/login")}>
                             로그인 바로가기
                         </Button>
                     </CardContent>
@@ -75,33 +76,33 @@ export default function SignupPage() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-            <Card className="w-full max-w-md border-0 shadow-xl bg-white">
+        <div className="min-h-screen flex items-center justify-center bg-expo-surface-strong p-4 font-sans text-expo-ink">
+            <Card className="w-full max-w-md border border-expo-hairline shadow-[0_8px_32px_rgba(0,0,0,0.04)] bg-white rounded-[24px]">
                 <CardHeader className="space-y-4 text-center pb-6 pt-10">
-                    <div className="mx-auto bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mb-2">
-                        <HardHat className="w-8 h-8 text-orange-600" />
+                    <div className="mx-auto bg-expo-canvas-soft w-16 h-16 rounded-[16px] flex items-center justify-center mb-2 shadow-sm border border-expo-hairline">
+                        <HardHat className="w-8 h-8 text-expo-primary" />
                     </div>
-                    <CardTitle className="text-2xl font-extrabold text-slate-900">현장 계정 생성</CardTitle>
-                    <CardDescription className="text-base">
+                    <CardTitle className="text-[28px] font-extrabold text-expo-ink tracking-tight">현장 계정 생성</CardTitle>
+                    <CardDescription className="text-[15px] text-expo-muted font-medium">
                         새로운 현장 관리 아이디를 생성합니다.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="px-8 pb-10">
                     <form onSubmit={handleSignup} className="space-y-5">
-                        <div className="space-y-2">
-                            <Label htmlFor="siteName" className="text-sm font-bold text-slate-700">현장명 (회사명)</Label>
+                        <div className="space-y-2.5">
+                            <Label htmlFor="siteName" className="text-[15px] font-bold text-expo-ink">현장명 (회사명)</Label>
                             <Input
                                 id="siteName"
                                 type="text"
-                                placeholder="예: 무신사 로지스틱스 1센터"
+                                placeholder="소속 현장명 (또는 업체명)"
                                 value={siteName}
                                 onChange={(e) => setSiteName(e.target.value)}
                                 required
-                                className="h-12 bg-slate-50 border-slate-300"
+                                className="h-14 text-[16px] bg-white border-expo-hairline-strong rounded-[12px] focus-visible:ring-1 focus-visible:ring-expo-primary"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="id" className="text-sm font-bold text-slate-700">사용할 아이디</Label>
+                        <div className="space-y-2.5">
+                            <Label htmlFor="id" className="text-[15px] font-bold text-expo-ink">사용할 아이디</Label>
                             <Input
                                 id="id"
                                 type="text"
@@ -110,12 +111,12 @@ export default function SignupPage() {
                                 onChange={(e) => setId(e.target.value)}
                                 required
                                 minLength={3}
-                                className="h-12 bg-slate-50 border-slate-300"
+                                className="h-14 text-[16px] bg-white border-expo-hairline-strong rounded-[12px] focus-visible:ring-1 focus-visible:ring-expo-primary"
                                 autoComplete="off"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password" className="text-sm font-bold text-slate-700">비밀번호</Label>
+                        <div className="space-y-2.5">
+                            <Label htmlFor="password" className="text-[15px] font-bold text-expo-ink">비밀번호</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -124,11 +125,11 @@ export default function SignupPage() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 minLength={6}
-                                className="h-12 bg-slate-50 border-slate-300"
+                                className="h-14 text-[16px] bg-white border-expo-hairline-strong rounded-[12px] focus-visible:ring-1 focus-visible:ring-expo-primary"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="passwordConfirm" className="text-sm font-bold text-slate-700">비밀번호 확인</Label>
+                        <div className="space-y-2.5">
+                            <Label htmlFor="passwordConfirm" className="text-[15px] font-bold text-expo-ink">비밀번호 확인</Label>
                             <Input
                                 id="passwordConfirm"
                                 type="password"
@@ -137,24 +138,24 @@ export default function SignupPage() {
                                 onChange={(e) => setPasswordConfirm(e.target.value)}
                                 required
                                 minLength={6}
-                                className="h-12 bg-slate-50 border-slate-300"
+                                className="h-14 text-[16px] bg-white border-expo-hairline-strong rounded-[12px] focus-visible:ring-1 focus-visible:ring-expo-primary"
                             />
                         </div>
 
                         {error && (
-                            <div className="flex items-center gap-2 p-3 text-sm font-medium text-red-600 bg-red-50 rounded-lg border border-red-100">
-                                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                            <div className="flex items-center gap-2 p-4 text-[14px] font-bold text-[#b91c1c] bg-[#fef2f2] rounded-[12px] border border-[#fecaca]">
+                                <AlertCircle className="w-5 h-5 shrink-0" />
                                 {error}
                             </div>
                         )}
 
-                        <Button type="submit" className="w-full h-12 text-lg bg-orange-600 hover:bg-orange-700 font-bold shadow-md transition-all active:scale-[0.98]" disabled={loading}>
+                        <Button type="submit" className="w-full h-14 text-[16px] bg-expo-primary hover:bg-[#1a1a1a] text-white rounded-[12px] font-bold shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] mt-2" disabled={loading}>
                             {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "회원가입 하기"}
                         </Button>
 
-                        <div className="text-center mt-6 text-sm text-slate-600">
+                        <div className="text-center mt-8 text-[14px] font-medium text-expo-muted border-t border-expo-hairline pt-6">
                             이미 계정이 있으신가요?{" "}
-                            <Link href="/login" className="font-bold text-orange-600 hover:underline">
+                            <Link href="/login" className="font-bold text-expo-primary hover:underline ml-1">
                                 로그인 화면으로
                             </Link>
                         </div>

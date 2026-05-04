@@ -16,7 +16,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
         <div className="report-container bg-white text-black">
 
             {/* --- PAGE 1: 교육일지 --- */}
-            <div className="w-[210mm] h-[297mm] p-[15mm] relative box-border mx-auto bg-white shadow-lg print:shadow-none print:break-after-page">
+            <div className="w-[210mm] min-h-[297mm] p-[15mm] relative box-border mx-auto bg-white shadow-lg print:shadow-none print:break-after-page">
                 <h1 className="text-3xl font-bold text-center mb-8" style={{ fontFamily: "Batang, serif" }}>안 전 보 건 교 육 일 지</h1>
 
                 <table className="w-full border-collapse border border-black text-sm" style={{ fontFamily: "Dotum, sans-serif", tableLayout: "fixed" }}>
@@ -88,10 +88,12 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                             <td className="border border-black bg-gray-100 text-center font-bold">교육 방법</td>
                             <td className="border border-black p-2" colSpan={5}>강의식 / 시청각 교육</td>
                         </tr>
-                        <tr className="h-[80mm]"> {/* 높이 강제 고정 */}
+                        <tr>
                             <td className="border border-black bg-gray-100 text-center font-bold">교육 내용</td>
-                            <td className="border border-black p-4 align-top whitespace-pre-wrap leading-relaxed overflow-hidden text-xs" colSpan={5}>
-                                {log.education_content}
+                            <td className="border border-black p-0 align-top" colSpan={5}>
+                                <div className="min-h-[80mm] p-4 whitespace-pre-wrap leading-relaxed text-xs break-all">
+                                    {log.education_content}
+                                </div>
                             </td>
                         </tr>
                         <tr className="h-20">
@@ -107,17 +109,21 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                                 {log.instructor_signature && <img src={log.instructor_signature} className="h-12 mx-auto object-contain" alt="서명" />}
                             </td>
                         </tr>
-                        <tr className="h-24">
+                        <tr>
                             <td className="border border-black bg-gray-100 text-center font-bold">특 이 사 항</td>
-                            <td className="border border-black p-2 align-top text-xs" colSpan={5}>{log.remarks}</td>
+                            <td className="border border-black p-0 align-top" colSpan={5}>
+                                <div className="min-h-[24mm] p-2 break-all text-xs">
+                                    {log.remarks}
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
-                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2">무신사로지스틱스</div>
+                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
             </div>
 
             {/* --- PAGE 2: 참석자 명단 --- */}
-            <div className="w-[210mm] h-[297mm] p-[15mm] relative box-border mx-auto bg-white shadow-lg print:shadow-none print:break-after-page flex flex-col">
+            <div className="w-[210mm] min-h-[297mm] p-[15mm] relative box-border mx-auto bg-white shadow-lg print:shadow-none print:break-after-page flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>교 육 참 석 자 명 단</h1>
                 <div className="flex justify-between mb-4 text-sm font-bold">
                     <div>일시: {log.date}</div>
@@ -163,7 +169,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                         })}
                     </tbody>
                 </table>
-                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2">무신사로지스틱스</div>
+                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
             </div>
 
             {/* --- PAGE 3: 사진 (레이아웃 고정) --- */}
@@ -179,7 +185,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                     )}
                 </div>
 
-                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2">무신사로지스틱스</div>
+                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
             </div>
         </div>
     );

@@ -1,6 +1,6 @@
 {
-  "name": "현장 혁신 플랫폼",
-  "short_name": "TBM혁신",
+  "name": "안전톡톡",
+  "short_name": "안전톡톡",
   "description": "TBM 일지 작성 및 AI 현장 제안 플랫폼",
   "start_url": "/",
   "display": "standalone",

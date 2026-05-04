@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "TBM 일지",
-  description: "현장 안전 점검 TBM 일지",
+  title: "안전톡톡",
+  description: "TBM부터 AI 제안까지 한 번에",
 };
 
 export default function RootLayout({
@@ -23,13 +23,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // 여기에 suppressHydrationWarning 속성을 추가하세요!
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ko" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-white text-[#171717] font-sans`}
       >
         {children}
-        <footer className="w-full text-center py-4 text-xs text-slate-400 border-t border-slate-200 bg-white">
+        <footer className="w-full text-center py-16 text-[14px] text-[#60646c] bg-[#ffffff]">
           © {new Date().getFullYear()} EHS Friends. All rights reserved.
         </footer>
       </body>
