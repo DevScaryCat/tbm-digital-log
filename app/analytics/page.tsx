@@ -106,7 +106,12 @@ export default function AnalyticsDashboardPage() {
                     </div>
 
                     {/* 핵심 키워드 분석 */}
-                    <div className="space-y-4">
+                    <div className="space-y-4 relative pt-5 mt-4">
+                        <div className="absolute top-0 left-0">
+                            <span className="bg-orange-100 text-orange-800 text-[11px] font-bold px-2.5 py-0.5 rounded-[4px] border border-orange-200 shadow-sm flex items-center gap-1">
+                                🚧 기능 개발 중입니다 (테스트 화면)
+                            </span>
+                        </div>
                         <h2 className="text-[18px] font-bold text-expo-ink flex items-center gap-2">
                             <Hash className="w-5 h-5 text-expo-primary" /> 핵심 위험 키워드 분석
                         </h2>

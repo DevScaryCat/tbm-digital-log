@@ -55,11 +55,14 @@ export async function POST(request: Request) {
          - 대화 중에서 발언자가 확실하게 언급한 특이사항(작업자의 건강 상태, 날씨 주의사항, 특별한 전달/공지사항 등)만 발췌하여 요약하세요. 
          - 특이사항이 있을 경우, 단순 키워드가 아니라 구체적인 문장형으로 작성하세요.
          - 만약 원본에 특이사항이나 특별한 전달사항으로 보일 만한 내용이 전혀 없다면, 절대 지어내지 말고 무조건 공백("")으로 두세요. "특이사항 없음" 등의 문구도 쓰지 마세요.
+
+      [비용 절감 및 효율화 규칙]
+      - 모든 내용은 부연 설명을 과감히 생략하고 핵심 지시사항만 1~2줄 이내로 매우 간결하게 압축하여 전체 출력 길이를 최소화하세요.
     `;
 
     const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2500,
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1000,
       temperature: 0,
       system: systemPrompt,
       messages: [{ role: "user", content: text }],

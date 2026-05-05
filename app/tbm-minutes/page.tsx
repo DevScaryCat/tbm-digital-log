@@ -60,11 +60,11 @@ export default function TBMMinutesPage() {
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
-    // 녹음 관련 상태
+    // 무료 STT (Web Speech API) 관련 상태
     const [isRecording, setIsRecording] = useState(false)
-    const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
-    const audioChunks = useRef<Blob[]>([])
-    const [accumulatedBlobs, setAccumulatedBlobs] = useState<Blob[]>([])
+    const isRecordingRef = useRef(false)
+    const recognitionRef = useRef<any>(null)
+    const [accumulatedTranscript, setAccumulatedTranscript] = useState("")
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
@@ -87,11 +87,12 @@ export default function TBMMinutesPage() {
                     setRecordingTime(total);
 
                     if (total >= MAX_RECORDING_TIME) {
-                        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                            mediaRecorder.stop();
-                            setIsRecording(false);
-                            alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+                        setIsRecording(false);
+                        isRecordingRef.current = false;
+                        if (recognitionRef.current) {
+                            recognitionRef.current.stop();
                         }
+                        alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
                     }
                 }
             }, 1000);
@@ -105,7 +106,7 @@ export default function TBMMinutesPage() {
             }
         }
         return () => clearInterval(interval);
-    }, [isRecording, mediaRecorder]);
+    }, [isRecording]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -113,7 +114,7 @@ export default function TBMMinutesPage() {
         return `${m}:${s}`;
     }
 
-    const fileInputRef = useRef<HTMLInputElement>(null)
+
 
     const [isProcessingSTT, setIsProcessingSTT] = useState(false)
     const [isProcessingAI, setIsProcessingAI] = useState(false)
@@ -377,102 +378,85 @@ export default function TBMMinutesPage() {
         }
     }
 
-    const processAudioBlob = async (blob: Blob) => {
-        const file = new File([blob], "recording.webm", { type: blob.type })
-        setIsProcessingSTT(true)
-        setStep(3)
-
-        try {
-            const formData = new FormData()
-            formData.append("file", file)
-
-            const res = await fetch('/api/stt', { method: 'POST', body: formData })
-            const data = await res.json()
-
-            if (!res.ok) throw new Error(data.error || "음성 인식 실패")
-
-            if (data.transcript) {
-                requestAIMinutes(data.transcript)
-            } else {
-                alert("음성이 인식되지 않았습니다. 다시 녹음해주세요.")
-            }
-        } catch (e: any) {
-            console.error(e)
-            alert("음성처리 오류 : 안전관련 회의 내용이 적합하지 않거나 너무 적어서 음성처리 오류가 발생하였습니다.")
-        } finally {
-            setIsProcessingSTT(false)
-        }
-    }
-
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-
-        setIsProcessingSTT(true)
-        setStep(3)
-
-        try {
-            const formData = new FormData()
-            formData.append("file", file)
-
-            const res = await fetch('/api/stt', { method: 'POST', body: formData })
-            const data = await res.json()
-
-            if (!res.ok) throw new Error(data.error || "음성 인식 실패")
-
-            if (data.transcript) {
-                requestAIMinutes(data.transcript)
-            } else {
-                alert("음성이 인식되지 않았습니다. 다시 업로드해주세요.")
-            }
-        } catch (e: any) {
-            console.error(e)
-            alert("음성처리 오류 : 안전관련 회의 내용이 적합하지 않거나 너무 적어서 음성처리 오류가 발생하였습니다.")
-        } finally {
-            setIsProcessingSTT(false)
-            if (fileInputRef.current) fileInputRef.current.value = ""
-        }
-    }
 
     const stopRecording = () => {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop()
-            setIsRecording(false)
+        setIsRecording(false)
+        isRecordingRef.current = false
+        if (recognitionRef.current) {
+            recognitionRef.current.stop()
         }
+        setRecordingCount(prev => prev + 1)
     }
 
     const startRecording = async () => {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("현재 브라우저가 마이크를 지원하지 않습니다.")
-            return
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
+            return;
         }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const recorder = new MediaRecorder(stream)
-            audioChunks.current = []
-            recorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunks.current.push(event.data) }
-            recorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-                setAccumulatedBlobs(prev => [...prev, audioBlob])
-                setRecordingCount(prev => prev + 1)
-                stream.getTracks().forEach(track => track.stop())
-            }
-            recorder.start()
-            setMediaRecorder(recorder)
-            setIsRecording(true)
 
-            // 실제 녹음 시작 시 시작시간 강제 업데이트
-            setFormData(prev => ({ ...prev, startTime: getCurrentTime() }))
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ko-KR';
+
+            recognition.onresult = (event: any) => {
+                let finalTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    }
+                }
+                if (finalTranscript) {
+                    setAccumulatedTranscript(prev => prev + finalTranscript);
+                }
+            };
+
+            recognition.onerror = (event: any) => {
+                console.error("Speech recognition error:", event.error);
+                if (event.error === 'network' || event.error === 'not-allowed') {
+                    stopRecording();
+                    alert("Chrome, Safari 브라우저에서만 사용 가능합니다.");
+                }
+            };
+
+            recognition.onend = () => {
+                if (isRecordingRef.current) {
+                    setTimeout(() => {
+                        if (isRecordingRef.current) {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }, 500);
+                }
+            };
+
+            recognition.start();
+            recognitionRef.current = recognition;
+            setIsRecording(true);
+            isRecordingRef.current = true;
+            setFormData(prev => ({ ...prev, startTime: getCurrentTime() }));
         } catch (err) {
-            console.error(err)
-            alert("마이크 권한이 필요합니다.")
+            console.error(err);
+            alert("마이크/음성인식 권한이 필요합니다.");
         }
     }
 
     const submitRecording = async () => {
-        if (accumulatedBlobs.length === 0) { alert("녹음된 내용이 없습니다."); return; }
-        const mergedBlob = new Blob(accumulatedBlobs, { type: 'audio/webm' })
-        processAudioBlob(mergedBlob)
+        if (!accumulatedTranscript.trim()) { alert("인식된 음성이 없습니다."); return; }
+        
+        setIsProcessingSTT(true)
+        setStep(3)
+        
+        // 무료 STT는 이미 텍스트로 변환되었으므로 딜레이 없이 바로 AI 요청
+        setTimeout(() => {
+            setIsProcessingSTT(false)
+            requestAIMinutes(accumulatedTranscript)
+        }, 500)
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
@@ -552,7 +536,18 @@ export default function TBMMinutesPage() {
                         <div><span className="font-bold text-expo-primary">3. 작업 시작 전 확인사항</span><br /><span className="text-expo-muted">• 개인별 건강상태 이상 여부 확인<br/>• 개인보호구 착용 상태 점검<br/>• 안전구호 제창(AI 추천 활용 가능)</span></div>
                     </div>
                 ) : (
-                    <div className="text-expo-muted whitespace-pre-wrap">안녕하십니까 금일 티비엠을 시작하겠습니다. 먼저 작업자 여러분들의 건강 상태를 확인하겠습니다. 오늘 몸이 안 좋으시거나 전날 음주 등으로 인해 작업에 무리가 있으신 분 계십니까. 네 특이사항 없는 것으로 확인했습니다. 오늘 저희가 진행할 공종은 철근 조립 및 거푸집 설치 작업입니다. 작업 장소는 비동 이층 슬라브 구역이며 금일 주요 작업 내용은 자재 운반과 철근 배근 그리고 거푸집 조립입니다. 각자 맡은 구역과 역할을 다시 한번 확인해 주시기 바랍니다. 오늘 작업의 주요 위험 요인과 안전 대책에 대해 말씀드리겠습니다. 첫째 고소작업 중 추락 위험이 있습니다. 따라서 작업 전 반드시 안전대 부착 설비를 확인하시고 작업 중에는 안전대 체결을 철저히 해주시기 바랍니다. 둘째 자재 인양 시 크레인과의 충돌 및 낙하물 위험이 있습니다. 인양 작업 반경 내에는 절대 출입을 금지해 주시고 신호수의 통제에 적극 따라 주시기 바랍니다. 마지막으로 바닥 개구부에 의한 발 빠짐 위험이 있으니 이동 시 전방을 주시하고 개구부 덮개가 훼손되지 않았는지 확인해 주십시오. 다음은 개인 보호구 착용 상태를 점검하겠습니다. 전원 안전모 턱끈을 단단히 조여주시고 안전화와 안전대 착용 상태를 좌우 동료와 서로 확인해 주시기 바랍니다. 보호구가 파손되거나 불량인 분들은 작업 전 반드시 새것으로 교체 후 투입해 주십시오. 지금까지 말씀드린 작업 내용이나 안전 수칙과 관련하여 질문이 있으시거나 작업 현장에 위험 요소가 있다고 생각하시는 분 계십니까. 네 없으시면 넘어가겠습니다. 작업 중 조금이라도 이상 징후가 발견되면 즉시 작업을 중지하고 관리자에게 보고해 주시기 바랍니다. 무리한 작업은 절대 삼가 주십시오. 그럼 다 같이 안전 구호 제창하고 금일 티비엠을 마치겠습니다. 좋아 좋아 좋아.</div>
+                    <div className="text-expo-muted whitespace-pre-wrap leading-relaxed text-[14px]">
+                        안녕하십니까, 금일 TBM을 시작하겠습니다.<br /><br />
+                        먼저 건강 상태를 확인하겠습니다. 오늘 몸이 안 좋으시거나 전날 음주 등으로 작업에 무리가 있으신 분 계십니까? 네, 특이사항 없는 것으로 확인했습니다.<br /><br />
+                        오늘 진행할 공종은 '철근 조립 및 거푸집 설치' 작업이며, 장소는 B동 2층 슬라브 구역입니다.<br />
+                        각자 맡은 구역과 역할을 다시 한번 확인해 주시기 바랍니다.<br /><br />
+                        오늘의 주요 위험 요인과 안전 대책입니다.<br />
+                        첫째, 고소작업 중 추락 위험이 있습니다. 반드시 안전대 부착 설비를 확인해 주십시오.<br />
+                        둘째, 크레인 인양 시 충돌 위험이 있으니 인양 반경 내 출입을 금지합니다.<br /><br />
+                        마지막으로 안전모 턱끈을 단단히 조여주시고 안전화 착용 상태를 확인해 주십시오. 작업 중 이상 징후가 발견되면 즉시 관리자에게 보고해 주시기 바랍니다.<br /><br />
+                        그럼 다 같이 안전 구호 제창하고 TBM을 마치겠습니다.<br />
+                        <span className="font-bold">"안전! 좋아! 좋아! 좋아!"</span>
+                    </div>
                 )}
             </div>
         </div>
@@ -666,18 +661,12 @@ export default function TBMMinutesPage() {
                                             <Mic className="w-14 h-14 text-white" />
                                             <span className="text-white font-bold text-[18px]">회의 시작</span>
                                         </Button>
-                                        
-                                        <div className="mt-6 pt-6 border-t border-expo-hairline w-full">
-                                            <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                                            <Button variant="ghost" onClick={() => fileInputRef.current?.click()} className="text-expo-muted font-medium hover:bg-expo-surface-strong rounded-[8px] h-10 px-4">
-                                                <Upload className="w-4 h-4 mr-2" /> (또는) 기존 파일 업로드
-                                            </Button>
-                                        </div>
                                     </div>
                                 )}
                             </div>
                             <p className="text-[13px] text-expo-body font-medium leading-relaxed bg-expo-surface-strong p-3.5 rounded-[12px] border border-expo-hairline text-center">
-                                💡 참석자와 함께 위험요인, 대책, 안전구호를 협의해주세요. AI가 자동으로 회의록 양식에 맞게 요약해 줍니다.
+                                💡 참석자와 함께 위험요인, 대책, 안전구호를 협의해주세요. AI가 자동으로 회의록 양식에 맞게 요약해 줍니다.<br/>
+                                <span className="text-[12px] text-[#dc2626] block mt-1.5 font-bold tracking-tight">※ Chrome, Safari 브라우저에서만 사용 가능합니다.</span>
                             </p>
                         </div>
                     )}

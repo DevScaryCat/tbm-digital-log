@@ -63,11 +63,11 @@ export default function TBMPage() {
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
-    // 녹음 관련 상태
+    // 무료 STT (Web Speech API) 관련 상태
     const [isRecording, setIsRecording] = useState(false)
-    const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
-    const audioChunks = useRef<Blob[]>([])
-    const [accumulatedBlobs, setAccumulatedBlobs] = useState<Blob[]>([])
+    const isRecordingRef = useRef(false)
+    const recognitionRef = useRef<any>(null)
+    const [accumulatedTranscript, setAccumulatedTranscript] = useState("")
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
@@ -90,11 +90,12 @@ export default function TBMPage() {
                     setRecordingTime(total);
 
                     if (total >= MAX_RECORDING_TIME) {
-                        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                            mediaRecorder.stop();
-                            setIsRecording(false);
-                            alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+                        setIsRecording(false);
+                        isRecordingRef.current = false;
+                        if (recognitionRef.current) {
+                            recognitionRef.current.stop();
                         }
+                        alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
                     }
                 }
             }, 1000);
@@ -108,7 +109,7 @@ export default function TBMPage() {
             }
         }
         return () => clearInterval(interval);
-    }, [isRecording, mediaRecorder]);
+    }, [isRecording]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -116,7 +117,7 @@ export default function TBMPage() {
         return `${m}:${s}`;
     }
 
-    const fileInputRef = useRef<HTMLInputElement>(null)
+
 
     const [isProcessingSTT, setIsProcessingSTT] = useState(false)
     const [isProcessingAI, setIsProcessingAI] = useState(false)
@@ -470,123 +471,84 @@ export default function TBMPage() {
         }
     }
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-
-        setIsProcessingSTT(true)
-        setStep(3)
-
-        try {
-            const formData = new FormData()
-            formData.append("file", file)
-
-            const res = await fetch('/api/stt', {
-                method: 'POST',
-                body: formData,
-            })
-
-            const data = await res.json()
-
-            if (!res.ok) {
-                throw new Error(data.error || "음성 인식 실패")
-            }
-
-            if (data.transcript) {
-                requestAISummary(data.transcript)
-            }
-
-        } catch (e: any) {
-            console.error(e)
-            alert("파일 처리 오류: " + e.message)
-        } finally {
-            setIsProcessingSTT(false)
-            if (fileInputRef.current) fileInputRef.current.value = ""
-        }
-    }
-
-    const processAudioBlob = async (blob: Blob) => {
-        const file = new File([blob], "recording.webm", { type: blob.type })
-        setIsProcessingSTT(true)
-        setStep(3)
-
-        try {
-            const formData = new FormData()
-            formData.append("file", file)
-
-            const res = await fetch('/api/stt', {
-                method: 'POST',
-                body: formData,
-            })
-
-            const data = await res.json()
-
-            if (!res.ok) throw new Error(data.error || "음성 인식 실패")
-
-            if (data.transcript) {
-                requestAISummary(data.transcript)
-            } else {
-                alert("음성이 인식되지 않았습니다. 다시 녹음해주세요.")
-            }
-
-        } catch (e: any) {
-            console.error(e)
-            alert("음성 처리 오류: " + e.message)
-        } finally {
-            setIsProcessingSTT(false)
-        }
-    }
-
     const stopRecording = () => {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop()
-            setIsRecording(false)
+        setIsRecording(false)
+        isRecordingRef.current = false
+        if (recognitionRef.current) {
+            recognitionRef.current.stop()
         }
+        setRecordingCount(prev => prev + 1)
     }
 
     const startRecording = async () => {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            alert("현재 브라우저가 마이크를 지원하지 않습니다.")
-            return
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
+            return;
         }
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const recorder = new MediaRecorder(stream)
-            audioChunks.current = []
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ko-KR';
 
-            recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.current.push(event.data)
+            recognition.onresult = (event: any) => {
+                let finalTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    }
                 }
-            }
+                if (finalTranscript) {
+                    setAccumulatedTranscript(prev => prev + finalTranscript);
+                }
+            };
 
-            recorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
-                setAccumulatedBlobs(prev => [...prev, audioBlob])
-                setRecordingCount(prev => prev + 1)
-                stream.getTracks().forEach(track => track.stop())
-            }
+            recognition.onerror = (event: any) => {
+                console.error("Speech recognition error:", event.error);
+                if (event.error === 'network' || event.error === 'not-allowed') {
+                    stopRecording();
+                    alert("Chrome, Safari 브라우저에서만 사용 가능합니다.");
+                }
+            };
 
-            recorder.start()
-            setMediaRecorder(recorder)
-            setIsRecording(true)
-            
-            // 실제 녹음 시작 시 시작시간 강제 업데이트
-            setFormData(prev => ({ ...prev, startTime: getCurrentTime() }))
+            recognition.onend = () => {
+                if (isRecordingRef.current) {
+                    setTimeout(() => {
+                        if (isRecordingRef.current) {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }, 500);
+                }
+            };
+
+            recognition.start();
+            recognitionRef.current = recognition;
+            setIsRecording(true);
+            isRecordingRef.current = true;
+            setFormData(prev => ({ ...prev, startTime: getCurrentTime() }));
         } catch (err) {
-            console.error(err)
-            alert("마이크 권한이 필요합니다.")
+            console.error(err);
+            alert("마이크/음성인식 권한이 필요합니다.");
         }
     }
 
     const submitRecording = async () => {
-        if (accumulatedBlobs.length === 0) {
-            alert("녹음된 내용이 없습니다.")
-            return
-        }
-        const mergedBlob = new Blob(accumulatedBlobs, { type: 'audio/webm' })
-        processAudioBlob(mergedBlob)
+        if (!accumulatedTranscript.trim()) { alert("인식된 음성이 없습니다."); return; }
+        
+        setIsProcessingSTT(true)
+        setStep(3)
+        
+        // 무료 STT는 이미 텍스트로 변환되었으므로 딜레이 없이 바로 AI 요청
+        setTimeout(() => {
+            setIsProcessingSTT(false)
+            requestAISummary(accumulatedTranscript)
+        }, 500)
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
@@ -817,14 +779,7 @@ export default function TBMPage() {
                                             <span className="text-white font-bold text-[18px]">녹음 시작</span>
                                         </Button>
 
-                                        <div className="mt-8 pt-6 border-t border-expo-hairline w-full">
-                                            <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                                            <Button variant="ghost" onClick={() => fileInputRef.current?.click()} className="text-expo-muted font-medium hover:bg-expo-surface-strong rounded-[8px] h-10 px-4">
-                                                <Upload className="w-4 h-4 mr-2" /> (또는) 기존 파일 업로드
-                                            </Button>
-                                        </div>
                                     </div>
-                                )}
                             </div>
                         </div>
                     )}

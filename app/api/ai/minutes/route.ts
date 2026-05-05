@@ -57,11 +57,14 @@ export async function POST(request: Request) {
       4. \`safetyPhrase\` (안전구호 제창)
          - 녹음에서 특정 안전구호가 불렸다면 그 구호를 사용하세요. 
          - 따로 구호가 들리지 않았다면, 오늘 날씨와 작업 내용 또는 일반적인 안전에 어울리는 짧고 강렬한 구호를 하나 무작위로 생성해 주세요. (예: "안전, 안전, 안전!", "무재해 우리가 이루자, 좋아!", "기본수칙 준수, 안전의 시작!")
+
+      [비용 절감 및 효율화 규칙]
+      - 모든 항목의 요약은 부가적인 설명 없이 가장 중요한 핵심 내용만 매우 간결하게(각 항목당 최대 1~2줄 이내) 작성하여 출력 데이터양을 최소화하세요.
     `;
 
     const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2500,
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1000,
       temperature: 0.1,
       system: systemPrompt,
       messages: [{ role: "user", content: text }],
