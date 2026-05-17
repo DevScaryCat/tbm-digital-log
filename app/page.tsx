@@ -54,17 +54,17 @@ export default function MainPage() {
     try {
       const { data: tbmLogs } = await supabase.from('tbm_logs').select('id, date, start_time, end_time').eq('user_id', userId)
       const { data: minutesLogs } = await supabase.from('tbm_minutes').select('id, date, start_time, end_time').eq('user_id', userId)
-      
+
       setTbmCount(tbmLogs?.length || 0)
       setTbmMinutesCount(minutesLogs?.length || 0)
 
       const now = new Date()
       const currentYear = now.getFullYear()
-      const isFirstHalf = now.getMonth() < 6 
-      
+      const isFirstHalf = now.getMonth() < 6
+
       let validLogs = []
       if (currentWorkerType === '사무직 / 판매직') {
-        validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => {
+        validLogs = [...(tbmLogs || []), ...(minutesLogs || [])].filter(log => {
           if (!log.date) return false
           const month = parseInt(log.date.split('-')[1], 10)
           return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
@@ -72,7 +72,7 @@ export default function MainPage() {
         setRequiredHours(6)
       } else {
         // 기본값: 현장 근로자
-        validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => {
+        validLogs = [...(tbmLogs || []), ...(minutesLogs || [])].filter(log => {
           if (!log.date) return false
           const month = parseInt(log.date.split('-')[1], 10)
           return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
@@ -120,11 +120,11 @@ export default function MainPage() {
   const handleSaveCompany = async () => {
     if (!companyInput.trim()) return alert("현장명(업체명)을 입력해주세요.")
     setIsUpdating(true)
-    const { data, error } = await supabase.auth.updateUser({ 
-      data: { 
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
         company_name: companyInput.trim(),
         worker_type: workerType
-      } 
+      }
     })
     if (error) { alert("저장 실패: " + error.message); setIsUpdating(false); return; }
     setUser(data.user)
@@ -144,19 +144,19 @@ export default function MainPage() {
     return (
       <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans">
         <div className="absolute top-0 left-0 right-0 h-[50vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10"></div>
-        
+
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-lg mx-auto w-full">
           <div className="space-y-6 flex flex-col items-center">
             <div className="bg-cur-primary p-5 rounded-[12px] shadow-[0_0_40px_rgba(245,78,0,0.2)] flex items-center justify-center w-20 h-20">
               <HardHat className="w-10 h-10 text-cur-on-primary" />
             </div>
-            
+
             <div className="space-y-3">
               <h1 className="text-[36px] sm:text-[48px] font-normal text-cur-ink tracking-[-1.44px] leading-[1.1]">
                 안전톡톡
               </h1>
               <p className="text-cur-muted text-[16px] sm:text-[18px]">
-                TBM부터 AI 제안까지 한 번에
+                더 많은 대화로 더 안전한 현장을
               </p>
             </div>
           </div>
@@ -174,19 +174,19 @@ export default function MainPage() {
                 <a href="/terms" target="_blank" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
               </label>
             </div>
-            
-            <Button 
-              onClick={handleKakaoLogin} 
-              disabled={!privacyAgreed} 
+
+            <Button
+              onClick={handleKakaoLogin}
+              disabled={!privacyAgreed}
               className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
             >
               <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오 계정으로 시작
             </Button>
-            
-            <Button 
-              onClick={() => router.push('/login')} 
-              disabled={!privacyAgreed} 
-              variant="outline" 
+
+            <Button
+              onClick={() => router.push('/login')}
+              disabled={!privacyAgreed}
+              variant="outline"
               className="w-full h-12 bg-cur-elevated border border-cur-hairline hover:bg-cur-elevated/80 text-cur-body text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
             >
               <UserCircle className="w-5 h-5 mr-2" /> 일반 계정으로 시작
@@ -215,14 +215,14 @@ export default function MainPage() {
                 </span>
               </h3>
             </div>
-            
+
             <div className="relative mt-2 mb-8">
               {/* Text above the bar */}
-              <div 
+              <div
                 className="absolute -top-7 text-[13px] font-bold text-cur-primary font-mono whitespace-nowrap"
                 style={
-                  fillWidth > 85 
-                    ? { right: '0%' } 
+                  fillWidth > 85
+                    ? { right: '0%' }
                     : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
                 }
               >
@@ -232,13 +232,13 @@ export default function MainPage() {
               {/* Progress bar container */}
               <div className="w-full h-2 bg-cur-elevated rounded-full relative">
                 {/* 100% Tick Mark */}
-                <div 
+                <div
                   className="absolute top-0 bottom-0 w-[2px] bg-cur-card z-10"
                   style={{ left: `${tickPosition}%` }}
                 />
-                
+
                 {/* 100% Label below the tick */}
-                <div 
+                <div
                   className="absolute top-3 text-[11px] font-medium text-cur-muted"
                   style={
                     tickPosition > 90
@@ -250,18 +250,18 @@ export default function MainPage() {
                 </div>
 
                 {/* Filled bar */}
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-cur-primary-active to-cur-primary rounded-full transition-all duration-1000 ease-out absolute left-0 top-0"
-                  style={{ width: `${fillWidth}%` }} 
+                  style={{ width: `${fillWidth}%` }}
                 />
               </div>
 
               {/* Current Percentage Label below the right end of the filled bar */}
-              <div 
+              <div
                 className="absolute top-3 text-[12px] font-bold text-cur-primary"
                 style={
-                  fillWidth > 90 
-                    ? { right: '0%' } 
+                  fillWidth > 90
+                    ? { right: '0%' }
                     : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
                 }
               >
@@ -269,8 +269,8 @@ export default function MainPage() {
               </div>
             </div>
             <p className="text-[12px] text-cur-muted mt-3 leading-relaxed">
-              {user?.user_metadata?.worker_type === '사무직 / 판매직' 
-                ? '반기별 6시간 이상 (정기교육 TBM 대체 가능)' 
+              {user?.user_metadata?.worker_type === '사무직 / 판매직'
+                ? '반기별 6시간 이상 (정기교육 TBM 대체 가능)'
                 : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
             </p>
           </div>
@@ -292,9 +292,9 @@ export default function MainPage() {
         </div>
 
         <div className="flex-1 p-6 space-y-4">
-          
-          <div 
-            onClick={() => router.push('/tbm-minutes')} 
+
+          <div
+            onClick={() => router.push('/tbm-minutes')}
             className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
           >
             <div className="p-5 flex items-center justify-between">
@@ -311,8 +311,8 @@ export default function MainPage() {
             </div>
           </div>
 
-          <div 
-            onClick={() => router.push('/tbm')} 
+          <div
+            onClick={() => router.push('/tbm')}
             className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
           >
             <div className="p-5 flex items-center justify-between">
@@ -340,11 +340,11 @@ export default function MainPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[13px] font-medium text-cur-body">소속 현장명 (또는 업체명)</label>
-                <Input 
-                  value={companyInput} 
-                  onChange={(e) => setCompanyInput(e.target.value)} 
-                  placeholder="소속 현장명 (또는 업체명)" 
-                  className="h-11 text-[14px] border-cur-hairline rounded-[6px] focus:border-cur-primary focus:ring-1 focus:ring-cur-primary bg-cur-elevated text-cur-ink placeholder:text-cur-muted" 
+                <Input
+                  value={companyInput}
+                  onChange={(e) => setCompanyInput(e.target.value)}
+                  placeholder="소속 현장명 (또는 업체명)"
+                  className="h-11 text-[14px] border-cur-hairline rounded-[6px] focus:border-cur-primary focus:ring-1 focus:ring-cur-primary bg-cur-elevated text-cur-ink placeholder:text-cur-muted"
                 />
               </div>
               <div className="space-y-2">
@@ -360,9 +360,9 @@ export default function MainPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
-                onClick={handleSaveCompany} 
-                disabled={isUpdating} 
+              <Button
+                onClick={handleSaveCompany}
+                disabled={isUpdating}
                 className="w-full h-11 mt-4 text-[14px] font-semibold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[6px]"
               >
                 {isUpdating ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기

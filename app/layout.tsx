@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "안전톡톡",
-  description: "TBM부터 AI 제안까지 한 번에",
+  description: "더 많은 대화로 더 안전한 현장을",
 };
 
 export default function RootLayout({
