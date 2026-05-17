@@ -154,25 +154,25 @@ export default function AIConsultingPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-100 flex flex-col items-center pb-20">
-            <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative flex flex-col">
+        <div className="min-h-screen bg-cur-elevated flex flex-col items-center pb-20">
+            <div className="w-full max-w-md bg-cur-card min-h-screen  relative flex flex-col">
 
                 {/* 상단 헤더 */}
-                <div className="p-4 flex items-center border-b bg-white sticky top-0 z-10">
+                <div className="p-4 flex items-center border-b bg-cur-card sticky top-0 z-10">
                     <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                         <ArrowLeft className="w-6 h-6" />
                     </Button>
                     <div className="flex items-center gap-2">
                         <Zap className="w-5 h-5 text-purple-600" />
-                        <h1 className="text-xl font-bold text-slate-800">AI 특허/컨설팅 모드</h1>
+                        <h1 className="text-xl font-bold text-cur-ink">AI 특허/컨설팅 모드</h1>
                     </div>
                 </div>
 
                 <div className="flex-1 flex flex-col p-6 space-y-6">
 
                     <div className="text-center space-y-2 mt-2">
-                        <h2 className="text-2xl font-extrabold text-slate-900">현장의 대화를 자산으로</h2>
-                        <p className="text-slate-500 text-sm">
+                        <h2 className="text-2xl font-extrabold text-cur-ink">현장의 대화를 자산으로</h2>
+                        <p className="text-cur-muted text-sm">
                             작업 방식 개선 아이디어나 회의 내용을 녹음하세요.<br />AI가 특허 가능성을 평가하고 명세서 초안을 써드립니다.
                         </p>
                     </div>
@@ -187,22 +187,22 @@ export default function AIConsultingPage() {
                                 onClick={toggleRecording}
                                 disabled={isProcessingSTT || isProcessingAI}
                                 className={cn(
-                                    "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl relative z-10",
-                                    isRecording ? "bg-purple-600 hover:bg-purple-700" : "bg-slate-900 hover:bg-slate-800"
+                                    "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500  relative z-10",
+                                    isRecording ? "bg-purple-600 hover:bg-purple-700" : "bg-cur-ink hover:bg-cur-ink/80"
                                 )}
                             >
                                 {isProcessingSTT || isProcessingAI ? (
-                                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                                    <Loader2 className="w-12 h-12 text-cur-on-primary animate-spin" />
                                 ) : isRecording ? (
-                                    <StopCircle className="w-16 h-16 text-white" />
+                                    <StopCircle className="w-16 h-16 text-cur-on-primary" />
                                 ) : (
-                                    <Mic className="w-16 h-16 text-white" />
+                                    <Mic className="w-16 h-16 text-cur-on-primary" />
                                 )}
                             </Button>
                         </div>
 
                         <div className="mt-8 text-center h-10">
-                            <span className="text-lg font-bold text-slate-700">
+                            <span className="text-lg font-bold text-cur-body">
                                 {isProcessingSTT ? "음성 데이터 추출 중..." : isProcessingAI ? "AI 변리사가 분석 중입니다..." : isRecording ? "대화를 녹음 중입니다..." : "터치하여 아이디어 말하기"}
                             </span>
                         </div>
@@ -210,7 +210,7 @@ export default function AIConsultingPage() {
                         {!isRecording && !isProcessingSTT && !isProcessingAI && (
                             <div className="mt-4">
                                 <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="text-slate-500 rounded-full border-slate-300">
+                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="text-cur-muted rounded-full border-slate-300">
                                     <Upload className="w-4 h-4 mr-2" /> 음성/회의 파일 업로드
                                 </Button>
                             </div>
@@ -222,7 +222,7 @@ export default function AIConsultingPage() {
                         <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-6">
 
                             {/* 특허 가능성 스코어 카드 */}
-                            <Card className="bg-gradient-to-br from-indigo-900 to-purple-900 text-white border-0 shadow-lg overflow-hidden relative">
+                            <Card className="bg-gradient-to-br from-indigo-900 to-purple-900 text-cur-on-primary border-0  overflow-hidden relative">
                                 <div className="absolute top-0 right-0 p-4 opacity-10">
                                     <TrendingUp className="w-32 h-32" />
                                 </div>
@@ -253,30 +253,30 @@ export default function AIConsultingPage() {
 
                             {/* 명세서 초안 카드 */}
                             <Card className="shadow-md border-slate-200">
-                                <CardHeader className="bg-slate-50 border-b pb-4">
+                                <CardHeader className="bg-cur-canvas border-b pb-4">
                                     <CardTitle className="text-lg leading-snug">
                                         <span className="text-xs font-bold text-purple-600 block mb-1">발명의 명칭</span>
                                         {aiResult.title}
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-0 divide-y divide-slate-100">
-                                    <div className="p-5 space-y-2 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-2 text-slate-800 font-bold">
+                                    <div className="p-5 space-y-2 hover:bg-cur-canvas transition-colors">
+                                        <div className="flex items-center gap-2 text-cur-ink font-bold">
                                             <div className="w-1.5 h-4 bg-purple-500 rounded-full"></div> 배경 기술 및 문제점
                                         </div>
-                                        <p className="text-slate-600 text-sm leading-relaxed pl-3">{aiResult.background}</p>
+                                        <p className="text-cur-body text-sm leading-relaxed pl-3">{aiResult.background}</p>
                                     </div>
-                                    <div className="p-5 space-y-2 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-2 text-slate-800 font-bold">
+                                    <div className="p-5 space-y-2 hover:bg-cur-canvas transition-colors">
+                                        <div className="flex items-center gap-2 text-cur-ink font-bold">
                                             <div className="w-1.5 h-4 bg-blue-500 rounded-full"></div> 핵심 해결 방안 (Idea)
                                         </div>
-                                        <p className="text-slate-600 text-sm leading-relaxed pl-3">{aiResult.coreIdea}</p>
+                                        <p className="text-cur-body text-sm leading-relaxed pl-3">{aiResult.coreIdea}</p>
                                     </div>
-                                    <div className="p-5 space-y-2 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-2 text-slate-800 font-bold">
+                                    <div className="p-5 space-y-2 hover:bg-cur-canvas transition-colors">
+                                        <div className="flex items-center gap-2 text-cur-ink font-bold">
                                             <div className="w-1.5 h-4 bg-emerald-500 rounded-full"></div> 기대 효과
                                         </div>
-                                        <p className="text-slate-600 text-sm leading-relaxed pl-3">{aiResult.effect}</p>
+                                        <p className="text-cur-body text-sm leading-relaxed pl-3">{aiResult.effect}</p>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -295,7 +295,7 @@ export default function AIConsultingPage() {
                             <Button
                                 onClick={handleSaveAsset}
                                 disabled={isSaving}
-                                className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white text-lg font-bold rounded-xl shadow-lg mt-4"
+                                className="w-full h-14 bg-cur-ink hover:bg-cur-ink/80 text-cur-on-primary text-lg font-bold rounded-xl  mt-4"
                             >
                                 {isSaving ? <Loader2 className="animate-spin mr-2" /> : <FileText className="mr-2" />}
                                 사내 지식 자산으로 등록하기

@@ -39,27 +39,27 @@ export default function AIConsultingHistoryPage() {
         return { color: "text-red-600", bg: "bg-red-100", border: "border-red-500", text: "특허 등록 어려움" }
     }
 
-    if (loading) return <div className="min-h-screen flex justify-center items-center bg-slate-50"><Loader2 className="w-10 h-10 animate-spin text-slate-500" /></div>
+    if (loading) return <div className="min-h-screen flex justify-center items-center bg-cur-canvas"><Loader2 className="w-10 h-10 animate-spin text-cur-muted" /></div>
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-20">
-            <div className="max-w-lg mx-auto min-h-screen bg-white shadow-lg flex flex-col">
+        <div className="min-h-screen bg-cur-canvas pb-20">
+            <div className="max-w-lg mx-auto min-h-screen bg-cur-card  flex flex-col">
 
                 {/* 헤더 */}
-                <div className="p-4 flex items-center border-b bg-white sticky top-0 z-10">
+                <div className="p-4 flex items-center border-b bg-cur-card sticky top-0 z-10">
                     <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                         <ArrowLeft className="w-6 h-6" />
                     </Button>
                     <div className="flex items-center gap-2">
                         <Zap className="w-5 h-5 text-purple-600" />
-                        <h1 className="text-xl font-bold text-slate-800">AI 특허/컨설팅 내역</h1>
+                        <h1 className="text-xl font-bold text-cur-ink">AI 특허/컨설팅 내역</h1>
                     </div>
                 </div>
 
                 {/* 목록 */}
-                <div className="p-4 space-y-4 flex-1 bg-slate-50">
+                <div className="p-4 space-y-4 flex-1 bg-cur-canvas">
                     {assets.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                        <div className="flex flex-col items-center justify-center h-64 text-cur-muted-soft">
                             <Lightbulb className="w-16 h-16 mb-4 opacity-50 text-purple-400" />
                             <p>평가받은 아이디어가 아직 없습니다.</p>
                         </div>
@@ -78,7 +78,7 @@ export default function AIConsultingHistoryPage() {
 
                                         {/* 카드 헤더 (항상 보임) */}
                                         <div
-                                            className="p-4 flex items-start justify-between cursor-pointer hover:bg-slate-50"
+                                            className="p-4 flex items-start justify-between cursor-pointer hover:bg-cur-canvas"
                                             onClick={() => setExpandedId(isExpanded ? null : item.id)}
                                         >
                                             <div className="flex-1 pr-4">
@@ -86,23 +86,23 @@ export default function AIConsultingHistoryPage() {
                                                     <span className={cn("px-2 py-0.5 rounded text-sm font-extrabold flex items-center gap-1", config.bg, config.color)}>
                                                         가능성 {score}%
                                                     </span>
-                                                    <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded">
+                                                    <span className="text-xs font-bold text-cur-muted bg-cur-elevated px-2 py-0.5 rounded">
                                                         {config.text}
                                                     </span>
                                                 </div>
-                                                <h3 className="font-bold text-slate-800 leading-tight text-lg mb-1">{item.title}</h3>
-                                                <p className="text-xs text-slate-400">
+                                                <h3 className="font-bold text-cur-ink leading-tight text-lg mb-1">{item.title}</h3>
+                                                <p className="text-xs text-cur-muted-soft">
                                                     {new Date(item.created_at).toLocaleDateString('ko-KR')} 심사 완료
                                                 </p>
                                             </div>
-                                            <div className="text-slate-400 mt-2">
+                                            <div className="text-cur-muted-soft mt-2">
                                                 {isExpanded ? <ChevronUp /> : <ChevronDown />}
                                             </div>
                                         </div>
 
                                         {/* 카드 디테일 (명세서 본문 - 클릭 시 펼쳐짐) */}
                                         {isExpanded && (
-                                            <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-purple-50/30 text-sm animate-in fade-in slide-in-from-top-2">
+                                            <div className="px-4 pb-4 pt-2 border-t border-cur-hairline bg-purple-50/30 text-sm animate-in fade-in slide-in-from-top-2">
 
                                                 <div className="space-y-4 mt-2">
                                                     {/* 1. 배경 및 문제점 */}
@@ -110,7 +110,7 @@ export default function AIConsultingHistoryPage() {
                                                         <span className="font-bold text-purple-800 flex items-center gap-1 mb-1">
                                                             <FileText className="w-4 h-4" /> 배경 기술 및 문제점
                                                         </span>
-                                                        <p className="text-slate-600 leading-relaxed bg-white p-3 rounded border border-slate-200 whitespace-pre-wrap">
+                                                        <p className="text-cur-body leading-relaxed bg-cur-card p-3 rounded border border-cur-hairline whitespace-pre-wrap">
                                                             {item.background}
                                                         </p>
                                                     </div>
@@ -120,7 +120,7 @@ export default function AIConsultingHistoryPage() {
                                                         <span className="font-bold text-purple-800 flex items-center gap-1 mb-1">
                                                             <CheckCircle2 className="w-4 h-4" /> 핵심 해결 방안
                                                         </span>
-                                                        <p className="text-slate-600 leading-relaxed bg-white p-3 rounded border border-slate-200 whitespace-pre-wrap">
+                                                        <p className="text-cur-body leading-relaxed bg-cur-card p-3 rounded border border-cur-hairline whitespace-pre-wrap">
                                                             {item.core_idea}
                                                         </p>
                                                     </div>
@@ -130,15 +130,15 @@ export default function AIConsultingHistoryPage() {
                                                         <span className="font-bold text-purple-800 flex items-center gap-1 mb-1">
                                                             <Zap className="w-4 h-4" /> 기대 효과
                                                         </span>
-                                                        <p className="text-slate-600 leading-relaxed bg-white p-3 rounded border border-slate-200 whitespace-pre-wrap">
+                                                        <p className="text-cur-body leading-relaxed bg-cur-card p-3 rounded border border-cur-hairline whitespace-pre-wrap">
                                                             {item.effect}
                                                         </p>
                                                     </div>
 
                                                     {/* 4. 변리사 피드백 */}
                                                     <div className="mt-4 border-t border-purple-200 pt-4">
-                                                        <span className="font-bold text-slate-800 block mb-2">💡 AI 변리사 종합 피드백</span>
-                                                        <div className="bg-slate-800 text-slate-200 p-4 rounded-xl text-sm leading-relaxed whitespace-pre-wrap shadow-inner">
+                                                        <span className="font-bold text-cur-ink block mb-2">💡 AI 변리사 종합 피드백</span>
+                                                        <div className="bg-cur-ink/80 text-cur-elevated p-4 rounded-xl text-sm leading-relaxed whitespace-pre-wrap shadow-inner">
                                                             {item.consulting_feedback}
                                                         </div>
                                                     </div>

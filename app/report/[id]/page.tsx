@@ -34,7 +34,7 @@ export default function ReportPage() {
     }, [id])
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gray-100"><Loader2 className="w-10 h-10 animate-spin text-slate-500" /></div>
+        return <div className="min-h-screen flex items-center justify-center bg-gray-100"><Loader2 className="w-10 h-10 animate-spin text-cur-muted" /></div>
     }
 
     if (!log) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
@@ -45,7 +45,7 @@ export default function ReportPage() {
     const totalCount = participants.length
 
     return (
-        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-white text-black font-sans">
+        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
 
             {/* ⭐️ 인쇄 버튼 (화면에서만 보임) */}
             <div className="max-w-[210mm] mx-auto mb-4 flex justify-between print:hidden">
@@ -53,13 +53,13 @@ export default function ReportPage() {
                     <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
                     <Button variant="outline" onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4" /> 홈으로</Button>
                 </div>
-                <Button onClick={() => window.print()} className="bg-blue-900 hover:bg-blue-800 text-white font-bold px-6">
+                <Button onClick={() => window.print()} className="bg-blue-900 hover:bg-blue-800 text-cur-on-primary font-bold px-6">
                     <Printer className="mr-2 h-5 w-5" /> PDF 저장 / 인쇄
                 </Button>
             </div>
 
             {/* --- PAGE 1: 교육일지 --- */}
-            <div className="max-w-[210mm] mx-auto bg-white p-[10mm] shadow-lg print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">안 전 보 건 교 육 일 지</h1>
 
                 <table className="w-full border-collapse border border-black text-sm">
@@ -174,7 +174,7 @@ export default function ReportPage() {
             </div>
 
             {/* --- PAGE 2: 참석자 명단 --- */}
-            <div className="max-w-[210mm] mx-auto bg-white p-[10mm] shadow-lg print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 참 석 자 명 단</h1>
 
                 <div className="flex justify-between mb-4 text-sm font-bold">
@@ -220,7 +220,7 @@ export default function ReportPage() {
             </div>
 
             {/* --- PAGE 3: 교육 사진 --- */}
-            <div className="max-w-[210mm] mx-auto bg-white p-[10mm] shadow-lg print:shadow-none print:w-full min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 사 진</h1>
 
                 <div className="w-full h-[200mm] border-2 border-black flex items-center justify-center p-2 bg-gray-50">

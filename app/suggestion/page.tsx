@@ -146,22 +146,22 @@ export default function SuggestionPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center">
-            <div className="w-full max-w-md bg-white min-h-screen shadow-lg relative flex flex-col">
+        <div className="min-h-screen bg-cur-canvas flex flex-col items-center">
+            <div className="w-full max-w-md bg-cur-card min-h-screen  relative flex flex-col">
 
                 {/* 상단 헤더 */}
-                <div className="p-4 flex items-center border-b bg-white sticky top-0 z-10">
+                <div className="p-4 flex items-center border-b bg-cur-card sticky top-0 z-10">
                     <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                         <ArrowLeft className="w-6 h-6" />
                     </Button>
-                    <h1 className="text-xl font-bold text-slate-800">현장 제안함 (음성)</h1>
+                    <h1 className="text-xl font-bold text-cur-ink">현장 제안함 (음성)</h1>
                 </div>
 
                 <div className="flex-1 flex flex-col p-6 space-y-8">
 
                     <div className="text-center space-y-2 mt-4">
-                        <h2 className="text-2xl font-extrabold text-slate-900">무엇이든 말씀해주세요</h2>
-                        <p className="text-slate-500">불편한 점, 위험한 곳, 새로운 아이디어를<br />말로 편하게 알려주시면 AI가 알아서 분류합니다.</p>
+                        <h2 className="text-2xl font-extrabold text-cur-ink">무엇이든 말씀해주세요</h2>
+                        <p className="text-cur-muted">불편한 점, 위험한 곳, 새로운 아이디어를<br />말로 편하게 알려주시면 AI가 알아서 분류합니다.</p>
                     </div>
 
                     {/* 중앙 거대 마이크 버튼 */}
@@ -174,20 +174,20 @@ export default function SuggestionPage() {
                                 onClick={toggleRecording}
                                 disabled={isProcessingSTT || isProcessingAI}
                                 className={cn(
-                                    "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl relative z-10",
+                                    "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300  relative z-10",
                                     isRecording ? "bg-red-500 hover:bg-red-600" : "bg-emerald-500 hover:bg-emerald-600"
                                 )}
                             >
                                 {isProcessingSTT || isProcessingAI ? (
-                                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                                    <Loader2 className="w-12 h-12 text-cur-on-primary animate-spin" />
                                 ) : isRecording ? (
-                                    <StopCircle className="w-16 h-16 text-white" />
+                                    <StopCircle className="w-16 h-16 text-cur-on-primary" />
                                 ) : (
-                                    <Mic className="w-16 h-16 text-white" />
+                                    <Mic className="w-16 h-16 text-cur-on-primary" />
                                 )}
                             </Button>
                         </div>
-                        <div className="mt-6 text-lg font-bold text-slate-700 h-8">
+                        <div className="mt-6 text-lg font-bold text-cur-body h-8">
                             {isProcessingSTT ? "음성을 텍스트로 변환 중..." : isProcessingAI ? "AI가 내용을 분석하고 있습니다..." : isRecording ? "녹음 중입니다... (터치하여 종료)" : "버튼을 눌러 말하기"}
                         </div>
 
@@ -195,7 +195,7 @@ export default function SuggestionPage() {
                         {!isRecording && !isProcessingSTT && !isProcessingAI && (
                             <div className="mt-8">
                                 <input type="file" ref={fileInputRef} className="hidden" accept="audio/*, .m4a, .mp3, .wav" onChange={handleFileUpload} />
-                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="text-slate-500 rounded-full">
+                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="text-cur-muted rounded-full">
                                     <Upload className="w-4 h-4 mr-2" /> 직접 오디오 파일 올리기
                                 </Button>
                             </div>
@@ -212,20 +212,20 @@ export default function SuggestionPage() {
                                             {getCategoryConfig(aiResult.category).icon}
                                             {getCategoryConfig(aiResult.category).label}
                                         </div>
-                                        <span className="text-sm font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">담당: {aiResult.department}</span>
+                                        <span className="text-sm font-bold text-cur-muted bg-cur-elevated px-2 py-1 rounded">담당: {aiResult.department}</span>
                                     </div>
 
                                     <div>
-                                        <h3 className="text-xl font-extrabold text-slate-900 mb-2">{aiResult.title}</h3>
-                                        <p className="text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">{aiResult.summary}</p>
+                                        <h3 className="text-xl font-extrabold text-cur-ink mb-2">{aiResult.title}</h3>
+                                        <p className="text-cur-body leading-relaxed bg-cur-canvas p-3 rounded-lg border border-cur-hairline">{aiResult.summary}</p>
                                     </div>
 
                                     <div className="pt-2">
-                                        <p className="text-xs text-slate-400 mb-1">원본 인식 내용:</p>
-                                        <p className="text-sm text-slate-500 italic">"{transcript}"</p>
+                                        <p className="text-xs text-cur-muted-soft mb-1">원본 인식 내용:</p>
+                                        <p className="text-sm text-cur-muted italic">"{transcript}"</p>
                                     </div>
 
-                                    <Button className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white text-lg rounded-xl mt-4" onClick={() => {
+                                    <Button className="w-full h-12 bg-cur-ink hover:bg-cur-ink/80 text-cur-on-primary text-lg rounded-xl mt-4" onClick={() => {
                                         alert("성공적으로 담당 부서에 전송되었습니다!")
                                         setAiResult(null)
                                         setTranscript("")

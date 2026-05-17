@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -25,10 +26,10 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-white text-[#171717] font-sans`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-cur-canvas text-cur-body font-sans`}
       >
         {children}
-        <footer className="w-full text-center py-16 text-[14px] text-[#60646c] bg-[#ffffff]">
+        <footer className="w-full text-center py-16 text-[14px] text-cur-muted bg-cur-canvas border-t border-cur-hairline">
           © {new Date().getFullYear()} EHS Friends. All rights reserved.
         </footer>
       </body>

@@ -87,11 +87,11 @@ export default function AdminPage() {
     // --- 로그인 화면 ---
     if (!isAuthenticated) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
-                <Card className="w-full max-w-sm border-0 shadow-2xl">
+            <div className="min-h-screen flex items-center justify-center bg-cur-ink p-4">
+                <Card className="w-full max-w-sm border-0 ">
                     <CardHeader className="text-center pb-2">
-                        <div className="mx-auto bg-slate-100 p-3 rounded-full w-fit mb-4">
-                            <Lock className="w-8 h-8 text-slate-900" />
+                        <div className="mx-auto bg-cur-elevated p-3 rounded-full w-fit mb-4">
+                            <Lock className="w-8 h-8 text-cur-ink" />
                         </div>
                         <CardTitle>관리자 접근 제한</CardTitle>
                         <CardDescription>마스터 키를 입력하세요.</CardDescription>
@@ -105,7 +105,7 @@ export default function AdminPage() {
                                 onChange={(e) => setSecretKey(e.target.value)}
                                 className="text-center h-12 text-lg"
                             />
-                            <Button type="submit" className="w-full h-12 bg-slate-900 hover:bg-slate-800">
+                            <Button type="submit" className="w-full h-12 bg-cur-ink hover:bg-cur-ink/80">
                                 접속하기
                             </Button>
                         </form>
@@ -117,9 +117,9 @@ export default function AdminPage() {
 
     // --- 생성 폼 화면 ---
     return (
-        <div className="min-h-screen p-8 bg-slate-100 flex justify-center items-start">
+        <div className="min-h-screen p-8 bg-cur-elevated flex justify-center items-start">
             <Card className="w-full max-w-lg border-2 border-slate-200 shadow-xl">
-                <CardHeader className="bg-slate-50 border-b">
+                <CardHeader className="bg-cur-canvas border-b">
                     <CardTitle className="flex items-center gap-2">
                         👷 현장 계정 발급
                     </CardTitle>
@@ -154,7 +154,7 @@ export default function AdminPage() {
                         </div>
                     </div>
 
-                    <Button onClick={handleCreate} disabled={loading} className="w-full h-12 bg-orange-600 hover:bg-orange-700 text-white text-lg font-bold shadow-md">
+                    <Button onClick={handleCreate} disabled={loading} className="w-full h-12 bg-orange-600 hover:bg-orange-700 text-cur-on-primary text-lg font-bold shadow-md">
                         {loading ? <Loader2 className="animate-spin" /> : <><Send className="w-5 h-5 mr-2" /> 계정 생성 및 전송</>}
                     </Button>
 

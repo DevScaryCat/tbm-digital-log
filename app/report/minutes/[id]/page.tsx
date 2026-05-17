@@ -49,13 +49,13 @@ export default function MinutesReportPage() {
     }, [id])
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gray-100"><Loader2 className="w-10 h-10 animate-spin text-slate-500" /></div>
+        return <div className="min-h-screen flex items-center justify-center bg-gray-100"><Loader2 className="w-10 h-10 animate-spin text-cur-muted" /></div>
     }
 
     if (!minutes) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
 
     return (
-        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-white text-black font-sans">
+        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
             
             {/* ⭐️ 인쇄 버튼 (화면에서만 보임) */}
             <div className="max-w-[210mm] mx-auto mb-4 flex justify-between print:hidden">
@@ -63,15 +63,15 @@ export default function MinutesReportPage() {
                     <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
                     <Button variant="outline" onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4" /> 홈으로</Button>
                 </div>
-                <Button onClick={() => window.print()} className="bg-blue-900 hover:bg-blue-800 text-white font-bold px-6">
+                <Button onClick={() => window.print()} className="bg-blue-900 hover:bg-blue-800 text-cur-on-primary font-bold px-6">
                     <Printer className="mr-2 h-5 w-5" /> PDF 저장 / 인쇄
                 </Button>
             </div>
 
             {/* --- 통합 회의록 양식 (A4 1장 타겟) --- */}
-            <div className="max-w-[210mm] mx-auto bg-white shadow-lg print:shadow-none print:w-full min-h-[297mm] box-border pb-10">
+            <div className="max-w-[210mm] mx-auto bg-cur-card  print:shadow-none print:w-full min-h-[297mm] box-border pb-10">
                 {/* 메인 타이틀 (파란 배경) */}
-                <div className="bg-[#0b285b] text-white text-center py-5 border-2 border-black border-b-0">
+                <div className="bg-[#0b285b] text-cur-on-primary text-center py-5 border-2 border-black border-b-0">
                     <h1 className="text-3xl font-bold tracking-widest">Tool Box Meeting 회의록</h1>
                 </div>
 
@@ -80,15 +80,15 @@ export default function MinutesReportPage() {
                     <tbody>
                         <tr className="h-10 text-center">
                             <td className="border border-black bg-gray-200 font-bold w-32">TBM 일시</td>
-                            <td className="border border-black bg-white font-bold w-[35%] tracking-wide">
+                            <td className="border border-black bg-cur-card font-bold w-[35%] tracking-wide">
                                 {minutes.date ? `${minutes.date.split('-')[0]}년 ${minutes.date.split('-')[1]}월 ${minutes.date.split('-')[2]}일` : '년 월 일'} &nbsp; {minutes.start_time?.slice(0, 5) || ''} ~ {minutes.end_time?.slice(0, 5) || ''}
                             </td>
                             <td className="border border-black bg-gray-200 font-bold w-32">TBM 장소</td>
-                            <td className="border border-black bg-white font-bold">{minutes.location}</td>
+                            <td className="border border-black bg-cur-card font-bold">{minutes.location}</td>
                         </tr>
                         <tr className="h-10 text-center">
                             <td className="border border-black bg-gray-200 font-bold">공정명</td>
-                            <td className="border border-black bg-white font-bold">{minutes.process_name}</td>
+                            <td className="border border-black bg-cur-card font-bold">{minutes.process_name}</td>
                             <td className="border border-black bg-gray-200 font-bold">작업명</td>
                             <td className="border border-black font-bold h-10">{minutes.work_name}</td>
                         </tr>
@@ -102,7 +102,7 @@ export default function MinutesReportPage() {
                         </tr>
                         <tr className="h-12">
                             <td className="border border-black bg-gray-200 font-bold text-center">TBM 리더</td>
-                            <td colSpan={3} className="border border-black bg-white font-bold p-0">
+                            <td colSpan={3} className="border border-black bg-cur-card font-bold p-0">
                                 <div className="flex items-center w-full h-full">
                                     <div className="px-4 flex-1">직책 : {minutes.leader_title}</div>
                                     <div className="px-4 flex-1">성명 : {minutes.leader_name}</div>
@@ -153,12 +153,12 @@ export default function MinutesReportPage() {
                             </td>
                         </tr>
                         <tr className="h-10 text-center font-bold text-sm">
-                            <td colSpan={2} className="border border-black bg-white text-left px-2">□ 개인별 건강상태 이상 유무</td>
-                            <td colSpan={2} className="border border-black bg-white">{minutes.health_check}</td>
+                            <td colSpan={2} className="border border-black bg-cur-card text-left px-2">□ 개인별 건강상태 이상 유무</td>
+                            <td colSpan={2} className="border border-black bg-cur-card">{minutes.health_check}</td>
                         </tr>
                         <tr className="h-10 text-center font-bold text-sm">
-                            <td colSpan={2} className="border border-black bg-white text-left px-2">□ 개인 보호구 착용 상태</td>
-                            <td colSpan={2} className="border border-black bg-white">{minutes.ppe_check}</td>
+                            <td colSpan={2} className="border border-black bg-cur-card text-left px-2">□ 개인 보호구 착용 상태</td>
+                            <td colSpan={2} className="border border-black bg-cur-card">{minutes.ppe_check}</td>
                         </tr>
                         <tr className="h-10 text-center font-bold text-sm">
                             <td colSpan={2} className="border border-black text-left px-2">□ 안전구호 제창</td>

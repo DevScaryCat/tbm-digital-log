@@ -40,10 +40,10 @@ export default function BatchReportPage() {
     if (loading) return <div className="min-h-screen flex justify-center items-center"><Loader2 className="animate-spin w-10 h-10" /></div>
 
     return (
-        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-white">
+        <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card">
             <div className="max-w-[210mm] mx-auto mb-6 flex justify-between print:hidden">
                 <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2" /> 돌아가기</Button>
-                <Button onClick={() => window.print()} className="bg-blue-900 text-white"><Printer className="mr-2" /> 전체 인쇄 / PDF 저장</Button>
+                <Button onClick={() => window.print()} className="bg-blue-900 text-cur-on-primary"><Printer className="mr-2" /> 전체 인쇄 / PDF 저장</Button>
             </div>
 
             {logs.map((log) => (

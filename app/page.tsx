@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -24,7 +25,7 @@ export default function MainPage() {
 
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [companyInput, setCompanyInput] = useState("")
-  const [workerType, setWorkerType] = useState("관리감독자")
+  const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
   const [isUpdating, setIsUpdating] = useState(false)
   const [privacyAgreed, setPrivacyAgreed] = useState(false)
 
@@ -36,12 +37,12 @@ export default function MainPage() {
         setUser(currentUser)
 
         if (!currentUser.user_metadata?.company_name || !currentUser.user_metadata?.worker_type) {
-          setWorkerType(currentUser.user_metadata?.worker_type || "관리감독자")
+          setWorkerType(currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
           if (currentUser.user_metadata?.company_name) setCompanyInput(currentUser.user_metadata.company_name)
           setShowOnboarding(true)
         }
 
-        fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "관리감독자")
+        fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
       }
       setIsLoading(false)
     }
@@ -62,23 +63,21 @@ export default function MainPage() {
       const isFirstHalf = now.getMonth() < 6 
       
       let validLogs = []
-      if (currentWorkerType === '관리감독자') {
-        validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => log.date?.startsWith(`${currentYear}`))
-        setRequiredHours(16)
-      } else if (currentWorkerType === '현장 근로자 (비사무직)') {
-        validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => {
-          if (!log.date) return false
-          const month = parseInt(log.date.split('-')[1], 10)
-          return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
-        })
-        setRequiredHours(12)
-      } else { // 사무직 / 판매직
+      if (currentWorkerType === '사무직 / 판매직') {
         validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => {
           if (!log.date) return false
           const month = parseInt(log.date.split('-')[1], 10)
           return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
         })
         setRequiredHours(6)
+      } else {
+        // 기본값: 현장 근로자
+        validLogs = [...(tbmLogs||[]), ...(minutesLogs||[])].filter(log => {
+          if (!log.date) return false
+          const month = parseInt(log.date.split('-')[1], 10)
+          return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
+        })
+        setRequiredHours(12)
       }
 
       let totalMins = 0
@@ -134,49 +133,52 @@ export default function MainPage() {
     fetchUserStats(data.user.id, workerType)
   }
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-expo-canvas"><Loader2 className="w-10 h-10 text-expo-ink animate-spin" /></div>
+  const rawPercent = (parseFloat(totalEducationHours) / requiredHours) * 100
+  const maxScale = rawPercent > 100 ? 150 : 100
+  const fillWidth = Math.min(100, (rawPercent / maxScale) * 100)
+  const tickPosition = (100 / maxScale) * 100
 
-  // [화면 1] 비로그인 상태
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+
   if (!user) {
     return (
-      <div className="min-h-screen bg-expo-canvas flex flex-col relative overflow-hidden font-sans text-expo-ink">
-        {/* Soft Sky-blue wash behind hero */}
-        <div className="absolute top-0 left-0 right-0 h-[60vh] bg-gradient-to-b from-[#cfe7ff] via-[#a8c8e8]/30 to-expo-canvas -z-10"></div>
+      <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans">
+        <div className="absolute top-0 left-0 right-0 h-[50vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10"></div>
         
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-lg mx-auto w-full">
           <div className="space-y-6 flex flex-col items-center">
-            <div className="bg-expo-surface-dark p-5 rounded-[16px] shadow-sm flex items-center justify-center w-20 h-20">
-              <HardHat className="w-10 h-10 text-white" />
+            <div className="bg-cur-primary p-5 rounded-[12px] shadow-[0_0_40px_rgba(245,78,0,0.2)] flex items-center justify-center w-20 h-20">
+              <HardHat className="w-10 h-10 text-cur-on-primary" />
             </div>
             
             <div className="space-y-3">
-              <h1 className="text-[36px] sm:text-[48px] font-semibold text-expo-ink tracking-[-1.44px] leading-[1.1]">
+              <h1 className="text-[36px] sm:text-[48px] font-normal text-cur-ink tracking-[-1.44px] leading-[1.1]">
                 안전톡톡
               </h1>
-              <p className="text-expo-body text-[16px] sm:text-[18px]">
+              <p className="text-cur-muted text-[16px] sm:text-[18px]">
                 TBM부터 AI 제안까지 한 번에
               </p>
             </div>
           </div>
 
-          <div className="w-full space-y-5 bg-white p-6 rounded-[16px] shadow-[0_4px_12px_rgba(0,0,0,0.04)] border border-expo-hairline">
-            <div className="flex items-start gap-3 bg-expo-surface-strong/50 rounded-[8px] p-4 text-left">
+          <div className="w-full space-y-5 bg-cur-card p-6 rounded-[12px] border border-cur-hairline">
+            <div className="flex items-start gap-3 bg-cur-elevated rounded-[8px] p-4 text-left">
               <Checkbox
                 id="privacy-agree"
                 checked={privacyAgreed}
                 onCheckedChange={(checked) => setPrivacyAgreed(checked === true)}
-                className="mt-0.5 border-expo-hairline-strong data-[state=checked]:bg-expo-primary data-[state=checked]:text-white rounded-[4px]"
+                className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px]"
               />
-              <label htmlFor="privacy-agree" className="text-[14px] text-expo-body leading-[1.5] cursor-pointer">
-                <a href="/privacy" target="_blank" className="text-expo-text-link font-medium">개인정보처리방침</a> 및{" "}
-                <a href="/terms" target="_blank" className="text-expo-text-link font-medium">서비스 이용약관</a>에 동의합니다.
+              <label htmlFor="privacy-agree" className="text-[14px] text-cur-body leading-[1.5] cursor-pointer">
+                <a href="/privacy" target="_blank" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
+                <a href="/terms" target="_blank" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
               </label>
             </div>
             
             <Button 
               onClick={handleKakaoLogin} 
               disabled={!privacyAgreed} 
-              className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-medium rounded-[8px] shadow-sm flex items-center justify-center transition-all disabled:opacity-50"
+              className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
             >
               <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오 계정으로 시작
             </Button>
@@ -185,7 +187,7 @@ export default function MainPage() {
               onClick={() => router.push('/login')} 
               disabled={!privacyAgreed} 
               variant="outline" 
-              className="w-full h-12 bg-white border border-expo-hairline-strong hover:bg-expo-surface-strong text-expo-ink text-[15px] font-medium rounded-[8px] flex items-center justify-center transition-all disabled:opacity-50"
+              className="w-full h-12 bg-cur-elevated border border-cur-hairline hover:bg-cur-elevated/80 text-cur-body text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
             >
               <UserCircle className="w-5 h-5 mr-2" /> 일반 계정으로 시작
             </Button>
@@ -196,124 +198,163 @@ export default function MainPage() {
   }
 
   return (
-    <div className="bg-expo-surface-strong min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-expo-ink pb-20">
-      <div className="max-w-lg w-full mx-auto bg-white sm:shadow-[0_8px_32px_rgba(0,0,0,0.04)] sm:rounded-[24px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-expo-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
+    <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-body pb-20">
+      <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
 
-        {/* 헤더 */}
-        <div className="p-4 bg-white border-b border-expo-hairline sticky top-0 z-50">
+        <div className="p-4 bg-cur-card/90 backdrop-blur-sm border-b border-cur-hairline sticky top-0 z-50">
           <TBMHeader title="안전톡톡" onLogout={handleLogout} />
         </div>
 
-        <div className="p-4 sm:p-6">
-          {/* ⭐️ 교육 현황 진행도 카드 (New) */}
-          <div className="bg-white rounded-[12px] p-5 border border-expo-hairline shadow-[0_4px_12px_rgba(0,0,0,0.02)] mb-6">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-[15px] font-semibold text-expo-ink flex items-center gap-2">
+        <div className="p-4 sm:p-6 space-y-5">
+          <div className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-[-0.11px]">
                 법정 의무 교육 진행도
-                <span className="bg-expo-canvas-soft px-2 py-0.5 rounded-[4px] text-[11px] text-expo-muted font-medium">
-                  {user?.user_metadata?.worker_type || '관리감독자'}
+                <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold">
+                  {user?.user_metadata?.worker_type || '현장 근로자 (비사무직)'}
                 </span>
               </h3>
-              <div className="text-[14px] font-semibold text-expo-primary">
-                {statsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : `${totalEducationHours} / ${requiredHours}시간`}
+            </div>
+            
+            <div className="relative mt-2 mb-8">
+              {/* Text above the bar */}
+              <div 
+                className="absolute -top-7 text-[13px] font-bold text-cur-primary font-mono whitespace-nowrap"
+                style={
+                  fillWidth > 85 
+                    ? { right: '0%' } 
+                    : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
+                }
+              >
+                {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block text-cur-primary" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
+              </div>
+
+              {/* Progress bar container */}
+              <div className="w-full h-2 bg-cur-elevated rounded-full relative">
+                {/* 100% Tick Mark */}
+                <div 
+                  className="absolute top-0 bottom-0 w-[2px] bg-cur-card z-10"
+                  style={{ left: `${tickPosition}%` }}
+                />
+                
+                {/* 100% Label below the tick */}
+                <div 
+                  className="absolute top-3 text-[11px] font-medium text-cur-muted"
+                  style={
+                    tickPosition > 90
+                      ? { right: '0%' }
+                      : { left: `${tickPosition}%`, transform: 'translateX(-50%)' }
+                  }
+                >
+                  100%
+                </div>
+
+                {/* Filled bar */}
+                <div 
+                  className="h-full bg-gradient-to-r from-cur-primary-active to-cur-primary rounded-full transition-all duration-1000 ease-out absolute left-0 top-0"
+                  style={{ width: `${fillWidth}%` }} 
+                />
+              </div>
+
+              {/* Current Percentage Label below the right end of the filled bar */}
+              <div 
+                className="absolute top-3 text-[12px] font-bold text-cur-primary"
+                style={
+                  fillWidth > 90 
+                    ? { right: '0%' } 
+                    : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
+                }
+              >
+                {Math.floor(rawPercent)}%
               </div>
             </div>
-            <div className="w-full h-2.5 bg-expo-canvas-soft rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-expo-primary rounded-full transition-all duration-1000 ease-out" 
-                style={{ width: `${Math.min(100, (parseFloat(totalEducationHours) / requiredHours) * 100)}%` }} 
-              />
-            </div>
-            <p className="text-[12px] text-expo-muted mt-3 leading-relaxed">
-              {user?.user_metadata?.worker_type === '관리감독자' 
-                ? '연간 16시간 이상 (정기교육 TBM 대체 가능)' 
-                : '반기별 기준 (정기교육 TBM 대체 가능)'}
+            <p className="text-[12px] text-cur-muted mt-3 leading-relaxed">
+              {user?.user_metadata?.worker_type === '사무직 / 판매직' 
+                ? '반기별 6시간 이상 (정기교육 TBM 대체 가능)' 
+                : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
             </p>
           </div>
 
-          {/* ⭐️ 현황 요약 카드 */}
-          <div className="bg-expo-surface-card rounded-[12px] flex text-center divide-x divide-expo-hairline border border-expo-hairline shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-            <div onClick={() => router.push('/analytics')} className="flex-1 py-4 px-2 cursor-pointer hover:bg-expo-canvas-soft transition-colors rounded-l-[12px]">
-              <div className="text-[11px] text-expo-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
-              <div className="text-[28px] font-semibold text-expo-ink">
-                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-expo-muted" /> : tbmMinutesCount}
+          <div className="rounded-[12px] flex text-center divide-x divide-cur-hairline border border-cur-hairline bg-cur-card overflow-hidden">
+            <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+              <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
+              <div className="text-[28px] font-bold text-cur-ink font-mono">
+                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : tbmMinutesCount}
               </div>
             </div>
-            <div onClick={() => router.push('/analytics')} className="flex-1 py-4 px-2 cursor-pointer hover:bg-expo-canvas-soft transition-colors rounded-r-[12px]">
-              <div className="text-[11px] text-expo-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 일지</div>
-              <div className="text-[28px] font-semibold text-expo-ink">
-                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-expo-muted" /> : tbmCount}
+            <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+              <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 일지</div>
+              <div className="text-[28px] font-bold text-cur-ink font-mono">
+                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : tbmCount}
               </div>
             </div>
           </div>
         </div>
 
-        {/* 핵심 기능 메뉴 */}
-        <div className="flex-1 p-6 bg-white space-y-4">
+        <div className="flex-1 p-6 space-y-4">
           
-          <Card 
+          <div 
             onClick={() => router.push('/tbm-minutes')} 
-            className="border border-expo-hairline bg-white hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:border-expo-hairline-strong transition-all cursor-pointer rounded-[12px] group"
+            className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
           >
-            <CardContent className="p-6 flex items-center justify-between">
+            <div className="p-5 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-expo-surface-strong w-12 h-12 rounded-[8px] flex items-center justify-center text-expo-ink group-hover:bg-expo-ink group-hover:text-white transition-colors">
+                <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
                   <Users className="w-6 h-6" />
                 </div>
                 <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-expo-ink">TBM 회의록 작성</h3>
-                  <p className="text-expo-body text-[14px]">안전보건관련 논의 및 회의 기록 작성</p>
+                  <h3 className="text-[16px] font-semibold text-cur-ink">TBM 회의록 작성</h3>
+                  <p className="text-cur-muted text-[14px]">현장과의 더많은 소통으로 사전에 위험을 통제하세요</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-expo-muted-soft group-hover:text-expo-ink transition-colors" />
-            </CardContent>
-          </Card>
+              <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />
+            </div>
+          </div>
 
-          <Card 
+          <div 
             onClick={() => router.push('/tbm')} 
-            className="border border-expo-hairline bg-white hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:border-expo-hairline-strong transition-all cursor-pointer rounded-[12px] group"
+            className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
           >
-            <CardContent className="p-6 flex items-center justify-between">
+            <div className="p-5 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-expo-surface-strong w-12 h-12 rounded-[8px] flex items-center justify-center text-expo-ink group-hover:bg-expo-ink group-hover:text-white transition-colors">
+                <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
                   <HardHat className="w-6 h-6" />
                 </div>
                 <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-expo-ink">TBM 일지 작성</h3>
-                  <p className="text-expo-body text-[14px]">작업 전 안전점검 목록 및 사진 등 기록</p>
+                  <h3 className="text-[16px] font-semibold text-cur-ink">안전보건교육일지 작성</h3>
+                  <p className="text-cur-muted text-[14px]">정기 교육일지 등을 AI로 똑똑하게 기록 관리</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-expo-muted-soft group-hover:text-expo-ink transition-colors" />
-            </CardContent>
-          </Card>
+              <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />
+            </div>
+          </div>
 
         </div>
       </div>
 
-      {/* 온보딩 팝업 */}
       {showOnboarding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[16px] p-8 w-full max-w-sm shadow-xl animate-in zoom-in-95 duration-200 border border-expo-hairline">
-            <h3 className="text-[22px] font-semibold text-expo-ink mb-2 tracking-tight">환영합니다!</h3>
-            <p className="text-expo-body text-[14px] mb-6 leading-[1.5]">원활한 일지 작성을 위해<br />기본 정보를 설정해주세요.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline">
+            <h3 className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">환영합니다!</h3>
+            <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">원활한 일지 작성을 위해<br />기본 정보를 설정해주세요.</p>
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[13px] font-medium text-expo-ink">소속 현장명 (또는 업체명)</label>
+                <label className="text-[13px] font-medium text-cur-body">소속 현장명 (또는 업체명)</label>
                 <Input 
                   value={companyInput} 
                   onChange={(e) => setCompanyInput(e.target.value)} 
                   placeholder="소속 현장명 (또는 업체명)" 
-                  className="h-11 text-[14px] border-expo-hairline-strong rounded-[8px] focus:border-expo-ink focus:ring-1 focus:ring-expo-ink bg-white" 
+                  className="h-11 text-[14px] border-cur-hairline rounded-[6px] focus:border-cur-primary focus:ring-1 focus:ring-cur-primary bg-cur-elevated text-cur-ink placeholder:text-cur-muted" 
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[13px] font-medium text-expo-ink">근로자 구분 (교육시간 산정용)</label>
+                <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>
                 <Select value={workerType} onValueChange={setWorkerType}>
-                  <SelectTrigger className="w-full h-11 text-[14px] border-expo-hairline-strong rounded-[8px] bg-white focus:ring-1 focus:ring-expo-ink">
+                  <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[6px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
                     <SelectValue placeholder="직군 선택" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="관리감독자">관리감독자 (연간 16시간)</SelectItem>
+                  <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
+
                     <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
                     <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
                   </SelectContent>
@@ -322,7 +363,7 @@ export default function MainPage() {
               <Button 
                 onClick={handleSaveCompany} 
                 disabled={isUpdating} 
-                className="w-full h-11 mt-4 text-[14px] font-medium bg-expo-primary hover:bg-expo-primary-active text-white rounded-[8px]"
+                className="w-full h-11 mt-4 text-[14px] font-semibold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[6px]"
               >
                 {isUpdating ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기
               </Button>
