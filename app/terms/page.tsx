@@ -112,6 +112,16 @@ export default function TermsOfServicePage() {
                     </section>
 
                     <section>
+                        <h2 className="text-base font-bold text-cur-ink mb-3">제11조 (구독 취소 및 환불 정책)</h2>
+                        <ul className="list-disc pl-5 space-y-1">
+                            <li>**구독의 취소**: 이용자는 언제든지 정기결제(구독)를 취소할 수 있으며, 취소 시 다음 결제일부터 요금이 청구되지 않습니다. 취소 후에도 이미 결제된 해당 월의 남은 기간 동안은 서비스를 정상적으로 이용할 수 있습니다.</li>
+                            <li>**환불 규정**: 디지털 콘텐츠 및 서비스의 특성상, 결제 후 서비스를 1회 이상 이용(AI 일지 생성, 회의록 생성 등)한 경우 해당 결제건에 대한 환불은 원칙적으로 불가능합니다.</li>
+                            <li>**예외적 환불**: 결제일로부터 7일 이내에 서비스 이용 이력이 전혀 없는 경우에는 고객센터로 요청 시 전액 환불이 가능합니다.</li>
+                            <li>회사의 귀책사유로 인해 서비스를 지속할 수 없는 경우, 남은 기간에 비례하여 환불해 드립니다.</li>
+                        </ul>
+                    </section>
+
+                    <section>
                         <h2 className="text-base font-bold text-cur-ink mb-3">부칙</h2>
                         <p>이 약관은 2026년 3월 6일부터 시행합니다.</p>
                     </section>
