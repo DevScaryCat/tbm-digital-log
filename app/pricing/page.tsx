@@ -30,7 +30,7 @@ export default function PricingPage() {
                     <p className="text-cur-muted text-[16px]">안전톡톡과 함께 더 편리하고 안전한 현장을 만들어보세요.</p>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="max-w-md mx-auto">
                     {/* Monthly Plan */}
                     <div className="bg-cur-card rounded-2xl p-8 border border-cur-hairline shadow-sm hover:shadow-md transition-shadow relative overflow-hidden flex flex-col">
                         <div className="mb-6">
@@ -62,45 +62,12 @@ export default function PricingPage() {
                         </Button>
                     </div>
 
-                    {/* Yearly Plan */}
-                    <div className="bg-cur-card rounded-2xl p-8 border-2 border-cur-primary shadow-lg relative overflow-hidden flex flex-col">
-                        <div className="absolute top-4 right-4 bg-cur-primary text-cur-on-primary text-[12px] font-bold px-3 py-1 rounded-full shadow-sm">
-                            Best Value
-                        </div>
-                        <div className="mb-6">
-                            <h3 className="text-[20px] font-bold text-cur-ink mb-2">연간 구독</h3>
-                            <p className="text-cur-muted text-[14px]">26% 할인된 가격으로 1년 내내 든든하게</p>
-                        </div>
-                        
-                        <div className="mb-6">
-                            <div className="flex items-end gap-2 mb-1">
-                                <span className="text-[36px] font-bold text-cur-primary tracking-tight">16,800원</span>
-                                <span className="text-[16px] text-cur-muted mb-2">/ 년</span>
-                            </div>
-                            <div className="text-[13px] text-cur-muted font-medium">
-                                (월 1,400원 상당)
-                            </div>
-                        </div>
-
-                        <div className="space-y-4 mb-8 flex-1">
-                            {features.map((feature, idx) => (
-                                <div key={idx} className="flex items-start gap-3">
-                                    <CheckCircle2 className="w-5 h-5 text-cur-primary shrink-0" />
-                                    <span className="text-[15px] text-cur-ink">{feature}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <Button className="w-full bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold h-12 rounded-xl shadow-md transition-all">
-                            연간 구독 시작하기
-                        </Button>
-                    </div>
                 </div>
 
                 <div className="mt-12 text-center text-[13px] text-cur-muted-soft bg-cur-card p-6 rounded-xl border border-cur-hairline">
                     <p className="mb-2 font-medium">환불 규정 안내</p>
                     <p>결제일로부터 7일 이내, 서비스 이용 이력(AI 생성 등)이 없는 경우에 한해 100% 환불 가능합니다.</p>
-                    <p>디지털 서비스 특성상 1회라도 이용하신 경우 해당 월/연도 결제건에 대한 환불은 제한됩니다.</p>
+                    <p>디지털 서비스 특성상 1회라도 이용하신 경우 해당 월 결제건에 대한 환불은 제한됩니다.</p>
                 </div>
             </div>
         </div>
