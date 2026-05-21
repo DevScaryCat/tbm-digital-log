@@ -1,3 +1,4 @@
+// app/tbm/sign/[sessionId]/page.tsx
 "use client"
 
 import { useState, useRef, useEffect } from "react"
@@ -24,7 +25,6 @@ export default function SignPage() {
 
     const sigCanvas = useRef<SignatureCanvas>(null)
 
-    // 만료 여부 확인
     useEffect(() => {
         const checkSession = async () => {
             const { data, error } = await supabase
@@ -36,7 +36,6 @@ export default function SignPage() {
                 .limit(1)
 
             if (!data || data.length === 0) {
-                // 잘못된 링크이거나 만료 마커가 쓰여지기 전 삭제된 세션
                 setIsExpired(true)
             } else if (data[0].name === 'CLOSED_SESSION') {
                 setIsExpired(true)
@@ -69,6 +68,21 @@ export default function SignPage() {
 
         try {
             const signatureData = sigCanvas.current.toDataURL("image/png")
+            const response = await fetch(signatureData)
+            const blob = await response.blob()
+            const fileName = `${sessionId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.png`
+            const { error: uploadError } = await supabase.storage
+                .from('signatures')
+                .upload(fileName, blob, {
+                    contentType: 'image/png',
+                    upsert: true
+                })
+
+            if (uploadError) throw uploadError
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('signatures')
+                .getPublicUrl(fileName)
 
             const { error } = await supabase
                 .from('tbm_pending_signatures')
@@ -76,7 +90,7 @@ export default function SignPage() {
                     session_id: sessionId,
                     name: name.trim(),
                     gender,
-                    signature: signatureData
+                    signature: publicUrl
                 })
 
             if (error) throw error
@@ -127,7 +141,6 @@ export default function SignPage() {
                 <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.<br />이 창을 닫아주세요.</p>
                 <Button
                     onClick={() => {
-                        // 모바일 브라우저 닫기 시도
                         window.close()
                     }}
                     className="w-full max-w-sm h-14 text-lg bg-cur-ink"
@@ -160,7 +173,7 @@ export default function SignPage() {
                     <div className="space-y-2">
                         <Label className="text-base text-cur-body">성별</Label>
                         <div className="flex bg-cur-elevated p-1.5 rounded-xl border border-cur-hairline">
-                            <button
+                           <button
                                 onClick={() => setGender('M')}
                                 className={cn(
                                     "flex-1 py-3 text-base font-bold rounded-lg transition-all",
@@ -194,7 +207,6 @@ export default function SignPage() {
                                 canvasProps={{ className: "w-full h-full absolute inset-0" }}
                                 backgroundColor="rgba(0,0,0,0)"
                             />
-                            {/* 안내 텍스트 표시 (서명이 비어있을 때) */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
                                 <span className="text-2xl font-bold tracking-widest rotate-[-15deg]">서명 공간</span>
                             </div>

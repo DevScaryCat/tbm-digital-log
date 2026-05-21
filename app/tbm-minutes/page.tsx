@@ -1,3 +1,4 @@
+// app/tbm-minutes/page.tsx
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -285,6 +286,31 @@ export default function TBMMinutesPage() {
         setStep(prev => Math.min(5, prev + 1));
     }
 
+    const uploadBase64ToStorage = async (base64Data: string, bucket: string, pathPrefix: string): Promise<string> => {
+        if (!base64Data || typeof base64Data !== 'string') return "";
+        if (!base64Data.startsWith('data:')) return base64Data;
+
+        const res = await fetch(base64Data);
+        const blob = await res.blob();
+        const ext = base64Data.split(';')[0].split('/')[1] || 'png';
+        const fileName = `${pathPrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(fileName, blob, {
+                contentType: blob.type,
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(fileName);
+
+        return publicUrl;
+    }
+
     const saveToDatabase = async () => {
         const errorMsg = validateStep(3);
         if (errorMsg) { alert(errorMsg); return; }
@@ -294,20 +320,25 @@ export default function TBMMinutesPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) throw new Error("로그인 필요")
 
+            let leaderSignatureUrl = null;
+            if (leaderSignature) {
+                leaderSignatureUrl = await uploadBase64ToStorage(leaderSignature, 'signatures', 'leader');
+            }
+
             const { data: logData, error: logError } = await supabase
                 .from('tbm_minutes')
                 .insert({
                     user_id: session.user.id,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
-                    end_time: getCurrentTime(), // 저장 시점 시간
+                    end_time: getCurrentTime(),
                     location: formData.location,
                     process_name: formData.processName,
                     work_name: formData.workName,
                     work_content: formData.workContent,
                     leader_title: formData.leaderTitle,
                     leader_name: formData.leaderName,
-                    leader_signature: leaderSignature,
+                    leader_signature: leaderSignatureUrl,
                     health_check: formData.healthCheck,
                     ppe_check: formData.ppeCheck,
                     safety_phrase: formData.safetyPhrase,
@@ -320,11 +351,18 @@ export default function TBMMinutesPage() {
             if (logError) throw logError
 
             const validParticipantsForDB = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
-            const participantsData = validParticipantsForDB.map(p => ({
-                minutes_id: logData.id,
-                name: p.name,
-                signature: p.signature
-            }))
+            const participantsData = [];
+            for (const p of validParticipantsForDB) {
+                let sigUrl = p.signature;
+                if (p.signature && p.signature.startsWith('data:')) {
+                    sigUrl = await uploadBase64ToStorage(p.signature, 'signatures', 'minute-participant');
+                }
+                participantsData.push({
+                    minutes_id: logData.id,
+                    name: p.name,
+                    signature: sigUrl
+                });
+            }
 
             if(participantsData.length > 0) {
                 const { error: partError } = await supabase.from('tbm_minutes_participants').insert(participantsData)

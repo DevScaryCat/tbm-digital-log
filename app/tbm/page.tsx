@@ -1,3 +1,4 @@
+// app/tbm/page.tsx
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -347,6 +348,31 @@ export default function TBMPage() {
         setStep(prev => Math.min(6, prev + 1));
     }
 
+    const uploadBase64ToStorage = async (base64Data: string, bucket: string, pathPrefix: string): Promise<string> => {
+        if (!base64Data || typeof base64Data !== 'string') return "";
+        if (!base64Data.startsWith('data:')) return base64Data;
+
+        const res = await fetch(base64Data);
+        const blob = await res.blob();
+        const ext = base64Data.split(';')[0].split('/')[1] || 'png';
+        const fileName = `${pathPrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(fileName, blob, {
+                contentType: blob.type,
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(fileName);
+
+        return publicUrl;
+    }
+
     const saveToDatabase = async () => {
         const errorMsg = validateStep(5);
         if (errorMsg) { alert(errorMsg); return; }
@@ -356,7 +382,15 @@ export default function TBMPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) throw new Error("로그인 필요")
 
+            let instructorSignatureUrl = null;
+            if (formData.educationType !== "TBM" && instructorSignature) {
+                instructorSignatureUrl = await uploadBase64ToStorage(instructorSignature, 'signatures', 'instructor');
+            }
 
+            let photoUrl = null;
+            if (formData.photo) {
+                photoUrl = await uploadBase64ToStorage(formData.photo, 'photos', 'photo');
+            }
 
             const { data: logData, error: logError } = await supabase
                 .from('tbm_logs')
@@ -369,38 +403,43 @@ export default function TBMPage() {
                     company_name: formData.companyName,
                     education_type: formData.educationType,
                     instructor_name: formData.educationType === "TBM" ? "TBM (자율)" : formData.instructorName,
-                    instructor_signature: formData.educationType === "TBM" ? null : instructorSignature,
+                    instructor_signature: instructorSignatureUrl,
                     education_content: formData.educationContent,
                     remarks: formData.remarks,
-                    photo_url: formData.photo
+                    photo_url: photoUrl
                 })
                 .select()
                 .single()
 
             if (logError) throw logError
 
-            // 아무것도 안건드린 빈칸 제거
             const validParticipantsForDB = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
 
-            const participantsData = validParticipantsForDB.map(p => ({
-                log_id: logData.id,
-                name: p.name,
-                gender: p.gender,
-                signature: p.signature,
-                status: p.status
-            }))
+            const participantsData = [];
+            for (const p of validParticipantsForDB) {
+                let sigUrl = p.signature;
+                if (p.signature && p.signature.startsWith('data:')) {
+                    sigUrl = await uploadBase64ToStorage(p.signature, 'signatures', 'participant');
+                }
+                participantsData.push({
+                    log_id: logData.id,
+                    name: p.name,
+                    gender: p.gender,
+                    signature: sigUrl,
+                    status: p.status
+                });
+            }
 
-            const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)
-            if (partError) throw partError
+            if (participantsData.length > 0) {
+                const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)
+                if (partError) throw partError
+            }
 
-            // 발급했던 원격 서명 고유 링크(QR) 만료 처리 및 기존 쓰레기 데이터 파기
             if (sessionId) {
-                // 1. 임시 테이블의 기존 서명 이미지 데이터 전부 파기하여 용량 확보
                 await supabase.from('tbm_pending_signatures')
                     .delete()
                     .eq('session_id', sessionId);
 
-                // 2. 폐기 마커 등록 (URL로 접속하는 것을 완벽 차단)
                 await supabase.from('tbm_pending_signatures').insert({
                     session_id: sessionId,
                     name: "CLOSED_SESSION",
