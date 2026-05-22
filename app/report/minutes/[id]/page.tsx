@@ -1,3 +1,4 @@
+// app/report/minutes/[id]/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -12,11 +13,40 @@ interface Hazard {
     measure: string;
 }
 
+interface TbmMinute {
+    id: string;
+    user_id: string;
+    created_at: string;
+    date: string;
+    start_time: string | null;
+    end_time: string | null;
+    location: string | null;
+    process_name: string | null;
+    work_name: string | null;
+    work_content: string | null;
+    leader_title: string | null;
+    leader_name: string | null;
+    leader_signature: string | null;
+    health_check: string;
+    ppe_check: string;
+    safety_phrase: string | null;
+    instructions: string | null;
+    hazards: Hazard[];
+}
+
+interface MinuteParticipant {
+    id: string;
+    minutes_id: string;
+    created_at: string;
+    name: string;
+    signature: string;
+}
+
 export default function MinutesReportPage() {
     const { id } = useParams()
     const router = useRouter()
-    const [minutes, setMinutes] = useState<any>(null)
-    const [participants, setParticipants] = useState<any[]>([])
+    const [minutes, setMinutes] = useState<TbmMinute | null>(null)
+    const [participants, setParticipants] = useState<MinuteParticipant[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -27,16 +57,24 @@ export default function MinutesReportPage() {
 
                 if (minutesError) throw minutesError
 
-                // Parse hazards if it's a string
-                if (typeof minutesData.hazards === 'string') {
-                    try {
-                        minutesData.hazards = JSON.parse(minutesData.hazards)
-                    } catch (e) {
-                        minutesData.hazards = []
+                let parsedHazards: Hazard[] = []
+                if (minutesData) {
+                    if (typeof minutesData.hazards === 'string') {
+                        try {
+                            parsedHazards = JSON.parse(minutesData.hazards)
+                        } catch (e) {
+                            parsedHazards = []
+                        }
+                    } else if (Array.isArray(minutesData.hazards)) {
+                        parsedHazards = minutesData.hazards as Hazard[]
                     }
+                    
+                    const finalData: TbmMinute = {
+                        ...minutesData,
+                        hazards: parsedHazards
+                    }
+                    setMinutes(finalData)
                 }
-
-                setMinutes(minutesData)
                 setParticipants(partData || [])
             } catch (error) {
                 console.error("데이터 로드 실패:", error)
@@ -57,7 +95,6 @@ export default function MinutesReportPage() {
     return (
         <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
             
-            {/* ⭐️ 인쇄 버튼 (화면에서만 보임) */}
             <div className="max-w-[210mm] mx-auto mb-4 flex justify-between print:hidden">
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
@@ -68,14 +105,11 @@ export default function MinutesReportPage() {
                 </Button>
             </div>
 
-            {/* --- 통합 회의록 양식 (A4 1장 타겟) --- */}
             <div className="max-w-[210mm] mx-auto bg-cur-card  print:shadow-none print:w-full min-h-[297mm] box-border pb-10">
-                {/* 메인 타이틀 (파란 배경) */}
                 <div className="bg-[#0b285b] text-cur-on-primary text-center py-5 border-2 border-black border-b-0">
                     <h1 className="text-3xl font-bold tracking-widest">Tool Box Meeting 회의록</h1>
                 </div>
 
-                {/* 1. 기본 정보 테이블 */}
                 <table className="w-full border-collapse border-2 border-black text-sm">
                     <tbody>
                         <tr className="h-10 text-center">
@@ -113,12 +147,16 @@ export default function MinutesReportPage() {
                                                 <img src={minutes.leader_signature} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" alt="리더 서명" />
                                             )}
                                         </div>
+                                        {minutes.leader_signature && (
+                                            <span className="text-[10px] text-gray-500 font-normal leading-tight ml-2">
+                                                * 본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </td>
                         </tr>
 
-                        {/* 2. 위험성 평가 */}
                         <tr className="bg-orange-50/50">
                             <td colSpan={4} className="border-l border-r border-black p-2 font-bold text-sm">
                                 ■ 근로자 참여 위험성평가
@@ -146,7 +184,6 @@ export default function MinutesReportPage() {
                             );
                         })}
 
-                        {/* 3. 확인사항 */}
                         <tr>
                             <td colSpan={4} className="border border-black border-t-2 p-2 font-bold text-sm">
                                 ■ 작업 시작전 확인사항
@@ -165,7 +202,6 @@ export default function MinutesReportPage() {
                             <td colSpan={2} className="border border-black tracking-widest text-blue-900">&quot;{minutes.safety_phrase || "안전, 안전, 안전"}&quot;</td>
                         </tr>
 
-                        {/* 4. 지시사항 */}
                         <tr>
                             <td colSpan={4} className="border border-black p-2 font-bold text-sm border-t-2">
                                 ■ 작업 시작전 협의 및 지시사항(작업전에 협의할 사항을 음성으로 녹음하세요)
@@ -179,7 +215,6 @@ export default function MinutesReportPage() {
                             </td>
                         </tr>
 
-                        {/* 5. 참석자 확인 */}
                         <tr>
                             <td colSpan={4} className="border border-black p-2 font-bold text-sm border-t-2">
                                 ■ 참석자 확인(※ TBM에 참여하지 않은 작업자를 확인하여 미팅 참석 유도)
@@ -200,7 +235,6 @@ export default function MinutesReportPage() {
                             </td>
                         </tr>
                         
-                        {/* 참석자 명단 행 (짝수로 묶어서 렌더링, A4 페이지에 맞게 10~15줄 조절) */}
                         {Array.from({ length: 15 }).map((_, i) => {
                             const p1 = participants[i];
                             const p2 = participants[i + 15];

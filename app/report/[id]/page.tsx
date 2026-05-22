@@ -1,3 +1,4 @@
+// app/report/[id]/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -6,11 +7,39 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Printer, ArrowLeft, Loader2, Home } from "lucide-react"
 
+interface TbmLog {
+    id: string;
+    user_id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    location: string;
+    company_name: string;
+    education_type: string;
+    instructor_name: string;
+    instructor_signature: string | null;
+    education_content: string;
+    remarks: string;
+    photo_url: string | null;
+    confirmation_signature: string | null;
+    created_at: string;
+}
+
+interface Participant {
+    id: string;
+    log_id: string;
+    name: string;
+    gender: 'M' | 'F';
+    signature: string | null;
+    status: string;
+    created_at: string;
+}
+
 export default function ReportPage() {
     const { id } = useParams()
     const router = useRouter()
-    const [log, setLog] = useState<any>(null)
-    const [participants, setParticipants] = useState<any[]>([])
+    const [log, setLog] = useState<TbmLog | null>(null)
+    const [participants, setParticipants] = useState<Participant[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -39,7 +68,6 @@ export default function ReportPage() {
 
     if (!log) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
 
-    // 통계 계산
     const maleCount = participants.filter(p => p.gender === 'M').length
     const femaleCount = participants.filter(p => p.gender === 'F').length
     const totalCount = participants.length
@@ -47,7 +75,6 @@ export default function ReportPage() {
     return (
         <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
 
-            {/* ⭐️ 인쇄 버튼 (화면에서만 보임) */}
             <div className="max-w-[210mm] mx-auto mb-4 flex justify-between print:hidden">
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
@@ -58,13 +85,11 @@ export default function ReportPage() {
                 </Button>
             </div>
 
-            {/* --- PAGE 1: 교육일지 --- */}
             <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">안 전 보 건 교 육 일 지</h1>
 
                 <table className="w-full border-collapse border border-black text-sm">
                     <tbody>
-                        {/* 교육 명칭 */}
                         <tr className="h-16">
                             <td className="border border-black bg-gray-100 text-center font-bold w-32">교육 명칭</td>
                             <td className="border border-black p-2" colSpan={5}>
@@ -79,7 +104,6 @@ export default function ReportPage() {
                             </td>
                         </tr>
 
-                        {/* 교육 인원 (표 안의 표) */}
                         <tr className="h-24">
                             <td className="border border-black bg-gray-100 text-center font-bold">교육 인원</td>
                             <td className="border border-black p-0" colSpan={5}>
@@ -113,11 +137,10 @@ export default function ReportPage() {
                             </td>
                         </tr>
 
-                        {/* 교육 시간, 장소, 방법 */}
                         <tr className="h-10">
                             <td className="border border-black bg-gray-100 text-center font-bold">교육 시간</td>
                             <td className="border border-black p-2 text-center" colSpan={5}>
-                                {log.date.split('-')[0]}년 {log.date.split('-')[1]}월 {log.date.split('-')[2]}일 &nbsp;&nbsp;
+                                {log.date?.split('-')[0]}년 {log.date?.split('-')[1]}월 {log.date?.split('-')[2]}일 &nbsp;&nbsp;
                                 {log.start_time?.slice(0, 5)} ~ {log.end_time?.slice(0, 5)}
                             </td>
                         </tr>
@@ -130,7 +153,6 @@ export default function ReportPage() {
                             <td className="border border-black p-2" colSpan={5}>강의식 / 시청각 교육 / 현장 TBM</td>
                         </tr>
 
-                        {/* 교육 내용 */}
                         <tr>
                             <td className="border border-black bg-gray-100 text-center font-bold">교육 내용</td>
                             <td className="border border-black p-0 align-top" colSpan={5}>
@@ -140,26 +162,31 @@ export default function ReportPage() {
                             </td>
                         </tr>
 
-                        {/* 교육 실시자 (서명) */}
                         <tr className="h-20">
-                            <td className="border border-black bg-gray-100 text-center font-bold" rowSpan={2}>교육 실시자<br />(관리감독자)</td>
+                            <td className="border border-black bg-gray-100 text-center font-bold" rowSpan={3}>교육 실시자<br />(관리감독자)</td>
                             <td className="border border-black bg-gray-50 text-center h-8 font-bold" colSpan={2}>소속 및 직위</td>
                             <td className="border border-black bg-gray-50 text-center font-bold" colSpan={2}>성 명</td>
                             <td className="border border-black bg-gray-50 text-center font-bold">서 명</td>
                         </tr>
                         <tr className="h-16">
                             <td className="border border-black text-center" colSpan={2}>{log.company_name}</td>
-                            <td className="border border-black text-center font-bold text-lg" colSpan={2}></td>
+                            <td className="border border-black text-center font-bold text-lg" colSpan={2}>{log.instructor_name}</td>
                             <td className="border border-black text-center p-1 relative h-16 w-32">
-                                {log.instructor_signature ? (
+                                {log.confirmation_signature ? (
+                                    <img src={log.confirmation_signature} className="absolute inset-0 w-full h-full object-contain p-1" />
+                                ) : log.instructor_signature ? (
                                     <img src={log.instructor_signature} className="absolute inset-0 w-full h-full object-contain p-1" />
                                 ) : (
                                     <span className="text-gray-300"></span>
                                 )}
                             </td>
                         </tr>
+                        <tr className="h-10">
+                            <td className="border border-black p-2 text-[10px] text-gray-500 leading-tight" colSpan={5}>
+                                본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.
+                            </td>
+                        </tr>
 
-                        {/* 특이사항 */}
                         <tr>
                             <td className="border border-black bg-gray-100 text-center font-bold">특 이 사 항<br /><span className="font-normal text-xs">(기타 전달사항 등)</span></td>
                             <td className="border border-black p-0 align-top text-red-600 font-medium" colSpan={5}>
@@ -173,7 +200,6 @@ export default function ReportPage() {
                 <div className="w-full text-center text-sm border-t border-black pt-2 mt-8 font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            {/* --- PAGE 2: 참석자 명단 --- */}
             <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 참 석 자 명 단</h1>
 
@@ -195,7 +221,6 @@ export default function ReportPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {/* 30칸을 채우기 위한 로직 (2열 배치) */}
                         {Array.from({ length: 15 }).map((_, i) => {
                             const p1 = participants[i]
                             const p2 = participants[i + 15]
@@ -219,7 +244,6 @@ export default function ReportPage() {
                 <div className="w-full text-center text-sm border-t border-black pt-2 mt-8 font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            {/* --- PAGE 3: 교육 사진 --- */}
             <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full min-h-[297mm] relative box-border flex flex-col">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 사 진</h1>
 

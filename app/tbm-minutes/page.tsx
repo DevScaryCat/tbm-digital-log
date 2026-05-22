@@ -21,7 +21,39 @@ import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, 
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
-// 타입 정의
+interface SpeechRecognitionEvent {
+    resultIndex: number
+    results: {
+        length: number
+        [key: number]: {
+            isFinal: boolean
+            [key: number]: {
+                transcript: string
+            }
+        }
+    }
+}
+
+interface SpeechRecognitionErrorEvent {
+    error: string
+}
+
+interface SpeechRecognition {
+    continuous: boolean
+    interimResults: boolean
+    lang: string
+    onresult: (event: SpeechRecognitionEvent) => void
+    onerror: (event: SpeechRecognitionErrorEvent) => void
+    onend: () => void
+    start: () => void
+    stop: () => void
+}
+
+interface CustomWindow extends Window {
+    SpeechRecognition?: new () => SpeechRecognition
+    webkitSpeechRecognition?: new () => SpeechRecognition
+}
+
 interface Participant {
     id: number
     name: string
@@ -61,17 +93,16 @@ export default function TBMMinutesPage() {
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
-    // 무료 STT (Web Speech API) 관련 상태
     const [isRecording, setIsRecording] = useState(false)
     const isRecordingRef = useRef(false)
-    const recognitionRef = useRef<any>(null)
+    const recognitionRef = useRef<SpeechRecognition | null>(null)
     const [accumulatedTranscript, setAccumulatedTranscript] = useState("")
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
     const sessionStartTimeRef = useRef<number | null>(null);
     const accumulatedTimeRef = useRef<number>(0);
-    const MAX_RECORDING_TIME = 1200; // 20 minutes in seconds
+    const MAX_RECORDING_TIME = 1200;
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -126,6 +157,10 @@ export default function TBMMinutesPage() {
     const [guideTab, setGuideTab] = useState<'guide' | 'script'>('guide')
     const sigCanvas = useRef<SignatureCanvas>(null)
 
+    const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+    const [hasAgreedToDisclaimer, setHasAgreedToDisclaimer] = useState(false)
+    const confirmationSigCanvas = useRef<SignatureCanvas>(null)
+
     const getCurrentTime = () => {
         const now = new Date()
         return now.toTimeString().slice(0, 5)
@@ -134,7 +169,7 @@ export default function TBMMinutesPage() {
     const [formData, setFormData] = useState<TBMMinutesData>({
         date: new Date(),
         startTime: getCurrentTime(),
-        endTime: getCurrentTime(), // 초기엔 시작시간과 동일하게 둠 (저장 시 갱신)
+        endTime: getCurrentTime(),
         location: "현장 지정구역",
         processName: "",
         workName: "",
@@ -184,8 +219,7 @@ export default function TBMMinutesPage() {
             setFormData(prev => ({
                 ...prev,
                 location: lastLocation,
-                leaderName: session.user.user_metadata.full_name || session.user.email?.split("@")[0] || "",
-                startTime: getCurrentTime()
+                leaderName: session.user.user_metadata.full_name || session.user.email?.split("@")[0] || ""
             }))
             setIsLoading(false)
         }
@@ -205,7 +239,6 @@ export default function TBMMinutesPage() {
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
             if (currentSession && currentStep !== 5) {
-                console.log("Abandoning session (unmount): ", currentSession);
                 try {
                     supabase.from('tbm_pending_signatures').insert({
                         session_id: currentSession,
@@ -219,7 +252,7 @@ export default function TBMMinutesPage() {
     }, []);
 
     useEffect(() => {
-        if (step === 4) { // 명단 스텝이 4입니다
+        if (step === 3) {
             let currentSessionId = sessionId;
             if (!currentSessionId) {
                 currentSessionId = uuidv4();
@@ -263,9 +296,6 @@ export default function TBMMinutesPage() {
         if (currentStep === 1) {
             if (!formData.date) return "TBM 일시를 선택해주세요.";
             if (!formData.location) return "TBM 장소를 입력해주세요.";
-            if (!formData.leaderName) return "TBM 리더 성명을 입력해주세요.";
-            if (!leaderSignature) return "TBM 리더 서명을 완료해주세요.";
-            if (!formData.processName) return "공정(종)명을 입력해주세요.";
         }
         if (currentStep === 3) {
             const validParticipants = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
@@ -275,7 +305,9 @@ export default function TBMMinutesPage() {
             if (validParticipants.some(p => !p.name.trim())) return "참석자 이름을 모두 입력해주세요.";
         }
         if (currentStep === 4) {
-            // 내용 확인 단계 검증 (필수는 아니지만 경고 가능)
+            if (!formData.processName.trim()) return "공정(종)명을 입력해주세요.";
+            if (!formData.workName.trim()) return "작업명을 입력해주세요.";
+            if (!formData.workContent.trim()) return "금일 작업 내용을 입력해주세요.";
         }
         return null;
     }
@@ -311,8 +343,8 @@ export default function TBMMinutesPage() {
         return publicUrl;
     }
 
-    const saveToDatabase = async () => {
-        const errorMsg = validateStep(3);
+    const saveToDatabase = async (confirmationSigBase64: string) => {
+        const errorMsg = validateStep(3) || validateStep(4);
         if (errorMsg) { alert(errorMsg); return; }
 
         setIsSaving(true)
@@ -321,8 +353,8 @@ export default function TBMMinutesPage() {
             if (!session) throw new Error("로그인 필요")
 
             let leaderSignatureUrl = null;
-            if (leaderSignature) {
-                leaderSignatureUrl = await uploadBase64ToStorage(leaderSignature, 'signatures', 'leader');
+            if (confirmationSigBase64) {
+                leaderSignatureUrl = await uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'leader');
             }
 
             const { data: logData, error: logError } = await supabase
@@ -379,8 +411,9 @@ export default function TBMMinutesPage() {
             setSavedLogId(logData.id)
             setStep(5)
 
-        } catch (e: any) {
-            alert("저장 실패: " + e.message)
+        } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류"
+            alert("저장 실패: " + errorMessage)
         } finally {
             setIsSaving(false)
         }
@@ -400,6 +433,8 @@ export default function TBMMinutesPage() {
             if (res.ok) {
                 setFormData(prev => ({
                     ...prev,
+                    processName: data.processName || prev.processName,
+                    workName: data.workName || prev.workName,
                     workContent: data.workContent || prev.workContent,
                     hazards: data.hazards || [],
                     instructions: data.instructions || "",
@@ -427,7 +462,7 @@ export default function TBMMinutesPage() {
     }
 
     const startRecording = async () => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const SpeechRecognition = (window as unknown as CustomWindow).SpeechRecognition || (window as unknown as CustomWindow).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
             return;
@@ -439,7 +474,7 @@ export default function TBMMinutesPage() {
             recognition.interimResults = true;
             recognition.lang = 'ko-KR';
 
-            recognition.onresult = (event: any) => {
+            recognition.onresult = (event: SpeechRecognitionEvent) => {
                 let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
@@ -451,7 +486,7 @@ export default function TBMMinutesPage() {
                 }
             };
 
-            recognition.onerror = (event: any) => {
+            recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
                 console.error("Speech recognition error:", event.error);
                 if (event.error === 'network' || event.error === 'not-allowed') {
                     stopRecording();
@@ -466,7 +501,6 @@ export default function TBMMinutesPage() {
                             try {
                                 recognition.start();
                             } catch (e) {
-                                // ignore
                             }
                         }
                     }, 500);
@@ -490,11 +524,50 @@ export default function TBMMinutesPage() {
         setIsProcessingSTT(true)
         setStep(3)
         
-        // 무료 STT는 이미 텍스트로 변환되었으므로 딜레이 없이 바로 AI 요청
         setTimeout(() => {
             setIsProcessingSTT(false)
             requestAIMinutes(accumulatedTranscript)
         }, 500)
+    }
+
+    const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return;
+
+        const isLocal = typeof window !== "undefined" && (
+            window.location.hostname === "localhost" || 
+            window.location.hostname === "127.0.0.1"
+        );
+        if (!isLocal) {
+            alert("개발 환경에서만 사용 가능한 기능입니다.");
+            return;
+        }
+
+        setIsProcessingSTT(true)
+        setStep(3)
+        
+        try {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const res = await fetch("/api/ai/stt", {
+                method: "POST",
+                body: formData,
+            })
+
+            const data = await res.json()
+            if (res.ok && data.transcript) {
+                setAccumulatedTranscript(data.transcript)
+                requestAIMinutes(data.transcript)
+            } else {
+                alert("음성 인식 실패: " + (data.error || "알 수 없는 오류"))
+            }
+        } catch (err) {
+            console.error(err)
+            alert("음성 인식 중 네트워크 오류 발생")
+        } finally {
+            setIsProcessingSTT(false)
+        }
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
@@ -510,8 +583,22 @@ export default function TBMMinutesPage() {
         }
     }
 
+    const handleConfirmAndSave = async () => {
+        if (!hasAgreedToDisclaimer) {
+            alert("법적 책임을 확인하고 동의란에 체크해주셔야 저장이 가능합니다.")
+            return
+        }
+        if (!confirmationSigCanvas.current || confirmationSigCanvas.current.isEmpty()) {
+            alert("최종 확인 서명을 작성해주세요.")
+            return
+        }
+        const sigBase64 = confirmationSigCanvas.current.toDataURL()
+        setIsConfirmationOpen(false)
+        await saveToDatabase(sigBase64)
+    }
+
     const addParticipant = () => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", signature: null }] }))
-    const updateParticipant = (id: number, field: keyof Participant, value: any) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } : p) }))
+    const updateParticipant = (id: number, field: keyof Participant, value: Participant[keyof Participant]) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } as Participant : p) }))
     const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
     const addHazard = () => setFormData(prev => ({ ...prev, hazards: [...prev.hazards, { factor: "", level: "중", measure: "" }] }))
@@ -600,7 +687,6 @@ export default function TBMMinutesPage() {
 
                 <div className="p-6 space-y-8 flex-1 pb-12 bg-cur-canvas-soft">
                     
-                    {/* STEP 1: 기본 정보 */}
                     {step === 1 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -637,29 +723,12 @@ export default function TBMMinutesPage() {
                                 </div>
 
                                 <div className="space-y-2"><Label className="text-[14px] font-semibold text-cur-ink">TBM 장소</Label><Input name="location" value={formData.location} onChange={handleChange} className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" /></div>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2"><Label className="text-[14px] font-semibold text-cur-ink">공정(종)명</Label><Input name="processName" placeholder="예: 철근공사" value={formData.processName} onChange={handleChange} className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" /></div>
-                                    <div className="space-y-2"><Label className="text-[14px] font-semibold text-cur-ink">작업명</Label><Input name="workName" placeholder="예: 철근 조립" value={formData.workName} onChange={handleChange} className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" /></div>
-                                </div>
 
-                                <div className="pt-5 mt-5 border-t border-cur-hairline">
-                                    <Label className="mb-3 block text-[14px] font-semibold text-cur-ink">TBM 리더 정보</Label>
-                                    <div className="flex gap-2 mb-3">
-                                        <Input name="leaderTitle" value={formData.leaderTitle} onChange={handleChange} className="h-12 text-[15px] w-1/3 border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" placeholder="직책" />
-                                        <Input name="leaderName" value={formData.leaderName} onChange={handleChange} className="h-12 text-[15px] flex-1 border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" placeholder="성명" />
-                                    </div>
-                                    {leaderSignature ? (
-                                        <div onClick={() => openSignModal({ type: 'leader' })} className="h-16 border border-cur-success bg-cur-success/5 rounded-[10px] flex items-center justify-center cursor-pointer relative overflow-hidden shadow-sm"><img src={leaderSignature} alt="서명" className="h-full object-contain mix-blend-multiply" /><div className="absolute right-2 bottom-1.5 text-[10px] text-cur-success font-bold bg-cur-card/90 px-1.5 py-0.5 rounded-[4px]">리더 서명 완료</div></div>
-                                    ) : (
-                                        <Button variant="outline" className="w-full h-14 border-dashed border-2 border-cur-hairline text-cur-muted font-medium text-[15px] hover:bg-cur-canvas rounded-[10px]" onClick={() => openSignModal({ type: 'leader' })}><PenTool className="mr-2 h-5 w-5" /> 리더 서명하기</Button>
-                                    )}
-                                </div>
+
                             </div>
                         </div>
                     )}
 
-                    {/* STEP 2: 회의 진행 및 녹음 */}
                     {step === 2 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -699,6 +768,25 @@ export default function TBMMinutesPage() {
                                             <Mic className="w-14 h-14 text-cur-on-primary" />
                                             <span className="text-cur-on-primary font-bold text-[18px]">회의 시작</span>
                                         </Button>
+
+                                        {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                                            <div className="flex flex-col items-center space-y-2">
+                                                <input
+                                                    type="file"
+                                                    accept="audio/*"
+                                                    onChange={handleAudioUpload}
+                                                    id="audio-upload"
+                                                    className="hidden"
+                                                />
+                                                <Label
+                                                    htmlFor="audio-upload"
+                                                    className="flex items-center gap-2 px-4 py-2 border border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink cursor-pointer hover:bg-cur-elevated transition-colors text-[13px] font-semibold"
+                                                >
+                                                    <Upload className="w-4 h-4 text-cur-primary" />
+                                                    개발자 오디오 파일 업로드 (STT 테스트)
+                                                </Label>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -709,7 +797,6 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {/* STEP 4: 내용 확인 및 수정 */}
                     {step === 4 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -726,7 +813,22 @@ export default function TBMMinutesPage() {
                                 </div>
                             ) : (
                                 <>
-                                    {/* 작업 내용 확인 영역 */}
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
+                                <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
+                                    ■ 공정 및 작업명
+                                </div>
+                                <div className="p-4 grid grid-cols-2 gap-4">
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label className="text-[13px] font-bold text-cur-ink">공정(종)명</Label>
+                                        <Input name="processName" value={formData.processName} onChange={handleChange} className="h-10 text-[14px] font-medium border-cur-hairline focus-visible:ring-cur-primary focus-visible:ring-1" />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label className="text-[13px] font-bold text-cur-ink">작업명</Label>
+                                        <Input name="workName" value={formData.workName} onChange={handleChange} className="h-10 text-[14px] font-medium border-cur-hairline focus-visible:ring-cur-primary focus-visible:ring-1" />
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
                                 <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
                                     ■ 금일 작업 내용
@@ -742,7 +844,6 @@ export default function TBMMinutesPage() {
                                 </div>
                             </div>
 
-                            {/* 근로자 참여 위험성평가 영역 */}
                             <div className="bg-cur-card border border-amber-200 rounded-[12px] overflow-hidden shadow-none">
                                 <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 font-bold flex justify-between items-center text-amber-800 text-[14px]">
                                     <span>■ 근로자 참여 위험성평가</span>
@@ -781,7 +882,6 @@ export default function TBMMinutesPage() {
                                 </div>
                             </div>
 
-                            {/* 작업 시작전 확인사항 영역 */}
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
                                 <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
                                     ■ 작업 시작전 확인사항
@@ -802,7 +902,6 @@ export default function TBMMinutesPage() {
                                 </div>
                             </div>
 
-                            {/* 협의 및 지시사항 영역 */}
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
                                 <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
                                     ■ 작업 시작전 협의 및 지시사항
@@ -821,7 +920,6 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {/* STEP 3: 명단 */}
                     {step === 3 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex justify-between items-center">
@@ -865,7 +963,6 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {/* STEP 5: 완료 */}
                     {step === 5 && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
@@ -881,7 +978,6 @@ export default function TBMMinutesPage() {
 
                 </div>
 
-                {/* 하단 버튼 */}
                 {step < 5 && (
                     <div className="bg-cur-card border-t border-cur-hairline p-4 flex gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.02)] sticky bottom-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-b-[24px]">
                         {step > 1 && (
@@ -890,7 +986,7 @@ export default function TBMMinutesPage() {
                         {step < 4 ? (
                             <Button onClick={handleNext} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98]">다음 단계</Button>
                         ) : (
-                            <Button onClick={saveToDatabase} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
+                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
                                 {isSaving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
                             </Button>
                         )}
@@ -898,7 +994,6 @@ export default function TBMMinutesPage() {
                 )}
             </div>
 
-            {/* 서명 Dialog */}
             <Dialog open={isSignOpen} onOpenChange={setIsSignOpen}>
                 <DialogContent showCloseButton={true} className="max-w-md w-[calc(100%-2rem)] h-[70vh] max-h-[70vh] flex flex-col p-0 gap-0 rounded-[20px] overflow-hidden border-cur-hairline shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
                     <DialogHeader className="p-4 border-b border-cur-hairline bg-cur-card shrink-0"><DialogTitle className="text-center text-[18px] font-bold text-cur-ink tracking-tight">서명해 주세요</DialogTitle></DialogHeader>
@@ -910,6 +1005,50 @@ export default function TBMMinutesPage() {
                     <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
                         <Button variant="outline" onClick={() => sigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
                         <Button onClick={saveSignature} className="flex-1 h-12 text-[15px] font-bold bg-cur-ink text-cur-on-primary rounded-[10px] hover:bg-cur-ink/90">입력 완료</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isConfirmationOpen} onOpenChange={setIsConfirmationOpen}>
+                <DialogContent showCloseButton={true} className="max-w-md w-[calc(100%-2rem)] h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 rounded-[20px] overflow-hidden border-cur-hairline shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
+                    <DialogHeader className="p-4 border-b border-cur-hairline bg-cur-card shrink-0">
+                        <DialogTitle className="text-center text-[18px] font-bold text-cur-ink tracking-tight">작성 내용 확인 및 서명</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-5 flex-1 bg-cur-canvas-soft overflow-y-auto space-y-5">
+                        <div className="bg-cur-card p-4 rounded-[12px] border border-cur-hairline text-[14px] leading-relaxed text-cur-ink space-y-3 shadow-sm">
+                            <p className="font-bold text-cur-primary flex items-center gap-1.5">
+                                ⚠️ AI 요약본 작성자 책임 고지
+                            </p>
+                            <p className="text-cur-muted font-medium">
+                                본 TBM 회의록의 작업 내용 및 위험요인, 지시사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
+                            </p>
+                            <p className="font-semibold text-cur-ink bg-cur-elevated p-3 rounded-[8px] border border-cur-hairline">
+                                작성자 본인은 최종 저장 전 기록된 내용이 실제 현장 상황 및 회의 내용과 일치하는지 직접 검토 및 수정하여야 하며, 저장 완료된 회의록의 법적·행정적 관리 책임은 전적으로 작성자 본인에게 있음을 확약합니다.
+                            </p>
+                        </div>
+
+                        <label className="flex items-start gap-3 p-3 bg-cur-card border border-cur-hairline rounded-[10px] cursor-pointer shadow-none">
+                            <input
+                                type="checkbox"
+                                checked={hasAgreedToDisclaimer}
+                                onChange={(e) => setHasAgreedToDisclaimer(e.target.checked)}
+                                className="w-5 h-5 rounded border-cur-hairline text-cur-primary focus:ring-cur-primary accent-cur-primary shrink-0 mt-0.5"
+                            />
+                            <span className="text-[14px] font-bold text-cur-ink leading-snug">
+                                위 고지 사항을 충분히 확인하였으며, AI가 작성한 내용을 최종 검토하고 모든 법적 책임에 동의합니다.
+                            </span>
+                        </label>
+
+                        <div className="flex flex-col flex-1 min-h-[180px] bg-cur-card border border-cur-hairline rounded-[12px] p-3 space-y-2">
+                            <span className="text-[13px] font-bold text-cur-ink">최종 작성자 서명</span>
+                            <div className="border border-cur-hairline rounded-[8px] bg-cur-canvas flex-1 overflow-hidden" style={{ touchAction: "none" }}>
+                                <SignatureCanvas ref={confirmationSigCanvas} canvasProps={{ className: "w-full h-full" }} />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
+                        <Button variant="outline" onClick={() => confirmationSigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
+                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-[#16a34a] text-cur-on-primary rounded-[10px] hover:bg-[#15803d]">동의 및 저장</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

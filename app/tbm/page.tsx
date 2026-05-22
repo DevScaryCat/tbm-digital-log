@@ -18,11 +18,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, BookOpen, X, Pause, Play, Send, QrCode, Copy } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
-// 날씨 유틸리티
+interface SpeechRecognitionEvent {
+    resultIndex: number
+    results: {
+        length: number
+        [key: number]: {
+            isFinal: boolean
+            [key: number]: {
+                transcript: string
+            }
+        }
+    }
+}
+
+interface SpeechRecognitionErrorEvent {
+    error: string
+}
+
+interface SpeechRecognition {
+    continuous: boolean
+    interimResults: boolean
+    lang: string
+    onresult: (event: SpeechRecognitionEvent) => void
+    onerror: (event: SpeechRecognitionErrorEvent) => void
+    onend: () => void
+    start: () => void
+    stop: () => void
+}
+
+interface CustomWindow extends Window {
+    SpeechRecognition?: new () => SpeechRecognition
+    webkitSpeechRecognition?: new () => SpeechRecognition
+}
+
 function getWeatherLabel(code: number): string {
     if (code === 0) return "맑음 ☀️"
     if (code >= 1 && code <= 3) return "구름조금 🌤️"
@@ -32,7 +64,6 @@ function getWeatherLabel(code: number): string {
     return "맑음"
 }
 
-// 타입 정의
 interface Participant {
     id: number
     name: string
@@ -64,17 +95,16 @@ export default function TBMPage() {
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
-    // 무료 STT (Web Speech API) 관련 상태
     const [isRecording, setIsRecording] = useState(false)
     const isRecordingRef = useRef(false)
-    const recognitionRef = useRef<any>(null)
+    const recognitionRef = useRef<SpeechRecognition | null>(null)
     const [accumulatedTranscript, setAccumulatedTranscript] = useState("")
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
     const sessionStartTimeRef = useRef<number | null>(null);
     const accumulatedTimeRef = useRef<number>(0);
-    const MAX_RECORDING_TIME = 1200; // 20 minutes in seconds
+    const MAX_RECORDING_TIME = 1200;
 
     useEffect(() => {
         let interval: NodeJS.Timeout;
@@ -127,6 +157,10 @@ export default function TBMPage() {
     const [currentSignTarget, setCurrentSignTarget] = useState<{ type: 'participant' | 'instructor', id?: number } | null>(null)
     const [instructorSignature, setInstructorSignature] = useState<string | null>(null)
     const sigCanvas = useRef<SignatureCanvas>(null)
+
+    const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+    const [hasAgreedToDisclaimer, setHasAgreedToDisclaimer] = useState(false)
+    const confirmationSigCanvas = useRef<SignatureCanvas>(null)
 
     const getCurrentTime = () => {
         const now = new Date()
@@ -199,7 +233,6 @@ export default function TBMPage() {
         initPage()
     }, [router])
 
-    // 컴포넌트 언마운트 시 (페이지 이동) 처리용
     const sessionIdRef = useRef(sessionId);
     const stepRef = useRef(step);
 
@@ -209,16 +242,11 @@ export default function TBMPage() {
     }, [sessionId, step]);
 
     useEffect(() => {
-        // 컴포넌트가 Next.js 라우터 이동으로 언마운트될 때만 세션을 닫습니다.
-        // beforeunload에서 닫으면 탭 전환/모바일 백그라운드 전환만으로도 세션이 닫혀
-        // 작업자가 서명 링크 접속 시 "만료된 서명 링크" 에러가 발생하는 버그가 있었습니다.
         return () => {
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
-            // 6단계(저장 완료)가 아닌데 세션이 발급되어 있다면 사용자가 중도 포기/이탈한 것
             if (currentSession && currentStep !== 6) {
                 console.log("Abandoning session (unmount): ", currentSession);
-                // sendBeacon을 사용해 페이지 이동 중에도 요청이 전송되도록 보장
                 const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tbm_pending_signatures`;
                 const headers = {
                     'Content-Type': 'application/json',
@@ -231,16 +259,13 @@ export default function TBMPage() {
                     gender: "M",
                     signature: "abandoned"
                 });
-                // sendBeacon은 페이지 언로드 중에도 안정적으로 전송됨
                 try {
                     const blob = new Blob([body], { type: 'application/json' });
                     const beaconUrl = `${url}?apikey=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`;
                     if (!navigator.sendBeacon(beaconUrl, blob)) {
-                        // sendBeacon 실패 시 fallback
                         fetch(url, { method: 'POST', headers, body, keepalive: true }).catch(() => {});
                     }
                 } catch {
-                    // 최후의 fallback
                     supabase.from('tbm_pending_signatures').insert({
                         session_id: currentSession,
                         name: "CLOSED_SESSION",
@@ -259,7 +284,6 @@ export default function TBMPage() {
                 currentSessionId = uuidv4();
                 setSessionId(currentSessionId);
 
-                // 30분 타이머 기록을 위한 오픈 마커 추가
                 supabase.from('tbm_pending_signatures').insert({
                     session_id: currentSessionId,
                     name: "OPEN_SESSION",
@@ -284,15 +308,12 @@ export default function TBMPage() {
                         console.log("New signature received:", newSignature);
 
                         setFormData(prev => {
-                            // OPEN_SESSION 마커 등은 UI 배열에 무시
                             if (newSignature.name === "OPEN_SESSION" || newSignature.name === "CLOSED_SESSION") return prev;
 
-                            // 빈 줄을 덮어쓰지 않고 무조건 새 줄로 맨 아래에 추가합니다.
-                            // (관리자가 빈 줄에 수동 서명 중일 때 겹쳐서 날아가는 버그 방지)
                             const participants = [...prev.participants];
 
                             const newParticipant = {
-                                id: Date.now() + Math.random(), // 고유 ID 부여
+                                id: Date.now() + Math.random(),
                                 name: newSignature.name,
                                 gender: newSignature.gender as "M" | "F",
                                 status: "present" as const,
@@ -323,7 +344,6 @@ export default function TBMPage() {
             }
         }
         if (currentStep === 3) {
-            // 아무것도 입력하지 않은 기본 제공 빈 칸은 검사 및 저장에서 제외
             const validParticipants = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
 
             if (validParticipants.length === 0) return "최소 1명 이상의 참석자 서명이 필요합니다.";
@@ -373,7 +393,7 @@ export default function TBMPage() {
         return publicUrl;
     }
 
-    const saveToDatabase = async () => {
+    const saveToDatabase = async (confirmationSigBase64: string) => {
         const errorMsg = validateStep(5);
         if (errorMsg) { alert(errorMsg); return; }
 
@@ -392,6 +412,11 @@ export default function TBMPage() {
                 photoUrl = await uploadBase64ToStorage(formData.photo, 'photos', 'photo');
             }
 
+            let confirmationSignatureUrl = null;
+            if (confirmationSigBase64) {
+                confirmationSignatureUrl = await uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'confirmation');
+            }
+
             const { data: logData, error: logError } = await supabase
                 .from('tbm_logs')
                 .insert({
@@ -406,7 +431,8 @@ export default function TBMPage() {
                     instructor_signature: instructorSignatureUrl,
                     education_content: formData.educationContent,
                     remarks: formData.remarks,
-                    photo_url: photoUrl
+                    photo_url: photoUrl,
+                    confirmation_signature: confirmationSignatureUrl
                 })
                 .select()
                 .single()
@@ -451,8 +477,9 @@ export default function TBMPage() {
             setSavedLogId(logData.id)
             setStep(6)
 
-        } catch (e: any) {
-            alert("저장 실패: " + e.message)
+        } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류"
+            alert("저장 실패: " + errorMessage)
         } finally {
             setIsSaving(false)
         }
@@ -473,7 +500,6 @@ export default function TBMPage() {
                 let educationContent = data.educationContent || ""
                 let remarks = data.remarks || ""
 
-                // 클라이언트 측 추가 방어: educationContent가 JSON 문자열인 경우 파싱
                 if (typeof educationContent === 'string' && educationContent.trim().startsWith('{')) {
                     try {
                         const parsed = JSON.parse(educationContent)
@@ -482,11 +508,9 @@ export default function TBMPage() {
                             if (parsed.remarks && !remarks) remarks = parsed.remarks
                         }
                     } catch {
-                        // JSON이 아니면 그냥 사용
                     }
                 }
 
-                // 객체가 들어온 경우 처리
                 if (typeof educationContent === 'object') {
                     educationContent = ""
                 }
@@ -520,7 +544,7 @@ export default function TBMPage() {
     }
 
     const startRecording = async () => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const SpeechRecognition = (window as unknown as CustomWindow).SpeechRecognition || (window as unknown as CustomWindow).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
             return;
@@ -532,7 +556,7 @@ export default function TBMPage() {
             recognition.interimResults = true;
             recognition.lang = 'ko-KR';
 
-            recognition.onresult = (event: any) => {
+            recognition.onresult = (event: SpeechRecognitionEvent) => {
                 let finalTranscript = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
@@ -544,7 +568,7 @@ export default function TBMPage() {
                 }
             };
 
-            recognition.onerror = (event: any) => {
+            recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
                 console.error("Speech recognition error:", event.error);
                 if (event.error === 'network' || event.error === 'not-allowed') {
                     stopRecording();
@@ -559,7 +583,6 @@ export default function TBMPage() {
                             try {
                                 recognition.start();
                             } catch (e) {
-                                // ignore
                             }
                         }
                     }, 500);
@@ -583,11 +606,50 @@ export default function TBMPage() {
         setIsProcessingSTT(true)
         setStep(3)
         
-        // 무료 STT는 이미 텍스트로 변환되었으므로 딜레이 없이 바로 AI 요청
         setTimeout(() => {
             setIsProcessingSTT(false)
             requestAISummary(accumulatedTranscript)
         }, 500)
+    }
+
+    const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return;
+
+        const isLocal = typeof window !== "undefined" && (
+            window.location.hostname === "localhost" || 
+            window.location.hostname === "127.0.0.1"
+        );
+        if (!isLocal) {
+            alert("개발 환경에서만 사용 가능한 기능입니다.");
+            return;
+        }
+
+        setIsProcessingSTT(true)
+        setStep(3)
+        
+        try {
+            const formData = new FormData()
+            formData.append("file", file)
+
+            const res = await fetch("/api/ai/stt", {
+                method: "POST",
+                body: formData,
+            })
+
+            const data = await res.json()
+            if (res.ok && data.transcript) {
+                setAccumulatedTranscript(data.transcript)
+                requestAISummary(data.transcript)
+            } else {
+                alert("음성 인식 실패: " + (data.error || "알 수 없는 오류"))
+            }
+        } catch (err) {
+            console.error(err)
+            alert("음성 인식 중 네트워크 오류 발생")
+        } finally {
+            setIsProcessingSTT(false)
+        }
     }
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData(prev => ({ ...prev, [e.target.name]: e.target.value })) }
@@ -604,8 +666,22 @@ export default function TBMPage() {
         }
     }
 
+    const handleConfirmAndSave = async () => {
+        if (!hasAgreedToDisclaimer) {
+            alert("법적 책임을 확인하고 동의란에 체크해주셔야 저장이 가능합니다.")
+            return
+        }
+        if (!confirmationSigCanvas.current || confirmationSigCanvas.current.isEmpty()) {
+            alert("최종 확인 서명을 작성해주세요.")
+            return
+        }
+        const sigBase64 = confirmationSigCanvas.current.toDataURL()
+        setIsConfirmationOpen(false)
+        await saveToDatabase(sigBase64)
+    }
+
     const addParticipant = () => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))
-    const updateParticipant = (id: number, field: keyof Participant, value: any) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } : p) }))
+    const updateParticipant = (id: number, field: keyof Participant, value: Participant[keyof Participant]) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } as Participant : p) }))
     const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
     const CustomTimePicker = ({ value, onChange }: { value: string, onChange: (val: string) => void }) => {
@@ -648,7 +724,6 @@ export default function TBMPage() {
 
     return (
         <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-ink">
-            {/* 전체 페이지를 스크롤하는 자연스러운 레이아웃 */}
             <div className="max-w-lg w-full mx-auto bg-cur-card sm:shadow-none sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
                 <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
                     <TBMHeader />
@@ -656,7 +731,6 @@ export default function TBMPage() {
 
                 <div className="p-6 space-y-8 flex-1 pb-12 bg-cur-canvas-soft">
 
-                    {/* STEP 1: 기본 정보 */}
                     {step === 1 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -724,7 +798,6 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {/* ⭐️ STEP 2: 순차적 UI (녹음 버튼 먼저 -> 그다음에 자료 버튼) */}
                     {step === 2 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -733,35 +806,13 @@ export default function TBMPage() {
 
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 text-center flex flex-col items-center justify-center min-h-[400px] shadow-none relative">
 
-                                {/* 녹음 중 상태 */}
                                 {isRecording ? (
-
-                                    /* 녹음 중 상태 */
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
                                         <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
                                             녹음이 진행 중입니다 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
                                             <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
                                         </div>
-
-                                        <Button
-                                            onClick={() => {
-                                                const url = "https://sites.google.com/musinsalogistics.co.kr/healthandsafety";
-                                                const ua = navigator.userAgent.toLowerCase();
-                                                if (ua.includes("kakao")) {
-                                                    window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
-                                                } else {
-                                                    window.open(url, '_blank');
-                                                }
-                                            }}
-                                            className="w-full h-16 text-[16px] bg-cur-info hover:bg-cur-info/80 text-cur-on-primary shadow-[0_4px_12px_rgba(13,116,206,0.2)] rounded-[12px] flex items-center justify-center transition-transform active:scale-95 shrink-0 font-semibold"
-                                        >
-                                            <BookOpen className="mr-2 w-6 h-6" /> 교육 자료 열기 (새 창)
-                                        </Button>
-                                        <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed bg-cur-canvas p-3.5 rounded-[12px] border border-cur-hairline">
-                                            💡 새 창에서 자료를 읽으며 교육을 진행하세요.<br />
-                                            <span className="text-cur-muted text-[12px] mt-1 block">※ 카톡/텔레그램 등에서 자료 다운로드가 튕길 경우, 우측 상단 메뉴 <b>(⋮)</b>에서 <b>'다른 브라우저로 열기'</b>를 선택해 주세요.</span>
-                                        </p>
 
                                         <Button
                                             onClick={stopRecording}
@@ -773,8 +824,6 @@ export default function TBMPage() {
                                     </div>
 
                                 ) : recordingCount > 0 ? (
-
-                                    /* 일시정지 상태 (녹음 완료분 있음) */
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
                                         <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" />
@@ -803,8 +852,6 @@ export default function TBMPage() {
                                     </div>
 
                                 ) : (
-
-                                    /* 초기 상태 (녹음 시작 전) */
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in zoom-in duration-300">
                                         <div className="bg-cur-primary text-cur-on-primary px-5 py-2 rounded-full font-semibold text-[13px] shadow-sm tracking-wide">
                                             먼저 녹음을 시작하세요
@@ -818,13 +865,30 @@ export default function TBMPage() {
                                             <span className="text-cur-on-primary font-bold text-[18px]">녹음 시작</span>
                                         </Button>
 
+                                        {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                                            <div className="flex flex-col items-center space-y-2">
+                                                <input
+                                                    type="file"
+                                                    accept="audio/*"
+                                                    onChange={handleAudioUpload}
+                                                    id="audio-upload"
+                                                    className="hidden"
+                                                />
+                                                <Label
+                                                    htmlFor="audio-upload"
+                                                    className="flex items-center gap-2 px-4 py-2 border border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink cursor-pointer hover:bg-cur-elevated transition-colors text-[13px] font-semibold"
+                                                >
+                                                    <Upload className="w-4 h-4 text-cur-primary" />
+                                                    개발자 오디오 파일 업로드 (STT 테스트)
+                                                </Label>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {/* STEP 5: 내용 확인 및 수정 */}
                     {step === 5 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -877,7 +941,6 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {/* ⭐️ STEP 4: 사진 (즉시 촬영과 앨범 업로드 버튼 분리) */}
                     {step === 4 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
@@ -933,7 +996,6 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {/* STEP 3: 명단 */}
                     {step === 3 && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex justify-between items-center">
@@ -943,7 +1005,6 @@ export default function TBMPage() {
                                 <Button size="sm" onClick={() => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))} className="bg-cur-card border border-cur-hairline text-cur-ink hover:bg-cur-canvas h-8 px-3 rounded-[6px] text-[12px] font-semibold shadow-sm"><Plus className="w-3.5 h-3.5 mr-1" /> 추가</Button>
                             </div>
 
-                            {/* QR 코드 원격 서명 섹션 */}
                             <div className="bg-cur-info/5 border border-cur-info/20 rounded-[12px] p-5 flex flex-col items-center justify-center text-center space-y-4 shadow-none">
                                 <div className="flex items-center gap-2 text-cur-info font-bold text-[15px]">
                                     <QrCode className="w-5 h-5" /> 작업자 각자 스마트폰으로 서명받기
@@ -998,7 +1059,6 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {/* STEP 6: 완료 */}
                     {step === 6 && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
@@ -1020,7 +1080,6 @@ export default function TBMPage() {
 
                 </div>
 
-                {/* 하단 버튼 (전체 페이지 스크롤 시 하단에 고정) */}
                 {step < 6 && (
                     <div className="bg-cur-card border-t border-cur-hairline p-4 flex gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.02)] sticky bottom-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-b-[24px]">
                         {step > 1 && (
@@ -1029,7 +1088,7 @@ export default function TBMPage() {
                         {step < 5 ? (
                             <Button onClick={handleNext} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98]">다음 단계</Button>
                         ) : (
-                            <Button onClick={saveToDatabase} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
+                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
                                 {(isSaving || isProcessingSTT || isProcessingAI) ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
                             </Button>
                         )}
@@ -1038,7 +1097,6 @@ export default function TBMPage() {
 
             </div>
 
-            {/* 서명 Dialog */}
             <Dialog open={isSignOpen} onOpenChange={setIsSignOpen}>
                 <DialogContent showCloseButton={true} className="max-w-md w-[calc(100%-2rem)] h-[70vh] max-h-[70vh] flex flex-col p-0 gap-0 rounded-[20px] overflow-hidden border-cur-hairline shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
                     <DialogHeader className="p-4 border-b border-cur-hairline bg-cur-card shrink-0">
@@ -1052,6 +1110,50 @@ export default function TBMPage() {
                     <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
                         <Button variant="outline" onClick={() => sigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
                         <Button onClick={saveSignature} className="flex-1 h-12 text-[15px] font-bold bg-cur-ink text-cur-on-primary rounded-[10px] hover:bg-cur-ink/90">입력 완료</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isConfirmationOpen} onOpenChange={setIsConfirmationOpen}>
+                <DialogContent showCloseButton={true} className="max-w-md w-[calc(100%-2rem)] h-[85vh] max-h-[85vh] flex flex-col p-0 gap-0 rounded-[20px] overflow-hidden border-cur-hairline shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
+                    <DialogHeader className="p-4 border-b border-cur-hairline bg-cur-card shrink-0">
+                        <DialogTitle className="text-center text-[18px] font-bold text-cur-ink tracking-tight">작성 내용 확인 및 서명</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-5 flex-1 bg-cur-canvas-soft overflow-y-auto space-y-5">
+                        <div className="bg-cur-card p-4 rounded-[12px] border border-cur-hairline text-[14px] leading-relaxed text-cur-ink space-y-3 shadow-sm">
+                            <p className="font-bold text-cur-primary flex items-center gap-1.5">
+                                ⚠️ AI 요약본 작성자 책임 고지
+                            </p>
+                            <p className="text-cur-muted font-medium">
+                                본 TBM 일지의 교육 내용 및 특이사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
+                            </p>
+                            <p className="font-semibold text-cur-ink bg-cur-elevated p-3 rounded-[8px] border border-cur-hairline">
+                                작성자 본인은 최종 저장 전 기록된 내용이 실제 현장 상황 및 교육 내용과 일치하는지 직접 검토 및 수정하여야 하며, 저장 완료된 일지의 법적·행정적 관리 책임은 전적으로 작성자 본인에게 있음을 확약합니다.
+                            </p>
+                        </div>
+
+                        <label className="flex items-start gap-3 p-3 bg-cur-card border border-cur-hairline rounded-[10px] cursor-pointer shadow-none">
+                            <input
+                                type="checkbox"
+                                checked={hasAgreedToDisclaimer}
+                                onChange={(e) => setHasAgreedToDisclaimer(e.target.checked)}
+                                className="w-5 h-5 rounded border-cur-hairline text-cur-primary focus:ring-cur-primary accent-cur-primary shrink-0 mt-0.5"
+                            />
+                            <span className="text-[14px] font-bold text-cur-ink leading-snug">
+                                위 고지 사항을 충분히 확인하였으며, AI가 작성한 내용을 최종 검토하고 모든 법적 책임에 동의합니다.
+                            </span>
+                        </label>
+
+                        <div className="flex flex-col flex-1 min-h-[180px] bg-cur-card border border-cur-hairline rounded-[12px] p-3 space-y-2">
+                            <span className="text-[13px] font-bold text-cur-ink">최종 작성자 서명</span>
+                            <div className="border border-cur-hairline rounded-[8px] bg-cur-canvas flex-1 overflow-hidden" style={{ touchAction: "none" }}>
+                                <SignatureCanvas ref={confirmationSigCanvas} canvasProps={{ className: "w-full h-full" }} />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
+                        <Button variant="outline" onClick={() => confirmationSigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
+                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-[#16a34a] text-cur-on-primary rounded-[10px] hover:bg-[#15803d]">동의 및 저장</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

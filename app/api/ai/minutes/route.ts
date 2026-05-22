@@ -1,3 +1,4 @@
+// app/api/ai/minutes/route.ts
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -26,6 +27,8 @@ export async function POST(request: Request) {
       아래 JSON 형식에 맞추어 키값들을 채워 넣으세요:
 
       {
+        "processName": "공정(종)명 (예: 철근공사, 배관설비 등 건설/물류 현장의 표준 공종명 중 하나를 10자 이내로 도출)",
+        "workName": "구체적인 작업명 (예: 철근 조립, 배관 용접 등 오늘 진행할 행동/작업을 10자 이내로 도출)",
         "workContent": "상세 작업 내용 요약",
         "hazards": [
           {
@@ -39,22 +42,28 @@ export async function POST(request: Request) {
       }
 
       [세부 가이드]
-      1. \`workContent\` (작업내용)
+      1. \`processName\` (공정명)
+         - 녹음 내용에서 유추할 수 있는 현장의 대표적인 공정 종류를 짧은 명사형으로 도출하세요. (예: "철골 공사", "배관 설비", "토공사", "도장 작업", "물류 상하차")
+
+      2. \`workName\` (작업명)
+         - 도출한 공정 하위에서 오늘 수행할 구체적인 작업 명칭을 10자 내외의 명사형으로 도출하세요. (예: "철골 부재 인양", "용접 및 볼트 체결", "터파기 및 굴착", "내부 벽면 페인팅", "화물 하차 및 분류")
+
+      3. \`workContent\` (작업내용)
          - 녹음 내용에서 오늘 수행할 구체적인 작업 내용을 도출하여 1~2문장으로 요약하세요.
 
-      2. \`hazards\` (잠재 유해위험요인 및 대책)
+      4. \`hazards\` (잠재 유해위험요인 및 대책)
          - 화상, 추락, 충돌, 질식 등 녹취에서 언급되거나 문맥상 파악되는 위험 상황을 추출하세요.
          - factor: 위험 요인을 명사형/개조식으로 간결하고 명확히 작성하세요. (예: "지게차 코너 충돌 위험", "작업 발판 위 추락 위험")
          - level: 해당 위험의 정도를 "상", "중", "하" 중 하나로 평가하여 작성하세요.
          - measure: 녹음에서 묘사된 예방 조치나 지시사항을 포함하여 현장에 맞는 대책을 작성하세요. 가급적 명사형으로 마무리하세요. (예: "코너에 반사경 설치 및 서행 지시")
          - 최소 2~3개의 위험성을 도출하되, 언급이 적다면 파생되는 예상 위험성을 추가하여라도 전문적인 표를 완성해주세요.
 
-      3. \`instructions\` (작업 시작 전 협의 및 지시사항)
+      5. \`instructions\` (작업 시작 전 협의 및 지시사항)
          - 리더가 팀원들에게 특별히 지시, 협의, 당부한 사항들을 텍스트로 요약하세요.
          - 항목을 나누고 싶을 때는 실제 줄바꿈 기호(엔터) 대신 '\\n' 문자열을 사용하여 표현하세요.
          - (예시) "- 화기 작업 시 소화기 비치 철저\\n- 작업 중 무리한 중량물 취급 금지"
 
-      4. \`safetyPhrase\` (안전구호 제창)
+      6. \`safetyPhrase\` (안전구호 제창)
          - 녹음에서 특정 안전구호가 불렸다면 그 구호를 사용하세요. 
          - 따로 구호가 들리지 않았다면, 오늘 날씨와 작업 내용 또는 일반적인 안전에 어울리는 짧고 강렬한 구호를 하나 무작위로 생성해 주세요. (예: "안전, 안전, 안전!", "무재해 우리가 이루자, 좋아!", "기본수칙 준수, 안전의 시작!")
 
@@ -73,23 +82,19 @@ export async function POST(request: Request) {
     const contentBlock = msg.content[0];
     let rawResponse = contentBlock.type === "text" ? contentBlock.text : "{}";
 
-    // 1. Remove markdown completely
     rawResponse = rawResponse
       .replace(/```json/g, "")
       .replace(/```/g, "")
       .trim();
 
-    // 2. Parse JSON
     let result;
     try {
       result = JSON.parse(rawResponse);
       
-      // Ensure hazards is an array
       if (!Array.isArray(result.hazards)) {
         result.hazards = [];
       }
 
-      // Ensure instructions properly formats literal "\n" to actual \n if any
       if (typeof result.instructions === 'string') {
         result.instructions = result.instructions.replace(/\\n/g, '\n');
       } else {
@@ -100,9 +105,19 @@ export async function POST(request: Request) {
         result.safetyPhrase = "안전, 안전, 확인!";
       }
 
+      if (typeof result.processName !== 'string') {
+        result.processName = "";
+      }
+
+      if (typeof result.workName !== 'string') {
+        result.workName = "";
+      }
+
     } catch (e) {
       console.error("JSON Parse Error. Raw output:", rawResponse);
       result = {
+        processName: "",
+        workName: "",
         workContent: "",
         hazards: [],
         instructions: "데이터 형식이 올바르지 않아 지시사항을 가져올 수 없습니다.",
@@ -111,8 +126,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Claude API Error:", error);
-    return NextResponse.json({ error: "AI 처리 중 오류가 발생했습니다.", details: error.message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류";
+    return NextResponse.json({ error: "AI 처리 중 오류가 발생했습니다.", details: errorMessage }, { status: 500 });
   }
 }

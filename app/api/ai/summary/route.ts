@@ -137,8 +137,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Claude API Error:", error);
-    return NextResponse.json({ error: "AI 처리 중 오류가 발생했습니다.", details: error.message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류";
+    return NextResponse.json({ error: "AI 처리 중 오류가 발생했습니다.", details: errorMessage }, { status: 500 });
   }
 }
