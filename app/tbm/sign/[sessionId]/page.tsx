@@ -206,6 +206,7 @@ export default function SignPage() {
                                 ref={sigCanvas}
                                 canvasProps={{ className: "w-full h-full absolute inset-0" }}
                                 backgroundColor="rgba(0,0,0,0)"
+                                clearOnResize={false}
                             />
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
                                 <span className="text-2xl font-bold tracking-widest rotate-[-15deg]">서명 공간</span>

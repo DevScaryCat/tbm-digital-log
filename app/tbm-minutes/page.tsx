@@ -737,7 +737,12 @@ export default function TBMMinutesPage() {
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 text-center flex flex-col items-center justify-center min-h-[400px] shadow-none relative">
                                 {isRecording ? (
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
-                                        {tbmGuideBox}
+                                        <div className="w-full text-left border border-cur-info/30 rounded-[12px] bg-cur-info/5 p-4 max-h-[200px] overflow-y-auto shadow-inner">
+                                            <p className="text-[13px] font-bold text-cur-info mb-2 flex items-center gap-2"><span className="w-2 h-2 bg-cur-info rounded-full animate-pulse"></span>실시간 음성 인식 중...</p>
+                                            <p className="text-[14px] text-cur-ink leading-relaxed break-keep font-medium">
+                                                {accumulatedTranscript || <span className="text-cur-muted">음성을 듣고 있습니다. 마이크에 대고 회의를 진행해 주세요...</span>}
+                                            </p>
+                                        </div>
                                         <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
                                             회의 녹음 중 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
@@ -750,7 +755,12 @@ export default function TBMMinutesPage() {
                                     </div>
                                 ) : recordingCount > 0 ? (
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
-                                        {tbmGuideBox}
+                                        <div className="w-full text-left border border-cur-hairline rounded-[12px] bg-cur-canvas p-4 max-h-[200px] overflow-y-auto opacity-80">
+                                            <p className="text-[13px] font-bold text-cur-muted mb-2">현재까지 인식된 내용</p>
+                                            <p className="text-[14px] text-cur-ink leading-relaxed break-keep font-medium">
+                                                {accumulatedTranscript || <span className="text-cur-muted">인식된 음성이 없습니다.</span>}
+                                            </p>
+                                        </div>
                                         <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" /> 녹음 일시정지 · {recordingCount}회
                                             <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
@@ -792,7 +802,7 @@ export default function TBMMinutesPage() {
                             </div>
                             <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed bg-cur-canvas p-3.5 rounded-[12px] border border-cur-hairline text-center">
                                 💡 참석자와 함께 위험요인, 대책, 안전구호를 협의해주세요. AI가 자동으로 회의록 양식에 맞게 요약해 줍니다.<br/>
-                                <span className="text-[12px] text-cur-error block mt-1.5 font-bold tracking-tight">※ Chrome, Safari 브라우저에서만 사용 가능합니다.</span>
+                                <span className="text-[12px] text-cur-error block mt-1.5 font-bold tracking-tight">※ Chrome, Safari 브라우저 권장. 스마트폰 화면이 꺼지면 녹음이 중단될 수 있으니 화면을 켜두세요.</span>
                             </p>
                         </div>
                     )}
@@ -984,7 +994,9 @@ export default function TBMMinutesPage() {
                             <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
                         {step < 4 ? (
-                            <Button onClick={handleNext} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98]">다음 단계</Button>
+                            <Button onClick={step === 2 ? submitRecording : handleNext} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98]">
+                                {step === 2 ? "회의 종료 (AI 문서화)" : "다음 단계"}
+                            </Button>
                         ) : (
                             <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
                                 {isSaving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
