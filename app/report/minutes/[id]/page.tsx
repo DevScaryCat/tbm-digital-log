@@ -144,7 +144,7 @@ export default function MinutesReportPage() {
                                         <span>(서명)</span>
                                         <div className="h-10 w-24 relative inline-block">
                                             {minutes.leader_signature && (
-                                                <img src={minutes.leader_signature} className="absolute inset-0 w-full h-full object-contain mix-blend-multiply" alt="리더 서명" />
+                                                <img src={minutes.leader_signature} className="absolute inset-0 w-full h-full object-contain" alt="리더 서명" />
                                             )}
                                         </div>
                                         {minutes.leader_signature && (
@@ -246,7 +246,7 @@ export default function MinutesReportPage() {
                                                 {p1?.name || ''}
                                             </div>
                                             <div className="flex-1 h-full relative">
-                                                {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1 mix-blend-multiply" alt="서명" />}
+                                                {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
                                             </div>
                                         </div>
                                     </td>
@@ -256,7 +256,7 @@ export default function MinutesReportPage() {
                                                 {p2?.name || ''}
                                             </div>
                                             <div className="flex-1 h-full relative">
-                                                {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1 mix-blend-multiply" alt="서명" />}
+                                                {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
                                             </div>
                                         </div>
                                     </td>

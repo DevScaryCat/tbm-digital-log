@@ -954,7 +954,7 @@ export default function TBMMinutesPage() {
                                                 <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-all", p.gender === 'F' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>여</button>
                                             </div>
                                             <div className="flex-1" onClick={() => openSignModal({ type: 'participant', id: p.id })}>
-                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-[#86efac] rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain mix-blend-multiply" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">내 폰으로 직접 받기</Button>}
+                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-[#86efac] rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">내 폰으로 직접 받기</Button>}
                                             </div>
                                         </div>
                                     </div>
