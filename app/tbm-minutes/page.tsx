@@ -1010,8 +1010,8 @@ export default function TBMMinutesPage() {
                 <DialogContent showCloseButton={true} className="max-w-md w-[calc(100%-2rem)] h-[70vh] max-h-[70vh] flex flex-col p-0 gap-0 rounded-[20px] overflow-hidden border-cur-hairline shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
                     <DialogHeader className="p-4 border-b border-cur-hairline bg-cur-card shrink-0"><DialogTitle className="text-center text-[18px] font-bold text-cur-ink tracking-tight">서명해 주세요</DialogTitle></DialogHeader>
                     <div className="p-5 flex-1 bg-cur-elevated min-h-0 flex flex-col">
-                        <div className="border border-cur-hairline rounded-[12px] bg-cur-card flex-1 shadow-none overflow-hidden" style={{ touchAction: "none" }}>
-                            <SignatureCanvas ref={sigCanvas} canvasProps={{ className: "w-full h-full" }} />
+                        <div className="border border-cur-hairline rounded-[12px] bg-cur-card flex-1 shadow-none overflow-hidden relative" style={{ touchAction: "none" }}>
+                            <SignatureCanvas ref={sigCanvas} canvasProps={{ className: "w-full h-full absolute inset-0" }} />
                         </div>
                     </div>
                     <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
@@ -1029,13 +1029,13 @@ export default function TBMMinutesPage() {
                     <div className="p-5 flex-1 bg-cur-canvas-soft overflow-y-auto space-y-5">
                         <div className="bg-cur-card p-4 rounded-[12px] border border-cur-hairline text-[14px] leading-relaxed text-cur-ink space-y-3 shadow-sm">
                             <p className="font-bold text-cur-primary flex items-center gap-1.5">
-                                ⚠️ AI 요약본 작성자 책임 고지
+                                💡 AI 요약본 확인 안내
                             </p>
                             <p className="text-cur-muted font-medium">
                                 본 TBM 회의록의 작업 내용 및 위험요인, 지시사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
                             </p>
                             <p className="font-semibold text-cur-ink bg-cur-elevated p-3 rounded-[8px] border border-cur-hairline">
-                                작성자 본인은 최종 저장 전 기록된 내용이 실제 현장 상황 및 회의 내용과 일치하는지 직접 검토 및 수정하여야 하며, 저장 완료된 회의록의 법적·행정적 관리 책임은 전적으로 작성자 본인에게 있음을 확약합니다.
+                                AI가 작성한 요약본은 참고용 초안입니다. 최종 저장하기 전에 내용이 실제 현장 상황과 맞는지 꼭 확인하고 수정해 주세요. 최종 기록된 내용에 대한 확인 책임은 작성자에게 있습니다.
                             </p>
                         </div>
 
@@ -1047,14 +1047,14 @@ export default function TBMMinutesPage() {
                                 className="w-5 h-5 rounded border-cur-hairline text-cur-primary focus:ring-cur-primary accent-cur-primary shrink-0 mt-0.5"
                             />
                             <span className="text-[14px] font-bold text-cur-ink leading-snug">
-                                위 고지 사항을 충분히 확인하였으며, AI가 작성한 내용을 최종 검토하고 모든 법적 책임에 동의합니다.
+                                위 안내 사항을 확인하였으며, 기록된 내용을 최종 검토하였습니다.
                             </span>
                         </label>
 
                         <div className="flex flex-col flex-1 min-h-[180px] bg-cur-card border border-cur-hairline rounded-[12px] p-3 space-y-2">
                             <span className="text-[13px] font-bold text-cur-ink">최종 작성자 서명</span>
-                            <div className="border border-cur-hairline rounded-[8px] bg-cur-canvas flex-1 overflow-hidden" style={{ touchAction: "none" }}>
-                                <SignatureCanvas ref={confirmationSigCanvas} canvasProps={{ className: "w-full h-full" }} />
+                            <div className="border border-cur-hairline rounded-[8px] bg-cur-canvas flex-1 overflow-hidden relative" style={{ touchAction: "none" }}>
+                                <SignatureCanvas ref={confirmationSigCanvas} canvasProps={{ className: "w-full h-full absolute inset-0" }} />
                             </div>
                         </div>
                     </div>
