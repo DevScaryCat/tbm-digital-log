@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export function Footer() {
   return (
-    <footer className="w-full text-center py-12 px-4 text-[13px] text-cur-muted bg-cur-canvas border-t border-cur-hairline font-sans">
+    <footer className="w-full text-center py-12 px-4 text-[13px] text-cur-muted bg-cur-canvas border-t border-cur-hairline font-sans print:hidden">
       <div className="max-w-2xl mx-auto flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-center gap-3 font-semibold text-cur-ink">
           <Link href="/terms" className="hover:underline">이용약관 및 환불정책</Link>
