@@ -1086,7 +1086,9 @@ export default function TBMPage() {
                             <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
                         {step < 5 ? (
-                            <Button onClick={handleNext} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98]">다음 단계</Button>
+                            <Button onClick={step === 2 ? submitRecording : handleNext} disabled={step === 2 && isRecording} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+                                {step === 2 ? "녹음 종료 (AI 문서화)" : "다음 단계"}
+                            </Button>
                         ) : (
                             <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
                                 {(isSaving || isProcessingSTT || isProcessingAI) ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
