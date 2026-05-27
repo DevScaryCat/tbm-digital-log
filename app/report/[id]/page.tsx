@@ -85,7 +85,7 @@ export default function ReportPage() {
                 </Button>
             </div>
 
-            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">안 전 보 건 교 육 일 지</h1>
 
                 <table className="w-full border-collapse border border-black text-sm">
@@ -197,10 +197,10 @@ export default function ReportPage() {
                         </tr>
                     </tbody>
                 </table>
-                <div className="w-full text-center text-sm border-t border-black pt-2 mt-8 font-bold">{log.company_name || "현장명"}</div>
+                <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full mb-8 print:break-after-page min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 참 석 자 명 단</h1>
 
                 <div className="flex justify-between mb-4 text-sm font-bold">
@@ -241,10 +241,10 @@ export default function ReportPage() {
                         })}
                     </tbody>
                 </table>
-                <div className="w-full text-center text-sm border-t border-black pt-2 mt-8 font-bold">{log.company_name || "현장명"}</div>
+                <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm]  print:shadow-none print:w-full min-h-[297mm] relative box-border flex flex-col">
+            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 사 진</h1>
 
                 <div className="w-full h-[200mm] border-2 border-black flex items-center justify-center p-2 bg-gray-50">
@@ -254,7 +254,7 @@ export default function ReportPage() {
                         <span className="text-gray-400 font-bold text-lg">등록된 현장 사진이 없습니다.</span>
                     )}
                 </div>
-                <div className="w-full text-center text-sm border-t border-black pt-2 mt-8 font-bold">{log.company_name || "현장명"}</div>
+                <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
             </div>
 
         </div>

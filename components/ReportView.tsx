@@ -16,7 +16,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
         <div className="report-container bg-cur-card text-black">
 
             {/* --- PAGE 1: 교육일지 --- */}
-            <div className="w-[210mm] min-h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card  print:shadow-none print:break-after-page">
+            <div className="w-[210mm] min-h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8" style={{ fontFamily: "Batang, serif" }}>안 전 보 건 교 육 일 지</h1>
 
                 <table className="w-full border-collapse border border-black text-sm" style={{ fontFamily: "Dotum, sans-serif", tableLayout: "fixed" }}>
@@ -123,7 +123,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
             </div>
 
             {/* --- PAGE 2: 참석자 명단 --- */}
-            <div className="w-[210mm] min-h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card  print:shadow-none print:break-after-page flex flex-col">
+            <div className="w-[210mm] min-h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>교 육 참 석 자 명 단</h1>
                 <div className="flex justify-between mb-4 text-sm font-bold">
                     <div>일시: {log.date}</div>
@@ -173,7 +173,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
             </div>
 
             {/* --- PAGE 3: 사진 (레이아웃 고정) --- */}
-            <div className="w-[210mm] h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card  print:shadow-none print:break-after-page flex flex-col">
+            <div className="w-[210mm] h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>교 육 사 진</h1>
 
                 {/* 사진 영역 고정 (높이 강제) */}
