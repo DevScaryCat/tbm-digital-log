@@ -864,27 +864,37 @@ export default function TBMMinutesPage() {
                                     {formData.hazards.map((hazard, idx) => (
                                         <div key={idx} className="bg-cur-card p-4 border border-amber-200 rounded-[12px] shadow-sm space-y-4 relative">
                                             <button onClick={() => removeHazard(idx)} className="absolute top-2.5 right-2.5 text-cur-error/70 hover:text-cur-error bg-cur-error/5 p-1.5 rounded-[6px]"><Trash2 className="w-4 h-4" /></button>
-                                            <div>
-                                                <Label className="text-[12px] text-amber-800 font-bold">잠재 유해위험요인</Label>
-                                                <Input value={hazard.factor} onChange={(e) => updateHazard(idx, "factor", e.target.value)} className="h-10 mt-1.5 border-amber-200 focus-visible:ring-amber-400 focus-visible:ring-1 text-[14px] font-medium" />
+                                            <div className="flex flex-col gap-1.5">
+                                                <Label className="text-[13px] text-amber-800 font-bold">잠재 유해위험요인</Label>
+                                                <textarea 
+                                                    value={hazard.factor} 
+                                                    onChange={(e) => updateHazard(idx, "factor", e.target.value)} 
+                                                    className="w-full min-h-[64px] p-3 rounded-[8px] border border-amber-200 bg-cur-card text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium resize-y shadow-sm leading-relaxed"
+                                                    rows={2}
+                                                />
                                             </div>
-                                            <div className="flex gap-3">
-                                                <div className="w-1/3">
-                                                    <Label className="text-[12px] text-amber-800 font-bold">위험성</Label>
+                                            <div className="flex gap-3 items-start">
+                                                <div className="flex flex-col gap-1.5 w-24 shrink-0">
+                                                    <Label className="text-[13px] text-amber-800 font-bold">위험성</Label>
                                                     <select 
                                                         value={hazard.level} 
                                                         onChange={(e) => updateHazard(idx, "level", e.target.value)} 
-                                                        className="w-full h-10 mt-1.5 rounded-[8px] border border-amber-200 bg-cur-card px-3 text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium"
+                                                        className="w-full h-11 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
                                                     >
                                                         <option value="상">상</option>
                                                         <option value="중">중</option>
                                                         <option value="하">하</option>
-                                                        <option value="상중하">상중하 (복합)</option>
+                                                        <option value="상중하">복합</option>
                                                     </select>
                                                 </div>
-                                                <div className="w-2/3">
-                                                    <Label className="text-[12px] text-amber-800 font-bold">대책(제거/대체/통제)</Label>
-                                                    <Input value={hazard.measure} onChange={(e) => updateHazard(idx, "measure", e.target.value)} className="h-10 mt-1.5 border-amber-200 focus-visible:ring-amber-400 focus-visible:ring-1 text-[14px] font-medium" />
+                                                <div className="flex flex-col gap-1.5 flex-1">
+                                                    <Label className="text-[13px] text-amber-800 font-bold">대책(제거/대체/통제)</Label>
+                                                    <textarea 
+                                                        value={hazard.measure} 
+                                                        onChange={(e) => updateHazard(idx, "measure", e.target.value)} 
+                                                        className="w-full min-h-[64px] p-3 rounded-[8px] border border-amber-200 bg-cur-card text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium resize-y shadow-sm leading-relaxed"
+                                                        rows={2}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
