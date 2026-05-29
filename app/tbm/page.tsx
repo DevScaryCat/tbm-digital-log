@@ -834,20 +834,14 @@ export default function TBMPage() {
                                         <div className="w-full space-y-3">
                                             <Button
                                                 onClick={startRecording}
-                                                className="w-full h-14 text-[16px] font-semibold bg-cur-primary hover:bg-cur-card text-cur-on-primary shadow-[0_4px_12px_rgba(0,0,0,0.1)] rounded-[12px] flex items-center justify-center transition-transform active:scale-95"
+                                                className="w-full h-14 text-[16px] font-semibold bg-[#ea580c] hover:bg-[#c2410c] text-white shadow-[0_4px_12px_rgba(234,88,12,0.2)] rounded-[12px] flex items-center justify-center transition-transform active:scale-95"
                                             >
                                                 <Play className="mr-2 w-5 h-5" /> 이어서 녹음하기
-                                            </Button>
-                                            <Button
-                                                onClick={submitRecording}
-                                                className="w-full h-14 text-[16px] bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary shadow-[0_4px_12px_rgba(0,0,0,0.15)] rounded-[12px] flex items-center justify-center transition-transform active:scale-95 font-bold"
-                                            >
-                                                <Send className="mr-2 w-5 h-5" /> 녹음 완료 → AI 요약
                                             </Button>
                                         </div>
 
                                         <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed">
-                                            추가 녹음이 필요하면 &quot;이어서 녹음하기&quot;를,<br />최종 완료되었으면 &quot;AI 요약&quot; 버튼을 누르세요.
+                                            추가 녹음이 필요하면 &quot;이어서 녹음하기&quot;를,<br />최종 완료되었으면 하단의 &quot;AI 요약&quot; 버튼을 누르세요.
                                         </p>
                                     </div>
 
@@ -1086,8 +1080,12 @@ export default function TBMPage() {
                             <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
                         {step < 5 ? (
-                            <Button onClick={step === 2 ? submitRecording : handleNext} disabled={step === 2 && isRecording} className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
-                                {step === 2 ? "녹음 종료 (AI 문서화)" : "다음 단계"}
+                            <Button 
+                                onClick={step === 2 ? submitRecording : handleNext} 
+                                disabled={step === 2 && (isRecording || recordingCount === 0)}
+                                className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                            >
+                                {step === 2 ? "AI 요약" : "다음 단계"}
                             </Button>
                         ) : (
                             <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
