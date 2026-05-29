@@ -767,8 +767,10 @@ export default function TBMMinutesPage() {
                                         </div>
                                         <div className="w-full space-y-3">
                                             <Button onClick={startRecording} className="w-full h-14 text-[16px] font-semibold bg-cur-primary hover:bg-cur-card text-cur-on-primary shadow-[0_4px_12px_rgba(0,0,0,0.1)] rounded-[12px] transition-transform active:scale-95"><Play className="mr-2 w-5 h-5" /> 이어서 녹음</Button>
-                                            <Button onClick={submitRecording} className="w-full h-14 text-[16px] bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary shadow-[0_4px_12px_rgba(0,0,0,0.15)] rounded-[12px] font-bold transition-transform active:scale-95"><Send className="mr-2 w-5 h-5" /> 회의 종료 (AI 문서화)</Button>
                                         </div>
+                                        <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed mt-4">
+                                            추가 녹음이 필요하면 &quot;이어서 녹음&quot;을,<br />회의를 마치려면 하단의 &quot;AI 요약&quot; 버튼을 누르세요.
+                                        </p>
                                     </div>
                                 ) : (
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in zoom-in duration-300">
