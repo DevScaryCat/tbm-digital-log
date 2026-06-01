@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, LayoutDashboard, User, Home, Loader2 } from "lucide-react"
+import { LogOut, LayoutDashboard, User, Home, Loader2, CreditCard } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -99,6 +99,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={() => setIsEditProfileOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                    <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 일지 관리 달력

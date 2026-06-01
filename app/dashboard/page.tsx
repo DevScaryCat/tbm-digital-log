@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { format, parseISO, isSameDay } from "date-fns"
 import { ko } from "date-fns/locale"
@@ -20,6 +21,7 @@ import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCi
 
 export default function DashboardPage() {
     const router = useRouter()
+    useRequireSubscription()
     const [logs, setLogs] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 

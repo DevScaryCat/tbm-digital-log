@@ -4,6 +4,7 @@
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { TBMHeader } from "@/components/TBMHeader"
+import { useRequireSubscription } from "@/lib/useSubscription"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +12,7 @@ import { AlertCircle, Camera, CheckCircle2, AlertTriangle, TrendingUp, Hash, Act
 
 export default function AnalyticsDashboardPage() {
     const router = useRouter()
+    useRequireSubscription()
     
     const keywords = [
         { word: "추락방지", count: 24, trend: "up" },

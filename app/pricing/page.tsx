@@ -1,12 +1,22 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, ArrowLeft } from "lucide-react"
+import { CheckCircle2, ArrowLeft, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
+import { SubscribeButtons } from "@/components/SubscribeButtons"
+import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
+
+const STATUS_LABEL: Record<string, string> = {
+    trialing: "무료체험 중",
+    active: "구독 중",
+    past_due: "결제 실패",
+    canceled: "해지됨",
+}
 
 export default function PricingPage() {
     const router = useRouter()
-
     const features = [
         "스마트 TBM 일지 자동 생성",
         "TBM 회의록 자동 요약",
@@ -14,6 +24,23 @@ export default function PricingPage() {
         "클라우드 보안 저장 (1년 보관)",
         "참석자 전자 서명 기능",
     ]
+
+    const [loading, setLoading] = useState(true)
+    const [sub, setSub] = useState<SubscriptionRow | null>(null)
+
+    const loadSubscription = async () => setSub(await fetchSubscription())
+
+    useEffect(() => {
+        ;(async () => {
+            await loadSubscription()
+            setLoading(false)
+        })()
+    }, [])
+
+    const subscribed = isAllowed(sub)
+    const nextDate = sub?.current_period_end
+        ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
+        : null
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
@@ -31,13 +58,12 @@ export default function PricingPage() {
                 </div>
 
                 <div className="max-w-md mx-auto">
-                    {/* Monthly Plan */}
-                    <div className="bg-cur-card rounded-2xl p-8 border border-cur-hairline shadow-sm hover:shadow-md transition-shadow relative overflow-hidden flex flex-col">
+                    <div className="bg-cur-card rounded-2xl p-8 border border-cur-hairline shadow-sm flex flex-col">
                         <div className="mb-6">
                             <h3 className="text-[20px] font-bold text-cur-ink mb-2">월간 구독</h3>
                             <p className="text-cur-muted text-[14px]">매달 부담 없이 결제하는 베이직 플랜</p>
                         </div>
-                        
+
                         <div className="mb-6">
                             <div className="flex items-end gap-2 mb-1">
                                 <span className="text-[36px] font-bold text-cur-ink tracking-tight">1,900원</span>
@@ -57,11 +83,25 @@ export default function PricingPage() {
                             ))}
                         </div>
 
-                        <Button className="w-full bg-cur-elevated hover:bg-cur-hairline text-cur-ink font-bold h-12 rounded-xl border border-cur-hairline transition-colors">
-                            월간 구독 시작하기
-                        </Button>
+                        {loading ? (
+                            <Button disabled className="w-full h-12 rounded-xl">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            </Button>
+                        ) : subscribed ? (
+                            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">
+                                <p className="font-bold text-cur-ink">{STATUS_LABEL[sub!.status] ?? "이용 중"}</p>
+                                {nextDate && <p className="text-cur-muted text-[14px] mt-1">다음 결제일: {nextDate}</p>}
+                                <Button
+                                    onClick={() => router.push("/account")}
+                                    className="mt-4 w-full bg-cur-ink text-white font-bold h-11 rounded-xl hover:opacity-90"
+                                >
+                                    구독 관리
+                                </Button>
+                            </div>
+                        ) : (
+                            <SubscribeButtons onSuccess={loadSubscription} />
+                        )}
                     </div>
-
                 </div>
 
                 <div className="mt-12 text-center text-[13px] text-cur-muted-soft bg-cur-card p-6 rounded-xl border border-cur-hairline">

@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { useRequireSubscription } from "@/lib/useSubscription"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +16,7 @@ import { Logo } from "@/components/Logo"
 
 export default function MainPage() {
   const router = useRouter()
+  useRequireSubscription()
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
 
