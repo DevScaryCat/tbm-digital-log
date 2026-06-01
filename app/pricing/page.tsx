@@ -27,7 +27,7 @@ export default function PricingPage() {
             <div className="flex-1 max-w-4xl mx-auto w-full py-12 px-6">
                 <div className="text-center mb-12">
                     <h2 className="text-[28px] font-bold text-cur-ink mb-4">현장의 안전을 위한 완벽한 선택</h2>
-                    <p className="text-cur-muted text-[16px]">안전톡톡과 함께 더 편리하고 안전한 현장을 만들어보세요.</p>
+                    <p className="text-cur-muted text-[16px]">안전톡톡e와 함께 더 편리하고 안전한 현장을 만들어보세요.</p>
                 </div>
 
                 <div className="max-w-md mx-auto">

@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, LayoutDashboard, User, ShieldCheck, Home, Loader2 } from "lucide-react"
+import { LogOut, LayoutDashboard, User, Home, Loader2 } from "lucide-react"
+import { Logo } from "@/components/Logo"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -112,14 +113,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
 
     return (
         <div className="flex flex-col py-1 px-1 rounded-none border-0 gap-3">
-            {title === "안전톡톡" ? (
+            {title === "안전톡톡e" ? (
                 <div className="flex justify-between items-center w-full">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-cur-primary p-1.5 rounded-[8px]">
-                            <ShieldCheck className="w-5 h-5 text-cur-on-primary" />
-                        </div>
-                        <h1 className="text-[20px] font-bold text-cur-ink tracking-tight">{title}</h1>
-                    </div>
+                    <Logo size="sm" />
                     {userProfileDropdown}
                 </div>
             ) : (

@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users, ChevronRight } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
+import { Logo } from "@/components/Logo"
 
 export default function MainPage() {
   const router = useRouter()
@@ -147,14 +148,9 @@ export default function MainPage() {
 
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-lg mx-auto w-full">
           <div className="space-y-6 flex flex-col items-center">
-            <div className="bg-cur-primary p-5 rounded-[12px] shadow-[0_0_40px_rgba(245,78,0,0.2)] flex items-center justify-center w-20 h-20">
-              <HardHat className="w-10 h-10 text-cur-on-primary" />
-            </div>
+            <Logo size="lg" />
 
             <div className="space-y-3">
-              <h1 className="text-[36px] sm:text-[48px] font-normal text-cur-ink tracking-[-1.44px] leading-[1.1]">
-                안전톡톡
-              </h1>
               <p className="text-cur-muted text-[16px] sm:text-[18px]">
                 더 많은 대화로 더 안전한 현장을
               </p>
@@ -202,7 +198,7 @@ export default function MainPage() {
       <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
 
         <div className="p-4 bg-cur-card/90 backdrop-blur-sm border-b border-cur-hairline sticky top-0 z-50">
-          <TBMHeader title="안전톡톡" onLogout={handleLogout} />
+          <TBMHeader title="안전톡톡e" onLogout={handleLogout} />
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
