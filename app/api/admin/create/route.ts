@@ -13,6 +13,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Server Configuration Error" }, { status: 500 });
     }
 
+    // 관리자 시크릿 키 검증 (서버 전용). 미설정/불일치 시 거부.
+    const adminSecret = process.env.ADMIN_SECRET_KEY;
+    const provided = request.headers.get("x-admin-secret-key") || "";
+    if (!adminSecret || provided !== adminSecret) {
+      return NextResponse.json({ error: "권한이 없습니다." }, { status: 401 });
+    }
+
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     const { email, password, name, company, managerEmail } = await request.json();

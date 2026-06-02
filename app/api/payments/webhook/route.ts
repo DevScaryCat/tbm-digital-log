@@ -1,18 +1,36 @@
 import { NextResponse } from "next/server";
+import { Webhook } from "@portone/server-sdk";
 import { getAdminClient } from "@/lib/portone";
 
-// PortOne V2 웹훅: 결제 상태 보정 (비동기 결과 동기화)
-// NOTE: 운영 전 서명 검증(@portone/server-sdk Webhook.verify) 강화 권장.
+export const runtime = "nodejs";
+
+// PortOne V2 웹훅: 서명 검증 후에만 결제 상태를 보정한다.
+// 시크릿 미설정/검증 실패 시 DB를 변경하지 않는다(fail-closed).
 export async function POST(request: Request) {
+  const secret = process.env.PORTONE_WEBHOOK_SECRET;
+  const bodyText = await request.text();
+
+  if (!secret) {
+    console.warn("PORTONE_WEBHOOK_SECRET 미설정 — 웹훅 검증 불가로 무시함");
+    return NextResponse.json({ received: true });
+  }
+
+  let payload: any;
   try {
-    const payload = await request.json().catch(() => null);
+    payload = await Webhook.verify(secret, bodyText, {
+      "webhook-id": request.headers.get("webhook-id") ?? "",
+      "webhook-signature": request.headers.get("webhook-signature") ?? "",
+      "webhook-timestamp": request.headers.get("webhook-timestamp") ?? "",
+    });
+  } catch {
+    return NextResponse.json({ error: "invalid signature" }, { status: 400 });
+  }
+
+  try {
     const data = payload?.data || {};
     const paymentId: string | undefined = data.paymentId;
-    const type: string = String(payload?.type || "");
-
-    if (!paymentId) {
-      return NextResponse.json({ received: true });
-    }
+    const type = String(payload?.type || "");
+    if (!paymentId) return NextResponse.json({ received: true });
 
     let status: "paid" | "failed" | "canceled" | null = null;
     if (/Paid/i.test(type)) status = "paid";
@@ -29,9 +47,8 @@ export async function POST(request: Request) {
         })
         .eq("payment_id", paymentId);
     }
-
     return NextResponse.json({ received: true });
-  } catch (e: any) {
+  } catch (e) {
     console.error("webhook error:", e);
     return NextResponse.json({ received: true });
   }

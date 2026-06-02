@@ -166,6 +166,7 @@ export default function AccountPage() {
                                     <>
                                         {changingMethod ? (
                                             <SubscribeButtons
+                                                mode="update"
                                                 onSuccess={async () => {
                                                     setChangingMethod(false)
                                                     await load()

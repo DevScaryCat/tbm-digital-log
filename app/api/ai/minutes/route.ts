@@ -1,17 +1,29 @@
 // app/api/ai/minutes/route.ts
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { getUserAndSubscription } from "@/lib/portone";
+
+export const runtime = "nodejs";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+const MAX_TEXT_LEN = 20000;
+
 export async function POST(request: Request) {
   try {
+    const { user, allowed } = await getUserAndSubscription(request);
+    if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
+
     const { text } = await request.json();
 
-    if (!text) {
+    if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "텍스트가 없습니다." }, { status: 400 });
+    }
+    if (text.length > MAX_TEXT_LEN) {
+      return NextResponse.json({ error: "입력이 너무 깁니다." }, { status: 413 });
     }
 
     const systemPrompt = `

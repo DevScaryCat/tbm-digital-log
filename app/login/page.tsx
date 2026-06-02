@@ -23,9 +23,8 @@ export default function LoginPage() {
         const saved = localStorage.getItem("tbm_saved_login")
         if (saved) {
             try {
-                const { id, pw } = JSON.parse(saved)
+                const { id } = JSON.parse(saved)
                 setUserId(id || "")
-                setPassword(pw || "")
                 setRememberMe(true)
             } catch {}
         }
@@ -47,7 +46,7 @@ export default function LoginPage() {
             if (error) throw error
 
             if (rememberMe) {
-                localStorage.setItem("tbm_saved_login", JSON.stringify({ id: userId, pw: password }))
+                localStorage.setItem("tbm_saved_login", JSON.stringify({ id: userId }))
             } else {
                 localStorage.removeItem("tbm_saved_login")
             }

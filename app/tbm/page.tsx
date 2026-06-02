@@ -181,6 +181,7 @@ export default function TBMPage() {
     const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
     const [hasAgreedToDisclaimer, setHasAgreedToDisclaimer] = useState(false)
     const confirmationSigCanvas = useRef<SignatureCanvas>(null)
+    const savingRef = useRef(false)
 
     const getCurrentTime = () => {
         const now = new Date()
@@ -263,6 +264,9 @@ export default function TBMPage() {
 
     useEffect(() => {
         return () => {
+            // 언마운트 시 음성인식 정리 (마이크 누수 / onend 재시작 루프 방지)
+            isRecordingRef.current = false;
+            try { recognitionRef.current?.stop(); } catch {}
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
             if (currentSession && currentStep !== 6) {
@@ -478,7 +482,11 @@ export default function TBMPage() {
 
             if (participantsData.length > 0) {
                 const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)
-                if (partError) throw partError
+                if (partError) {
+                    // 참가자 저장 실패 시 방금 생성한 로그를 롤백(고아 로그/중복 재제출 방지)
+                    await supabase.from('tbm_logs').delete().eq('id', logData.id)
+                    throw partError
+                }
             }
 
             if (sessionId) {
@@ -509,9 +517,10 @@ export default function TBMPage() {
         if (!text) return;
         setIsProcessingAI(true)
         try {
+            const { data: { session } } = await supabase.auth.getSession()
             const res = await fetch('/api/ai/summary', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ text })
             })
             const data = await res.json()
@@ -564,6 +573,11 @@ export default function TBMPage() {
     }
 
     const startRecording = async () => {
+        const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+        if (/KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line|DaumApps/i.test(ua)) {
+            alert("카카오톡·네이버 등 인앱 브라우저에서는 음성 녹음이 동작하지 않습니다.\n우측 상단 메뉴에서 'Safari/Chrome으로 열기'를 눌러 외부 브라우저로 진행해주세요.");
+            return;
+        }
         const SpeechRecognition = (window as unknown as CustomWindow).SpeechRecognition || (window as unknown as CustomWindow).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
@@ -652,8 +666,10 @@ export default function TBMPage() {
             const formData = new FormData()
             formData.append("file", file)
 
+            const { data: { session } } = await supabase.auth.getSession()
             const res = await fetch("/api/ai/stt", {
                 method: "POST",
+                headers: { Authorization: `Bearer ${session?.access_token}` },
                 body: formData,
             })
 
@@ -695,9 +711,15 @@ export default function TBMPage() {
             alert("최종 확인 서명을 작성해주세요.")
             return
         }
+        if (isSaving || savingRef.current) return
+        savingRef.current = true
         const sigBase64 = confirmationSigCanvas.current.toDataURL()
         setIsConfirmationOpen(false)
-        await saveToDatabase(sigBase64)
+        try {
+            await saveToDatabase(sigBase64)
+        } finally {
+            savingRef.current = false
+        }
     }
 
     const addParticipant = () => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))

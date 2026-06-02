@@ -36,6 +36,33 @@ export async function getUserFromRequest(request: Request) {
   return data.user;
 }
 
+/** 구독 상태가 앱/유료기능 사용을 허용하는지 (서버 측 판정) */
+export function subscriptionAllows(sub: { status?: string; current_period_end?: string | null } | null): boolean {
+  if (!sub) return false;
+  if (sub.status === "active" || sub.status === "trialing" || sub.status === "past_due") return true;
+  if (
+    sub.status === "canceled" &&
+    sub.current_period_end &&
+    new Date(sub.current_period_end) > new Date()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** 요청의 로그인 사용자 + 구독 허용 여부를 함께 반환 (유료 API 보호용) */
+export async function getUserAndSubscription(request: Request) {
+  const user = await getUserFromRequest(request);
+  if (!user) return { user: null, allowed: false, sub: null as any };
+  const admin = getAdminClient();
+  const { data } = await admin
+    .from("subscriptions")
+    .select("status, plan, current_period_end")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return { user, allowed: subscriptionAllows(data), sub: data };
+}
+
 function apiSecret(): string {
   const secret = process.env.PORTONE_API_SECRET;
   if (!secret) throw new Error("PORTONE_API_SECRET 누락");

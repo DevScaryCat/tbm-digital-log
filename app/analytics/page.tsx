@@ -88,7 +88,11 @@ export default function AnalyticsDashboardPage() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-                    
+
+                    <div className="rounded-[10px] bg-amber-50 border border-amber-200 text-amber-800 text-[13px] font-medium px-4 py-3 text-center">
+                        ⚠️ 이 화면은 <b>준비 중인 데모</b>입니다. 아래 수치는 실제 데이터가 아닌 예시입니다.
+                    </div>
+
                     <div className="grid grid-cols-3 gap-3">
                         <div className="bg-cur-card p-4 rounded-[8px] border border-cur-hairline text-center">
                             <div className="text-[12px] text-cur-muted font-medium mb-1">총 분석 일지</div>

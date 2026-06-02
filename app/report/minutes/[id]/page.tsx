@@ -52,7 +52,7 @@ export default function MinutesReportPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const { data: minutesData, error: minutesError } = await supabase.from('tbm_minutes').select('*').eq('id', id).single()
+                const { data: minutesData, error: minutesError } = await supabase.from('tbm_minutes').select('*').eq('id', id).maybeSingle()
                 const { data: partData } = await supabase.from('tbm_minutes_participants').select('*').eq('minutes_id', id).order('id', { ascending: true })
 
                 if (minutesError) throw minutesError

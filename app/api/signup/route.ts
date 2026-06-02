@@ -18,12 +18,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "모든 필드를 입력해주세요." }, { status: 400 });
     }
 
-    if (id.length < 3) {
-      return NextResponse.json({ error: "아이디는 3자 이상 입력해주세요." }, { status: 400 });
+    if (!/^[a-z0-9_]{3,20}$/.test(id)) {
+      return NextResponse.json({ error: "아이디는 영문 소문자·숫자·밑줄 3~20자로 입력해주세요." }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: "비밀번호는 6자 이상 입력해주세요." }, { status: 400 });
+    if (typeof password !== "string" || password.length < 8) {
+      return NextResponse.json({ error: "비밀번호는 8자 이상 입력해주세요." }, { status: 400 });
     }
 
     const fullEmailId = `${id}@tbm.com`;

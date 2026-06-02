@@ -16,7 +16,14 @@ export default function BatchReportPage() {
             const idsString = localStorage.getItem("batch_print_ids")
             if (!idsString) return setLoading(false)
 
-            const ids = JSON.parse(idsString)
+            let ids: string[] = []
+            try {
+                const parsed = JSON.parse(idsString)
+                ids = Array.isArray(parsed) ? parsed : []
+            } catch {
+                ids = []
+            }
+            if (ids.length === 0) return setLoading(false)
 
             // 1. 로그 데이터 가져오기 (in 필터 사용)
             const { data: logsData } = await supabase.from('tbm_logs').select('*').in('id', ids).order('date', { ascending: true })

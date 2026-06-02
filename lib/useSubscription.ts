@@ -55,9 +55,17 @@ export function useRequireSubscription() {
                 setChecking(false)
                 return
             }
-            const sub = await fetchSubscription()
+            const { data, error } = await supabase
+                .from("subscriptions")
+                .select("status, plan, card_info, current_period_end, trial_end")
+                .maybeSingle()
             if (!active) return
-            if (!isAllowed(sub)) {
+            // 일시적 조회 오류(네트워크/RLS)면 잠그지 않음 — 결제 고객 오잠금 방지
+            if (error) {
+                setChecking(false)
+                return
+            }
+            if (!isAllowed(data as SubscriptionRow)) {
                 router.replace("/pricing")
                 return
             }

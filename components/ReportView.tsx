@@ -38,7 +38,7 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                                     <label className="flex items-center"><input type="checkbox" checked={log.education_type === '신규 채용시 교육'} readOnly className="mr-1" /> 신규 채용시 교육</label>
                                     <label className="flex items-center"><input type="checkbox" checked={log.education_type === '관리 감독자 교육'} readOnly className="mr-1" /> 관리 감독자 교육</label>
                                     <label className="flex items-center"><input type="checkbox" checked={log.education_type === '작업내용 변경시 교육'} readOnly className="mr-1" /> 작업내용 변경시 교육</label>
-                                    <label className="flex items-center"><input type="checkbox" checked={log.education_type.includes('기타')} readOnly className="mr-1" /> 기타</label>
+                                    <label className="flex items-center"><input type="checkbox" checked={(log.education_type || '').includes('기타')} readOnly className="mr-1" /> 기타</label>
                                 </div>
                             </td>
                         </tr>

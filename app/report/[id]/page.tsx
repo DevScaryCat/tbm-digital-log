@@ -45,7 +45,7 @@ export default function ReportPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const { data: logData, error: logError } = await supabase.from('tbm_logs').select('*').eq('id', id).single()
+                const { data: logData, error: logError } = await supabase.from('tbm_logs').select('*').eq('id', id).maybeSingle()
                 const { data: partData } = await supabase.from('tbm_participants').select('*').eq('log_id', id).order('id', { ascending: true })
 
                 if (logError) throw logError

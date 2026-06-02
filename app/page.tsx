@@ -89,6 +89,7 @@ export default function MainPage() {
           const [sh, sm] = log.start_time.split(':').map(Number)
           const [eh, em] = log.end_time.split(':').map(Number)
           let diff = (eh * 60 + em) - (sh * 60 + sm)
+          if (diff < 0) diff += 1440 // 자정을 넘긴 경우(예: 23:50~00:10)
           if (diff > 0) totalMins += diff
         }
       })

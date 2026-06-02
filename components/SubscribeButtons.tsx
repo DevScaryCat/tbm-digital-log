@@ -34,10 +34,12 @@ export function SubscribeButtons({
     onSuccess,
     ctaSuffix = "로 시작하기",
     successText = "구독이 시작되었습니다! 첫 달은 무료입니다.",
+    mode = "subscribe",
 }: {
     onSuccess?: () => void
     ctaSuffix?: string
     successText?: string
+    mode?: "subscribe" | "update"
 }) {
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
@@ -90,7 +92,7 @@ export function SubscribeButtons({
             const res = await fetch("/api/payments/billing-key", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ billingKey: issueResponse.billingKey, method: method.key }),
+                body: JSON.stringify({ billingKey: issueResponse.billingKey, method: method.key, mode }),
             })
             const json = await res.json()
             if (!res.ok) {

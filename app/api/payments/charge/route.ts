@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const admin = getAdminClient();
     const { data: sub, error } = await admin
       .from("subscriptions")
-      .select("id, user_id, billing_key, amount, status, current_period_end")
+      .select("id, user_id, billing_key, amount, status, current_period_end, failed_attempts")
       .eq("user_id", user.id)
       .single();
 
