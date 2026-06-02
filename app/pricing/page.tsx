@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, ArrowLeft, Loader2 } from "lucide-react"
+import { CheckCircle2, ArrowLeft, Loader2, LogOut } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
@@ -26,12 +26,20 @@ export default function PricingPage() {
     ]
 
     const [loading, setLoading] = useState(true)
+    const [hasUser, setHasUser] = useState(false)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
 
     const loadSubscription = async () => setSub(await fetchSubscription())
 
+    const handleLogout = async () => {
+        await supabase.auth.signOut()
+        router.push("/login")
+    }
+
     useEffect(() => {
         ;(async () => {
+            const { data } = await supabase.auth.getUser()
+            setHasUser(!!data?.user)
             await loadSubscription()
             setLoading(false)
         })()
@@ -44,11 +52,24 @@ export default function PricingPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
-            <div className="sticky top-0 z-10 bg-cur-canvas border-b border-cur-hairline p-4 flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => router.back()}>
-                    <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <h1 className="text-lg font-bold text-cur-ink">요금안내</h1>
+            <div className="sticky top-0 z-10 bg-cur-canvas border-b border-cur-hairline p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    {subscribed && (
+                        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+                            <ArrowLeft className="w-5 h-5" />
+                        </Button>
+                    )}
+                    <h1 className="text-lg font-bold text-cur-ink">요금안내</h1>
+                </div>
+                {!loading && hasUser && !subscribed && (
+                    <Button
+                        variant="ghost"
+                        onClick={handleLogout}
+                        className="text-cur-muted hover:text-cur-error gap-1.5 text-[14px] font-medium"
+                    >
+                        <LogOut className="w-4 h-4" /> 로그아웃
+                    </Button>
+                )}
             </div>
 
             <div className="flex-1 max-w-4xl mx-auto w-full py-12 px-6">

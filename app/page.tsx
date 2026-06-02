@@ -16,7 +16,7 @@ import { Logo } from "@/components/Logo"
 
 export default function MainPage() {
   const router = useRouter()
-  useRequireSubscription()
+  const { checking } = useRequireSubscription()
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
 
@@ -141,7 +141,7 @@ export default function MainPage() {
   const fillWidth = Math.min(100, (rawPercent / maxScale) * 100)
   const tickPosition = (100 / maxScale) * 100
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+  if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
   if (!user) {
     return (
