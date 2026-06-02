@@ -142,6 +142,24 @@ export default function TBMMinutesPage() {
         return () => clearInterval(interval);
     }, [isRecording]);
 
+    // 화면이 백그라운드/잠금되면 녹음을 자동 일시정지 (잠긴 시간이 타이머에 누적되는 것 방지)
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.hidden && isRecordingRef.current) {
+                setIsRecording(false);
+                isRecordingRef.current = false;
+                if (recognitionRef.current) recognitionRef.current.stop();
+                setRecordingCount(prev => prev + 1);
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibility);
+        window.addEventListener("pagehide", handleVisibility);
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibility);
+            window.removeEventListener("pagehide", handleVisibility);
+        };
+    }, []);
+
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
         const s = (seconds % 60).toString().padStart(2, '0');
@@ -739,6 +757,7 @@ export default function TBMMinutesPage() {
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 text-center flex flex-col items-center justify-center min-h-[400px] shadow-none relative">
                                 {isRecording ? (
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
+                                        {tbmGuideBox}
                                         <div className="w-full text-left border border-cur-info/30 rounded-[12px] bg-cur-info/5 p-4 max-h-[200px] overflow-y-auto shadow-inner">
                                             <p className="text-[13px] font-bold text-cur-info mb-2 flex items-center gap-2"><span className="w-2 h-2 bg-cur-info rounded-full animate-pulse"></span>실시간 음성 인식 중...</p>
                                             <p className="text-[14px] text-cur-ink leading-relaxed break-keep font-medium">
@@ -748,7 +767,7 @@ export default function TBMMinutesPage() {
                                         <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
                                             회의 녹음 중 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
+                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
                                         </div>
                                         <Button onClick={stopRecording} className="w-32 h-32 rounded-full shadow-[0_8px_24px_rgba(207,45,86,0.2)] bg-cur-error hover:bg-cur-error/80 flex flex-col items-center justify-center gap-2 mt-4 shrink-0 transition-transform active:scale-95">
                                             <Pause className="w-10 h-10 text-cur-on-primary" />
@@ -765,7 +784,7 @@ export default function TBMMinutesPage() {
                                         </div>
                                         <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" /> 녹음 일시정지 · {recordingCount}회
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
+                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
                                         </div>
                                         <div className="w-full space-y-3">
                                             <Button onClick={startRecording} className="w-full h-14 text-[16px] font-semibold bg-cur-primary hover:bg-cur-card text-cur-on-primary shadow-[0_4px_12px_rgba(0,0,0,0.1)] rounded-[12px] transition-transform active:scale-95"><Play className="mr-2 w-5 h-5" /> 이어서 녹음</Button>

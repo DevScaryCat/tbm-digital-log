@@ -144,6 +144,24 @@ export default function TBMPage() {
         return () => clearInterval(interval);
     }, [isRecording]);
 
+    // 화면이 백그라운드/잠금되면 녹음을 자동 일시정지 (잠긴 시간이 타이머에 누적되는 것 방지)
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.hidden && isRecordingRef.current) {
+                setIsRecording(false);
+                isRecordingRef.current = false;
+                if (recognitionRef.current) recognitionRef.current.stop();
+                setRecordingCount(prev => prev + 1);
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibility);
+        window.addEventListener("pagehide", handleVisibility);
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibility);
+            window.removeEventListener("pagehide", handleVisibility);
+        };
+    }, []);
+
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
         const s = (seconds % 60).toString().padStart(2, '0');
@@ -813,7 +831,7 @@ export default function TBMPage() {
                                         <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
                                             녹음이 진행 중입니다 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
+                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
                                         </div>
 
                                         <Button
@@ -830,7 +848,7 @@ export default function TBMPage() {
                                         <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" />
                                             녹음 일시정지 · {recordingCount}회 
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 30:00</span>
+                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
                                         </div>
 
                                         <div className="w-full space-y-3">
