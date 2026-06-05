@@ -5,7 +5,7 @@ import {
   getBillingKeyInfo,
   extractCardInfo,
   addOneMonth,
-  PLAN,
+  getPlan,
 } from "@/lib/portone";
 import { chargeSubscription } from "@/lib/billing";
 
@@ -28,10 +28,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    const { billingKey, method, mode } = await request.json();
+    const { billingKey, method, mode, plan } = await request.json();
     if (!billingKey) {
       return NextResponse.json({ error: "billingKey가 없습니다." }, { status: 400 });
     }
+    // 신규/재구독 시 선택한 플랜 (모르는 값이면 베이직으로 폴백)
+    const selectedPlan = getPlan(plan);
 
     // 1) 빌링키 발급 검증 (PortOne)
     const info = await getBillingKeyInfo(billingKey);
@@ -74,12 +76,12 @@ export async function POST(request: Request) {
         .upsert(
           {
             user_id: user.id,
-            plan: PLAN.id,
+            plan: selectedPlan.id,
             status: "trialing",
             billing_key: billingKey,
             card_info: cardInfo,
-            amount: PLAN.amount,
-            currency: PLAN.currency,
+            amount: selectedPlan.amount,
+            currency: selectedPlan.currency,
             trial_end: nextChargeAt.toISOString(),
             current_period_end: nextChargeAt.toISOString(),
             trial_used: true,
@@ -111,12 +113,12 @@ export async function POST(request: Request) {
       .upsert(
         {
           user_id: user.id,
-          plan: PLAN.id,
+          plan: selectedPlan.id,
           status: "active",
           billing_key: billingKey,
           card_info: cardInfo,
-          amount: PLAN.amount,
-          currency: PLAN.currency,
+          amount: selectedPlan.amount,
+          currency: selectedPlan.currency,
           current_period_end: now.toISOString(),
           trial_used: true,
           failed_attempts: 0,

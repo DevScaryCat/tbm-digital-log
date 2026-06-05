@@ -3,12 +3,48 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const PORTONE_API_BASE = "https://api.portone.io";
 
-export const PLAN = {
-  id: "monthly_basic",
-  name: "안전톡톡e 월간구독",
-  amount: 1900,
-  currency: "KRW" as const,
+export type PlanId = "monthly_basic" | "monthly_pro";
+
+export interface PlanDef {
+  id: PlanId;
+  name: string;
+  amount: number;
+  currency: "KRW";
+  /** Pro 전용 기능(위험성평가 자동생성·월간 보고서) 사용 가능 여부 */
+  pro: boolean;
+}
+
+export const PLANS: Record<PlanId, PlanDef> = {
+  monthly_basic: {
+    id: "monthly_basic",
+    name: "안전톡톡e 월간구독",
+    amount: 1900,
+    currency: "KRW",
+    pro: false,
+  },
+  monthly_pro: {
+    id: "monthly_pro",
+    name: "안전톡톡e Pro 월간구독",
+    amount: 4900,
+    currency: "KRW",
+    pro: true,
+  },
 };
+
+/** 플랜 식별자로 정의를 조회. 모르는 값이면 베이직으로 폴백. */
+export function getPlan(planId?: string | null): PlanDef {
+  if (planId && planId in PLANS) return PLANS[planId as PlanId];
+  return PLANS.monthly_basic;
+}
+
+/** 해당 플랜이 Pro 기능을 허용하는지 (grandfather=기존 무료 회원은 전체 기능 허용) */
+export function isProPlan(planId?: string | null): boolean {
+  if (planId === "grandfather") return true;
+  return getPlan(planId).pro;
+}
+
+/** 기본 플랜(하위 호환용 별칭) */
+export const PLAN = PLANS.monthly_basic;
 
 /** 서비스 롤 Supabase 클라이언트 (RLS 우회, 서버 전용) */
 export function getAdminClient(): SupabaseClient {
@@ -53,14 +89,17 @@ export function subscriptionAllows(sub: { status?: string; current_period_end?: 
 /** 요청의 로그인 사용자 + 구독 허용 여부를 함께 반환 (유료 API 보호용) */
 export async function getUserAndSubscription(request: Request) {
   const user = await getUserFromRequest(request);
-  if (!user) return { user: null, allowed: false, sub: null as any };
+  if (!user) return { user: null, allowed: false, isPro: false, sub: null as any };
   const admin = getAdminClient();
   const { data } = await admin
     .from("subscriptions")
     .select("status, plan, current_period_end")
     .eq("user_id", user.id)
     .maybeSingle();
-  return { user, allowed: subscriptionAllows(data), sub: data };
+  const allowed = subscriptionAllows(data);
+  // Pro 기능은 (구독이 유효하면서) 플랜이 Pro일 때만 허용
+  const isPro = allowed && isProPlan(data?.plan);
+  return { user, allowed, isPro, sub: data };
 }
 
 function apiSecret(): string {

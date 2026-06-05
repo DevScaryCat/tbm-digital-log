@@ -1,7 +1,7 @@
 // components/TBMHeader.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { LogOut, LayoutDashboard, User, Home, Loader2, CreditCard } from "lucide-react"
 import { Logo } from "@/components/Logo"
+import { startOfMonth, addMonths, format } from "date-fns"
+import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,11 +19,65 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface TBMHeaderProps {
     title?: string
     onLogout?: () => void
+    pageBadge?: string
+    titleAction?: ReactNode
 }
 
-export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
+// 플랜별 월 한도
+const LIMITS: Record<string, { log: number; minutes: number; ra: number }> = {
+    monthly_basic: { log: 80, minutes: 10, ra: 0 },
+    monthly_pro: { log: 200, minutes: 30, ra: 50 },
+}
+function limitFor(plan: string | null, kind: "log" | "minutes" | "ra"): number {
+    if (plan === "grandfather") return Infinity
+    return (LIMITS[plan ?? "monthly_basic"] ?? LIMITS.monthly_basic)[kind]
+}
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+    // Pro 전용(베이직 위험성평가)
+    if (limit === 0) {
+        return (
+            <div className="flex justify-between text-[12px]">
+                <span className="text-cur-muted">{label}</span>
+                <span className="text-cur-muted-soft font-medium">Pro 전용</span>
+            </div>
+        )
+    }
+    // 무제한(grandfather)
+    if (!isFinite(limit)) {
+        return (
+            <div className="flex justify-between text-[12px]">
+                <span className="text-cur-muted">{label}</span>
+                <span className="text-cur-ink font-medium">{used}회 · 무제한</span>
+            </div>
+        )
+    }
+    const remaining = Math.max(0, limit - used)
+    // 잔량 기준 바 (가득 찬 상태에서 쓸수록 깎임)
+    const pct = Math.min(100, Math.max(0, Math.round((remaining / limit) * 100)))
+    const full = remaining <= 0
+    const low = !full && remaining <= Math.max(1, Math.ceil(limit * 0.2))
+    const color = full ? "bg-red-500" : low ? "bg-amber-400" : "bg-cur-muted"
+    return (
+        <div className="space-y-1">
+            <div className="flex justify-between text-[12px]">
+                <span className="text-cur-muted">{label}</span>
+                <span className={`font-medium ${full ? "text-red-600" : low ? "text-amber-600" : "text-cur-ink"}`}>
+                    {remaining} / {limit} 남음
+                </span>
+            </div>
+            <div className="w-full h-1.5 bg-cur-elevated rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+            </div>
+        </div>
+    )
+}
+
+export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleAction }: TBMHeaderProps) {
     const router = useRouter()
     const [userName, setUserName] = useState("사용자")
+    const [badge, setBadge] = useState<{ label: string; isPro: boolean } | null>(null)
+    const [plan, setPlan] = useState<string | null>(null)
+    const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
@@ -37,6 +93,17 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
                 setFullName(meta.full_name || "")
                 setCompanyName(meta.company_name || "")
                 setWorkerType(meta.worker_type || "현장 근로자 (비사무직)")
+                const sub = await fetchSubscription()
+                setBadge(planBadge(sub))
+                setPlan(sub?.plan ?? null)
+                // 이번 달(KST 근사) 사용량 집계
+                const startISO = startOfMonth(new Date()).toISOString()
+                const [logs, mins, ras] = await Promise.all([
+                    supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+                    supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+                    supabase.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+                ])
+                setUsage({ log: logs.count ?? 0, minutes: mins.count ?? 0, ra: ras.count ?? 0 })
             }
         }
         getUser()
@@ -77,6 +144,19 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
     }
 
     const userProfileDropdown = (
+        <div className="flex items-center gap-2">
+            {badge && (
+                <button
+                    onClick={() => router.push("/pricing")}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-[4px] tracking-wide ${
+                        badge.isPro
+                            ? "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active"
+                            : "bg-cur-elevated text-cur-muted border border-cur-hairline hover:bg-cur-hairline"
+                    }`}
+                >
+                    {badge.label}
+                </button>
+            )}
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-10 px-2 rounded-[8px] hover:bg-cur-elevated text-cur-body">
@@ -93,9 +173,32 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                <DropdownMenuLabel className="text-[13px] text-cur-muted font-semibold tracking-wide uppercase px-3 py-2">
+                <DropdownMenuLabel className="text-[13px] text-cur-muted font-semibold tracking-wide uppercase px-3 py-2 flex items-center gap-1.5">
                     내 계정 ({userName})
+                    {badge && (
+                        <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] ${
+                                badge.isPro ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-muted border border-cur-hairline"
+                            }`}
+                        >
+                            {badge.label}
+                        </span>
+                    )}
                 </DropdownMenuLabel>
+                {usage && (
+                    <>
+                        <DropdownMenuSeparator className="bg-cur-hairline" />
+                        <div className="px-3 py-2.5 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] text-cur-muted-soft font-semibold">이번 달 사용량</span>
+                                <span className="text-[11px] text-cur-muted-soft">{format(startOfMonth(addMonths(new Date(), 1)), "M월 d일")} 초기화</span>
+                            </div>
+                            <UsageBar label="TBM 일지" used={usage.log} limit={limitFor(plan, "log")} />
+                            <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
+                            <UsageBar label="위험성평가" used={usage.ra} limit={limitFor(plan, "ra")} />
+                        </div>
+                    </>
+                )}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={() => setIsEditProfileOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
@@ -112,6 +215,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
+        </div>
     )
 
     return (
@@ -135,8 +239,16 @@ export function TBMHeader({ title = "TBM 일지", onLogout }: TBMHeaderProps) {
                         {userProfileDropdown}
                     </div>
                     <div className="w-full h-[1px] bg-cur-hairline my-1" />
-                    <div className="flex items-center">
-                        <h1 className="text-[20px] font-bold text-cur-ink tracking-tight">{title}</h1>
+                    <div className="flex items-center justify-between w-full gap-2">
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-[20px] font-bold text-cur-ink tracking-tight">{title}</h1>
+                            {pageBadge && (
+                                <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/10 px-2 py-0.5 rounded-full">
+                                    {pageBadge}
+                                </span>
+                            )}
+                        </div>
+                        {titleAction}
                     </div>
                 </>
             )}

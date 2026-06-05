@@ -506,7 +506,12 @@ export default function TBMPage() {
             setStep(6)
 
         } catch (e: unknown) {
-            const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류"
+            const errorMessage =
+                e instanceof Error
+                    ? e.message
+                    : e && typeof e === "object" && "message" in e
+                    ? String((e as { message: unknown }).message)
+                    : "알 수 없는 오류"
             alert("저장 실패: " + errorMessage)
         } finally {
             setIsSaving(false)

@@ -26,7 +26,7 @@ async function run(request: Request) {
     // 청구 대상: 체험/활성 상태 + 결제일 도래
     const { data: due, error } = await admin
       .from("subscriptions")
-      .select("id, user_id, billing_key, amount, status, current_period_end, failed_attempts")
+      .select("id, user_id, plan, pending_plan, billing_key, amount, status, current_period_end, failed_attempts")
       .in("status", ["trialing", "active", "past_due"])
       .lte("current_period_end", nowIso)
       .not("billing_key", "is", null)

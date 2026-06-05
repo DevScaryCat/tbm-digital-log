@@ -1,0 +1,638 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
+import { fetchSubscription, isProActive } from "@/lib/useSubscription"
+import { TBMHeader } from "@/components/TBMHeader"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Calendar } from "@/components/ui/calendar"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DateRange } from "react-day-picker"
+import { ko } from "date-fns/locale"
+import { Loader2 } from "lucide-react"
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth } from "date-fns"
+
+interface RiskItem {
+    hazard: string
+    cause: string
+    frequency: number
+    severity: number
+    risk: number
+    level: string
+    measures: string
+    recurring?: boolean
+}
+
+const LEVEL_STYLE: Record<string, string> = {
+    "매우높음": "bg-red-100 text-red-700",
+    "높음": "bg-orange-100 text-orange-700",
+    "보통": "bg-yellow-100 text-yellow-700",
+    "낮음": "bg-green-100 text-green-700",
+}
+
+function levelFromRisk(risk: number): string {
+    if (risk >= 15) return "매우높음"
+    if (risk >= 9) return "높음"
+    if (risk >= 4) return "보통"
+    return "낮음"
+}
+
+const SAMPLE_ITEMS: RiskItem[] = [
+    { hazard: "고소작업 중 추락", cause: "여러 날 반복된 비계·고소 작업, 안전대 미체결", frequency: 4, severity: 5, risk: 20, level: "매우높음", measures: "안전대 100% 체결, 작업발판·안전난간 점검, 추락방지망 설치", recurring: true },
+    { hazard: "중량물 취급 중 협착·끼임", cause: "자재 인양·운반 작업 반복", frequency: 3, severity: 4, risk: 12, level: "높음", measures: "신호수 배치, 인양구 결속 확인, 하부 출입통제", recurring: true },
+    { hazard: "전동공구 사용 중 감전", cause: "누전·피복 손상, 우천 시 작업", frequency: 2, severity: 4, risk: 8, level: "보통", measures: "누전차단기 설치, 공구 절연 점검, 젖은 손 사용 금지", recurring: false },
+    { hazard: "정리정돈 미흡으로 전도", cause: "자재·공구 적치, 통로 미확보", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "통로 확보, 적치장 분리, 작업 후 정리정돈", recurring: false },
+    { hazard: "분진·소음 노출", cause: "절단·천공 작업 반복", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "방진마스크·귀마개 착용, 습식 작업, 작업시간 관리", recurring: false },
+]
+
+function exportCsv(items: RiskItem[], meta: { period: string; company: string; date: string }) {
+    const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"]
+    const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, it.level, it.measures])
+    const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows]
+    const csv = top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n")
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url; a.download = `위험성평가_${meta.date}.csv`; a.click()
+    URL.revokeObjectURL(url)
+}
+
+function Steps({ step }: { step: number }) {
+    const labels = ["기간 선택", "결과 확인", "내보내기"]
+    return (
+        <div className="flex items-center gap-1.5">
+            {labels.map((l, i) => {
+                const n = i + 1
+                const active = step === n
+                const done = step > n
+                return (
+                    <div key={l} className="flex items-center gap-1.5">
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-semibold ${active ? "bg-cur-primary text-white" : done ? "bg-cur-primary/15 text-cur-primary" : "bg-cur-elevated text-cur-muted"}`}>
+                            <span className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] ${active ? "bg-white/25" : done ? "bg-cur-primary/20" : "bg-cur-hairline"}`}>{n}</span>
+                            {l}
+                        </div>
+                        {i < labels.length - 1 && <span className="text-cur-muted-soft text-[12px]">›</span>}
+                    </div>
+                )
+            })}
+        </div>
+    )
+}
+
+export default function RiskAssessmentPage() {
+    const router = useRouter()
+    const [checking, setChecking] = useState(true)
+    const [pro, setPro] = useState(false)
+    const [companyName, setCompanyName] = useState("")
+    const today = format(new Date(), "yyyy-MM-dd")
+
+    const [step, setStep] = useState<0 | 1 | 2 | 3>(1)
+    const [analyzing, setAnalyzing] = useState(false)
+    const [range, setRange] = useState<DateRange | undefined>()
+    const [items, setItems] = useState<RiskItem[]>([])
+    const [periodLabel, setPeriodLabel] = useState("")
+    const [saving, setSaving] = useState(false)
+    const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    const [tbmDates, setTbmDates] = useState<string[]>([])
+
+    // 보고서 보내기 (step 3)
+    const [reportEmail, setReportEmail] = useState("")
+    const [sending, setSending] = useState(false)
+    const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+
+    // 자동 보고서 설정 모달
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [recipients, setRecipients] = useState<string[]>([])
+    const [newEmail, setNewEmail] = useState("")
+    const [sendDay, setSendDay] = useState(1)
+    const [savingSettings, setSavingSettings] = useState(false)
+    const [settingsMsg, setSettingsMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    const [previewHtml, setPreviewHtml] = useState("")
+    const [loadingPreview, setLoadingPreview] = useState(false)
+
+    useEffect(() => {
+        ;(async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) { router.replace("/login"); return }
+            const s = await fetchSubscription()
+            const p = isProActive(s)
+            setPro(p)
+            if (!p) setStep(0) // 베이직: 설명 화면 먼저
+            setCompanyName(user.user_metadata?.company_name || "")
+            await loadTbmDates() // 달력 점 표시는 모두에게
+            if (p) await loadRecipients()
+            setChecking(false)
+        })()
+    }, [router])
+
+    const loadTbmDates = async () => {
+        const [{ data: m }, { data: l }] = await Promise.all([
+            supabase.from("tbm_minutes").select("date").order("date", { ascending: false }).limit(300),
+            supabase.from("tbm_logs").select("date").order("date", { ascending: false }).limit(300),
+        ])
+        const dates = new Set<string>()
+        for (const r of [...((m as any[]) || []), ...((l as any[]) || [])]) if (r.date) dates.add(r.date)
+        setTbmDates([...dates])
+    }
+    const authToken = async () => {
+        const { data } = await supabase.auth.getSession()
+        return data?.session?.access_token
+    }
+
+    const loadRecipients = async () => {
+        const res = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${await authToken()}` } })
+        if (res.ok) {
+            const j = await res.json()
+            const r = Array.isArray(j.recipients) ? j.recipients : []
+            setRecipients(r)
+            setSendDay(j.sendDay ?? 1)
+            if (r.length) setReportEmail(r.join(", "))
+        }
+    }
+
+    const saveSettings = async (next: { recipients?: string[]; sendDay?: number }) => {
+        setSavingSettings(true)
+        setSettingsMsg(null)
+        try {
+            const res = await fetch("/api/reports/recipients", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
+                body: JSON.stringify(next),
+            })
+            const j = await res.json()
+            if (!res.ok) { setSettingsMsg({ type: "err", text: j.error || "저장 실패" }); return false }
+            setRecipients(j.recipients ?? [])
+            setSendDay(j.sendDay ?? 1)
+            return true
+        } finally {
+            setSavingSettings(false)
+        }
+    }
+
+    const addRecipient = async () => {
+        const email = newEmail.trim()
+        if (!email) return
+        if (recipients.includes(email)) { setSettingsMsg({ type: "err", text: "이미 등록된 이메일입니다." }); return }
+        const ok = await saveSettings({ recipients: [...recipients, email] })
+        if (ok) { setNewEmail(""); setSettingsMsg({ type: "ok", text: "수신처가 추가되었습니다." }) }
+    }
+    const removeRecipient = async (email: string) => { await saveSettings({ recipients: recipients.filter((e) => e !== email) }) }
+    const changeSendDay = async (d: number) => { await saveSettings({ sendDay: d }) }
+
+    const openSettings = async () => {
+        setSettingsOpen(true)
+        setSettingsMsg(null)
+        if (!previewHtml) {
+            setLoadingPreview(true)
+            try {
+                const res = await fetch("/api/reports/monthly/preview", { headers: { Authorization: `Bearer ${await authToken()}` } })
+                if (res.ok) { const j = await res.json(); setPreviewHtml(j.html || "") }
+            } finally { setLoadingPreview(false) }
+        }
+    }
+
+    const countInRange = (): number => {
+        if (!range?.from) return 0
+        const from = startOfDay(range.from)
+        const to = endOfDay(range.to ?? range.from)
+        return tbmDates.filter((d) => isWithinInterval(parseISO(d), { start: from, end: to })).length
+    }
+
+    const buildRangeContext = async (fromS: string, toS: string): Promise<string> => {
+        const [{ data: minutes }, { data: logs }] = await Promise.all([
+            supabase.from("tbm_minutes").select("date, process_name, work_name, work_content, hazards, instructions, safety_phrase, ppe_check").gte("date", fromS).lte("date", toS).order("date"),
+            supabase.from("tbm_logs").select("date, education_type, education_content, remarks").gte("date", fromS).lte("date", toS).order("date"),
+        ])
+        const blocks: string[] = []
+        for (const m of (minutes as any[]) || []) {
+            const hz = Array.isArray(m.hazards) ? m.hazards : []
+            const hzText = hz.map((h: any) => `- ${h?.factor ?? ""}${h?.level ? ` (위험도: ${h.level})` : ""}${h?.measure ? ` → 대책: ${h.measure}` : ""}`).filter((s: string) => s.trim() !== "-").join("\n")
+            blocks.push(`=== TBM (${m.date}, 회의록) ===\n` + [
+                m.process_name && `공정: ${m.process_name}`, m.work_name && `작업명: ${m.work_name}`,
+                m.work_content && `작업내용: ${m.work_content}`, m.ppe_check && `보호구: ${m.ppe_check}`,
+                hzText && `논의된 위험요인:\n${hzText}`, m.instructions && `지시사항: ${m.instructions}`,
+            ].filter(Boolean).join("\n"))
+        }
+        for (const l of (logs as any[]) || []) {
+            blocks.push(`=== TBM (${l.date}, 일지) ===\n` + [
+                l.education_type && `교육구분: ${l.education_type}`, l.education_content && `교육내용:\n${l.education_content}`, l.remarks && `특이사항: ${l.remarks}`,
+            ].filter(Boolean).join("\n"))
+        }
+        let text = blocks.join("\n\n")
+        if (text.length > 11000) text = text.slice(0, 11000)
+        return text
+    }
+
+    const analyze = async () => {
+        if (!range?.from) { setMsg({ type: "err", text: "기간을 선택해주세요." }); return }
+        setMsg(null)
+        const fromS = format(range.from, "yyyy-MM-dd")
+        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
+        const label = fromS === toS ? fromS : `${fromS} ~ ${toS}`
+        setAnalyzing(true)
+        try {
+            // 베이직: 체험(더미 결과). Pro: 실제 AI 분석
+            if (!pro) {
+                await new Promise((r) => setTimeout(r, 1500))
+                setItems(SAMPLE_ITEMS)
+                setPeriodLabel(label)
+                setSendMsg(null)
+                setStep(2)
+                return
+            }
+
+            const content = await buildRangeContext(fromS, toS)
+            if (!content.trim()) { setMsg({ type: "err", text: "선택한 기간에 작성된 TBM이 없습니다." }); return }
+            const { data: sessionData } = await supabase.auth.getSession()
+            const token = sessionData?.session?.access_token
+            const res = await fetch("/api/ai/risk-assessment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ workName: `${label} 종합`, workContent: content }),
+            })
+            const json = await res.json()
+            if (!res.ok) { setMsg({ type: "err", text: json.error || "분석 실패" }); return }
+            setItems(json.items as RiskItem[])
+            setPeriodLabel(label)
+            setSendMsg(null)
+            setStep(2)
+        } catch {
+            setMsg({ type: "err", text: "AI 분석 중 오류가 발생했습니다." })
+        } finally {
+            setAnalyzing(false)
+        }
+    }
+
+    const updateItem = (idx: number, patch: Partial<RiskItem>) => {
+        setItems((prev) => prev.map((it, i) => {
+            if (i !== idx) return it
+            const next = { ...it, ...patch }
+            next.risk = next.frequency * next.severity
+            next.level = levelFromRisk(next.risk)
+            return next
+        }))
+    }
+    const addRow = () => setItems((prev) => [...prev, { hazard: "", cause: "", frequency: 1, severity: 1, risk: 1, level: "낮음", measures: "", recurring: false }])
+    const removeRow = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx))
+
+    const save = async () => {
+        if (items.length === 0) return
+        setSaving(true); setMsg(null)
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) { router.replace("/login"); return }
+            const { error } = await supabase.from("tbm_risk_assessments").insert({
+                user_id: user.id, date: today, company_name: companyName || null, location: null,
+                work_name: `${periodLabel} 종합`, work_content: null, items,
+            })
+            if (error) { setMsg({ type: "err", text: "저장 실패: " + error.message }); return }
+            setMsg({ type: "ok", text: "저장되었습니다." })
+        } finally { setSaving(false) }
+    }
+
+    const sendReport = async () => {
+        const recipients = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+        if (recipients.length === 0) { setSendMsg({ type: "err", text: "받는 사람 이메일을 입력해주세요." }); return }
+        setSending(true); setSendMsg(null)
+        try {
+            // 베이직 체험: 실제 발송하지 않음
+            if (!pro) {
+                await new Promise((r) => setTimeout(r, 800))
+                setSendMsg({ type: "ok", text: `체험 모드 — Pro에서는 ${recipients.length}곳으로 엑셀 첨부 메일이 실제 발송됩니다.` })
+                return
+            }
+            const { data: sessionData } = await supabase.auth.getSession()
+            const res = await fetch("/api/reports/risk-assessment/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
+                body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: companyName, recipients }),
+            })
+            const j = await res.json()
+            if (!res.ok) { setSendMsg({ type: "err", text: j.error || "발송 실패" }); return }
+            setSendMsg({ type: "ok", text: `${recipients.length}곳으로 발송했습니다. (엑셀 첨부)` })
+        } finally { setSending(false) }
+    }
+
+    const restart = () => { setStep(1); setItems([]); setMsg(null); setSendMsg(null) }
+
+    if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+
+    const recurringCount = items.filter((it) => it.recurring).length
+    const hasLog = (d: Date) => tbmDates.some((t) => t === format(d, "yyyy-MM-dd"))
+
+    return (
+        <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
+            <div className="max-w-md mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10 print:hidden">
+                    <TBMHeader
+                        title="위험성평가"
+                        pageBadge={pro ? undefined : "체험"}
+                        titleAction={pro ? (
+                            <Button variant="ghost" onClick={openSettings} className="h-9 px-3 text-[13px] text-cur-muted hover:text-cur-ink border border-cur-hairline rounded-[8px]">설정</Button>
+                        ) : undefined}
+                    />
+                </div>
+
+                <div className="p-5 space-y-5 flex-1 bg-cur-canvas-soft">
+                    {step >= 1 && <div className="print:hidden"><Steps step={analyzing ? 2 : step} /></div>}
+
+                    {msg && <div className={`text-[14px] rounded-xl p-4 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>}
+
+                    {/* STEP 0: 베이직 설명/체험 안내 */}
+                    {!analyzing && step === 0 && (
+                        <div className="space-y-5">
+                            <div className="text-center space-y-3 pt-6">
+                                <h2 className="text-[22px] font-bold">TBM 종합 위험성평가</h2>
+                                <p className="text-cur-muted text-[14px] leading-relaxed">
+                                    기간만 선택하면 그 기간의 TBM을 AI가 분석해<br />
+                                    위험성평가표를 자동으로 만들어줍니다.
+                                </p>
+                            </div>
+
+                            <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline">
+                                {[
+                                    { t: "기간만 선택", d: "이번 달·3개월·6개월 또는 직접 기간 지정" },
+                                    { t: "AI가 종합 분석", d: "중복 위험은 통합, 반복 위험은 따로 표시" },
+                                    { t: "엑셀·PDF·메일 발송", d: "사장·안전보건 담당자에게 바로 제출" },
+                                ].map((f, i) => (
+                                    <div key={i} className="flex items-start gap-3 p-4">
+                                        <div className="w-6 h-6 rounded-full bg-cur-primary/15 text-cur-primary text-[12px] font-bold flex items-center justify-center shrink-0">{i + 1}</div>
+                                        <div>
+                                            <div className="font-semibold text-[14px] text-cur-ink">{f.t}</div>
+                                            <div className="text-[13px] text-cur-muted-soft">{f.d}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Button onClick={() => setStep(1)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                                    체험해보기
+                                </Button>
+                                <p className="text-[12px] text-cur-muted-soft text-center">Pro 4,900원/월 · 첫 달 무료 · 위험성평가 + 월간 보고서</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 분석 중 */}
+                    {analyzing && (
+                        <div className="bg-cur-card rounded-2xl p-10 border border-cur-hairline text-center space-y-4">
+                            <Loader2 className="w-12 h-12 text-cur-primary animate-spin mx-auto" />
+                            <div>
+                                <p className="text-[17px] font-bold text-cur-ink">분석 중입니다…</p>
+                                <p className="text-[14px] text-cur-muted mt-1">TBM 내용을 분석해 위험성평가를 만들고 있어요.<br />잠시 기다려 주세요. (10~20초)</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 1: 기간 선택 */}
+                    {!analyzing && step === 1 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-1">
+                                <p className="text-[15px] font-semibold text-cur-ink">보고서를 생성할 범위를 선택하세요</p>
+                                <Button variant="outline" onClick={() => setRange({ from: startOfMonth(new Date()), to: new Date() })} className="h-9 px-3 rounded-[8px] border-cur-hairline text-[13px] font-medium">이번 달</Button>
+                            </div>
+
+                            <div className="border border-cur-hairline rounded-[12px] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center">
+                                <Calendar
+                                    mode="range"
+                                    selected={range}
+                                    onSelect={setRange}
+                                    locale={ko}
+                                    className="w-full"
+                                    modifiers={{ hasLog }}
+                                    modifiersClassNames={{ hasLog: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:bg-cur-primary after:rounded-full data-[selected=true]:after:bg-cur-card" }}
+                                    classNames={{
+                                        day_selected: "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active focus:bg-cur-primary rounded-[8px]",
+                                        day_today: "bg-cur-canvas text-cur-ink font-semibold rounded-[8px]",
+                                    }}
+                                />
+                            </div>
+
+                            {range?.from && (
+                                <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-4 space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <div className="font-semibold text-[15px] text-cur-ink">
+                                            {format(range.from, "MM.dd")} ~ {range.to ? format(range.to, "MM.dd") : "-"}
+                                        </div>
+                                        <span className="text-[13px] text-cur-muted">TBM {countInRange()}건</span>
+                                    </div>
+                                    <Button onClick={analyze} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-medium rounded-[8px]">
+                                        다음: AI 분석
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* STEP 2: 결과 확인·수정 (표만) */}
+                    {!analyzing && step === 2 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between gap-2">
+                                <Button variant="ghost" onClick={restart} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 기간 다시</Button>
+                                <span className="text-[13px] text-cur-muted">내용을 확인·수정하세요</span>
+                            </div>
+
+                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
+                                <div>
+                                    <h3 className="font-bold text-[16px]">{periodLabel} 종합 위험성평가 ({items.length}건)</h3>
+                                    {recurringCount > 0 && (
+                                        <div className="mt-2 text-[13px] text-cur-primary bg-cur-primary/[0.06] rounded-lg px-3 py-2">
+                                            반복 위험요인 {recurringCount}건 — 여러 TBM에서 반복 등장, 우선 관리 대상
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="overflow-x-auto rounded-xl border border-cur-hairline">
+                                    <table className="border-collapse min-w-[680px] w-full text-[13px]">
+                                        <thead>
+                                            <tr className="bg-cur-elevated/60 text-cur-muted text-[12px]">
+                                                <th className="border border-cur-hairline px-2 py-2 text-center w-8">No</th>
+                                                <th className="border border-cur-hairline px-2 py-2 text-left">유해·위험요인 / 원인</th>
+                                                <th className="border border-cur-hairline px-1 py-2 text-center w-12">가능성</th>
+                                                <th className="border border-cur-hairline px-1 py-2 text-center w-12">중대성</th>
+                                                <th className="border border-cur-hairline px-2 py-2 text-center w-20">위험성</th>
+                                                <th className="border border-cur-hairline px-2 py-2 text-left">감소대책</th>
+                                                <th className="border border-cur-hairline px-1 py-2 w-8"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {items.map((it, idx) => (
+                                                <tr key={idx} className="align-top">
+                                                    <td className="border border-cur-hairline px-1 py-2 text-center text-cur-muted-soft">{idx + 1}</td>
+                                                    <td className="border border-cur-hairline px-1 py-1">
+                                                        {it.recurring && <span className="inline-block text-[10px] font-bold bg-cur-primary/15 text-cur-primary px-1.5 py-0.5 rounded-[4px] mb-1">반복</span>}
+                                                        <input value={it.hazard} onChange={(e) => updateItem(idx, { hazard: e.target.value })} className="w-full bg-transparent font-medium text-cur-ink px-1 py-0.5 rounded focus:outline-none focus:bg-cur-primary/5" />
+                                                        <textarea value={it.cause} onChange={(e) => updateItem(idx, { cause: e.target.value })} rows={2} className="w-full bg-transparent text-[12px] text-cur-muted-soft px-1 py-0.5 rounded resize-none focus:outline-none focus:bg-cur-primary/5" />
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
+                                                        <input type="number" min={1} max={5} value={it.frequency} onChange={(e) => updateItem(idx, { frequency: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })} className="w-10 bg-transparent text-center px-0.5 py-1 rounded focus:outline-none focus:bg-cur-primary/5" />
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
+                                                        <input type="number" min={1} max={5} value={it.severity} onChange={(e) => updateItem(idx, { severity: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })} className="w-10 bg-transparent text-center px-0.5 py-1 rounded focus:outline-none focus:bg-cur-primary/5" />
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-1 py-2 text-center">
+                                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${LEVEL_STYLE[it.level] ?? "bg-gray-100 text-gray-600"}`}>{it.risk} · {it.level}</span>
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-1 py-1">
+                                                        <textarea value={it.measures} onChange={(e) => updateItem(idx, { measures: e.target.value })} rows={2} className="w-full bg-transparent text-cur-body px-1 py-0.5 rounded resize-none focus:outline-none focus:bg-cur-primary/5" />
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
+                                                        <button onClick={() => removeRow(idx)} className="text-[12px] text-cur-muted hover:text-cur-error">삭제</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <Button variant="outline" onClick={addRow} className="w-full h-11 rounded-xl border-cur-hairline">항목 추가</Button>
+                            </div>
+
+                            <Button onClick={() => setStep(3)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                                완료 — 내보내기
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* STEP 3: 내보내기 */}
+                    {!analyzing && step === 3 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between gap-2 print:hidden">
+                                <Button variant="ghost" onClick={() => setStep(2)} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 결과 수정</Button>
+                            </div>
+
+                            {/* 확인용 읽기 전용 표 */}
+                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                                <div>
+                                    <h3 className="font-bold text-[16px]">{periodLabel} 종합 위험성평가</h3>
+                                    <p className="text-[13px] text-cur-muted-soft mt-0.5">위험요인 {items.length}건{recurringCount > 0 ? ` · 반복 ${recurringCount}건` : ""}</p>
+                                </div>
+                                <div className="overflow-x-auto rounded-xl border border-cur-hairline">
+                                    <table className="border-collapse min-w-[560px] w-full text-[13px]">
+                                        <thead>
+                                            <tr className="bg-cur-elevated/60 text-cur-muted text-[12px]">
+                                                <th className="border border-cur-hairline px-2 py-2 text-left">유해·위험요인</th>
+                                                <th className="border border-cur-hairline px-1 py-2 text-center w-20">위험성</th>
+                                                <th className="border border-cur-hairline px-2 py-2 text-left">감소대책</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {items.map((it, idx) => (
+                                                <tr key={idx} className="align-top">
+                                                    <td className="border border-cur-hairline px-2 py-2 text-cur-ink font-medium">
+                                                        {it.recurring && <span className="inline-block text-[10px] font-bold bg-cur-primary/15 text-cur-primary px-1.5 py-0.5 rounded-[4px] mr-1">반복</span>}
+                                                        {it.hazard}
+                                                        <div className="text-[11px] text-cur-muted-soft font-normal mt-0.5">{it.cause}</div>
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-1 py-2 text-center">
+                                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${LEVEL_STYLE[it.level] ?? "bg-gray-100 text-gray-600"}`}>{it.risk} · {it.level}</span>
+                                                    </td>
+                                                    <td className="border border-cur-hairline px-2 py-2 text-cur-body">{it.measures}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* 내보내기 액션 */}
+                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4 print:hidden">
+                                <h3 className="font-bold text-[15px]">내보내기 / 제출</h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button variant="outline" onClick={() => exportCsv(items, { period: periodLabel, company: companyName, date: today })} className="h-11 rounded-xl border-cur-hairline">엑셀로 내보내기</Button>
+                                    <Button variant="outline" onClick={() => window.print()} className="h-11 rounded-xl border-cur-hairline">PDF로 내보내기</Button>
+                                </div>
+                                <Button onClick={save} disabled={saving} className="w-full h-11 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90">
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "앱에 저장"}
+                                </Button>
+
+                                <div className="border-t border-cur-hairline pt-4 space-y-2">
+                                    <h4 className="font-bold text-[14px]">보고서 바로 보내기</h4>
+                                    <p className="text-[13px] text-cur-muted">사장님·안전보건 담당자 이메일로 발송합니다. (엑셀 첨부, 가입 불필요)</p>
+                                    <div className="flex gap-2">
+                                        <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (여러 명은 쉼표로 구분)" className="h-11" />
+                                        <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
+                                            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
+                                        </Button>
+                                    </div>
+                                    {sendMsg && <p className={`text-[13px] ${sendMsg.type === "ok" ? "text-cur-primary" : "text-cur-error"}`}>{sendMsg.text}</p>}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* 자동 보고서 설정 모달 */}
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <DialogContent className="max-w-md w-[calc(100%-2rem)] max-h-[85vh] overflow-y-auto rounded-2xl bg-cur-card border-cur-hairline">
+                    <DialogHeader>
+                        <DialogTitle className="text-[18px] font-bold text-cur-ink">자동 보고서 설정</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-5 pt-2">
+                        <p className="text-[13px] text-cur-muted leading-relaxed">
+                            매달 지정한 날짜에 지난달 안전활동(TBM·위험성평가)을 분석한 보고서를 사장·안전보건 담당자에게 자동 발송합니다. 받는 분은 가입·로그인 불필요.
+                        </p>
+
+                        {settingsMsg && (
+                            <div className={`text-[13px] rounded-lg p-3 ${settingsMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{settingsMsg.text}</div>
+                        )}
+
+                        {/* 발송일 */}
+                        <div className="space-y-1.5">
+                            <Label className="text-[13px]">매달 발송일</Label>
+                            <select
+                                value={sendDay}
+                                onChange={(e) => changeSendDay(Number(e.target.value))}
+                                disabled={savingSettings}
+                                className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
+                            >
+                                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                                    <option key={d} value={d}>매달 {d}일</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* 수신처 */}
+                        <div className="space-y-2">
+                            <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
+                            {recipients.length === 0 ? (
+                                <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
+                            ) : (
+                                recipients.map((email) => (
+                                    <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
+                                        <span className="text-[14px] text-cur-ink truncate">{email}</span>
+                                        <button onClick={() => removeRecipient(email)} disabled={savingSettings} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2">삭제</button>
+                                    </div>
+                                ))
+                            )}
+                            <div className="flex gap-2">
+                                <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="사장님/안전관리자 이메일" className="h-11" />
+                                <Button onClick={addRecipient} disabled={savingSettings || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
+                                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* 미리보기 */}
+                        <div className="space-y-2">
+                            <Label className="text-[13px]">보고서 미리보기</Label>
+                            {loadingPreview ? (
+                                <div className="h-[300px] flex items-center justify-center border border-cur-hairline rounded-lg"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
+                            ) : previewHtml ? (
+                                <iframe title="보고서 미리보기" srcDoc={previewHtml} className="w-full h-[360px] border border-cur-hairline rounded-lg bg-white" />
+                            ) : (
+                                <p className="text-[13px] text-cur-muted-soft">미리보기를 불러오지 못했습니다.</p>
+                            )}
+                            <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
+}

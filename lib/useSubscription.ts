@@ -7,9 +7,23 @@ import { supabase } from "@/lib/supabaseClient"
 export interface SubscriptionRow {
     status: string
     plan?: string | null
+    pending_plan?: string | null
     card_info?: { issuer?: string | null; last4?: string | null; provider?: string | null } | null
     current_period_end?: string | null
     trial_end?: string | null
+}
+
+/** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (monthly_pro 또는 grandfather) */
+export function isProActive(sub: SubscriptionRow | null): boolean {
+    return isAllowed(sub) && (sub?.plan === "monthly_pro" || sub?.plan === "grandfather")
+}
+
+/** 메인/헤더에 표시할 플랜 배지. 사용 가능한 구독이 없으면 null */
+export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean } | null {
+    if (!isAllowed(sub)) return null
+    if (sub?.plan === "monthly_pro") return { label: "Pro", isPro: true }
+    if (sub?.plan === "grandfather") return { label: "Pro", isPro: true }
+    return { label: "베이직", isPro: false }
 }
 
 /** 구독이 앱 사용을 허용하는 상태인지 */
@@ -30,7 +44,7 @@ export function isAllowed(sub: SubscriptionRow | null): boolean {
 export async function fetchSubscription(): Promise<SubscriptionRow | null> {
     const { data } = await supabase
         .from("subscriptions")
-        .select("status, plan, card_info, current_period_end, trial_end")
+        .select("status, plan, pending_plan, card_info, current_period_end, trial_end")
         .maybeSingle()
     return (data as SubscriptionRow) || null
 }
@@ -57,7 +71,7 @@ export function useRequireSubscription() {
             }
             const { data, error } = await supabase
                 .from("subscriptions")
-                .select("status, plan, card_info, current_period_end, trial_end")
+                .select("status, plan, pending_plan, card_info, current_period_end, trial_end")
                 .maybeSingle()
             if (!active) return
             // 일시적 조회 오류(네트워크/RLS)면 잠그지 않음 — 결제 고객 오잠금 방지

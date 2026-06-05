@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
-import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
+import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
-import { Loader2, CreditCard, CheckCircle2, XCircle, Receipt } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Loader2, CheckCircle2, XCircle, Receipt, Mail, Send, Plus, Trash2, Sparkles } from "lucide-react"
 
 interface Payment {
     payment_id: string
@@ -39,6 +40,12 @@ export default function AccountPage() {
     const [changingMethod, setChangingMethod] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
+    // Pro: 월간 보고서 수신처
+    const [recipients, setRecipients] = useState<string[]>([])
+    const [newEmail, setNewEmail] = useState("")
+    const [savingRecipients, setSavingRecipients] = useState(false)
+    const [sending, setSending] = useState(false)
+
     const load = async () => {
         const {
             data: { user },
@@ -47,18 +54,90 @@ export default function AccountPage() {
             router.replace("/login")
             return
         }
-        setSub(await fetchSubscription())
+        const s = await fetchSubscription()
+        setSub(s)
         const { data } = await supabase
             .from("payments")
             .select("payment_id, amount, status, paid_at, created_at")
             .order("created_at", { ascending: false })
         setPayments((data as Payment[]) || [])
+        if (isProActive(s)) {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const res = await fetch("/api/reports/recipients", {
+                headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` },
+            })
+            if (res.ok) {
+                const j = await res.json()
+                setRecipients(j.recipients ?? [])
+            }
+        }
         setLoading(false)
     }
 
     useEffect(() => {
         load()
     }, [])
+
+    const saveRecipients = async (next: string[]) => {
+        setSavingRecipients(true)
+        setMsg(null)
+        try {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const res = await fetch("/api/reports/recipients", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
+                body: JSON.stringify({ recipients: next }),
+            })
+            const j = await res.json()
+            if (!res.ok) {
+                setMsg({ type: "err", text: j.error || "저장 실패" })
+                return false
+            }
+            setRecipients(j.recipients ?? next)
+            return true
+        } finally {
+            setSavingRecipients(false)
+        }
+    }
+
+    const addRecipient = async () => {
+        const email = newEmail.trim()
+        if (!email) return
+        if (recipients.includes(email)) {
+            setMsg({ type: "err", text: "이미 등록된 이메일입니다." })
+            return
+        }
+        const ok = await saveRecipients([...recipients, email])
+        if (ok) {
+            setNewEmail("")
+            setMsg({ type: "ok", text: "수신처가 추가되었습니다." })
+        }
+    }
+
+    const removeRecipient = async (email: string) => {
+        await saveRecipients(recipients.filter((e) => e !== email))
+    }
+
+    const sendNow = async () => {
+        setSending(true)
+        setMsg(null)
+        try {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const res = await fetch("/api/reports/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
+                body: JSON.stringify({ which: "current" }),
+            })
+            const j = await res.json()
+            if (!res.ok) {
+                setMsg({ type: "err", text: j.error || "발송 실패" })
+                return
+            }
+            setMsg({ type: "ok", text: `이번 달 보고서를 ${recipients.length}곳으로 발송했습니다.` })
+        } finally {
+            setSending(false)
+        }
+    }
 
     const handleCancel = async () => {
         if (!confirm("정말 구독을 해지하시겠어요? 남은 기간까지는 계속 이용할 수 있습니다.")) return
@@ -84,6 +163,9 @@ export default function AccountPage() {
 
     const isGrandfather = sub?.plan === "grandfather"
     const active = isAllowed(sub)
+    const pro = isProActive(sub)
+    const planLabel =
+        sub?.plan === "monthly_pro" ? "Pro 플랜 (4,900원/월)" : "베이직 플랜 (1,900원/월)"
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
@@ -93,11 +175,11 @@ export default function AccountPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
-            <div className="w-full max-w-2xl mx-auto px-4 pt-4">
+            <div className="w-full max-w-md mx-auto px-4 pt-4">
                 <TBMHeader title="구독 및 결제" />
             </div>
 
-            <div className="flex-1 w-full max-w-2xl mx-auto px-4 py-6 space-y-5">
+            <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 space-y-5">
                 {loading ? (
                     <div className="flex justify-center py-20">
                         <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
@@ -137,14 +219,12 @@ export default function AccountPage() {
                                 <div className="space-y-2 text-[14px]">
                                     <div className="flex justify-between">
                                         <span className="text-cur-muted">플랜</span>
-                                        <span className="text-cur-ink font-medium">월간 구독 (1,900원/월)</span>
+                                        <span className="text-cur-ink font-medium">{planLabel}</span>
                                     </div>
                                     {methodLabel && (
                                         <div className="flex justify-between">
                                             <span className="text-cur-muted">결제수단</span>
-                                            <span className="text-cur-ink font-medium flex items-center gap-1">
-                                                <CreditCard className="w-4 h-4" /> {methodLabel}
-                                            </span>
+                                            <span className="text-cur-ink font-medium">{methodLabel}</span>
                                         </div>
                                     )}
                                     {nextDate && (
@@ -153,6 +233,11 @@ export default function AccountPage() {
                                                 {sub?.status === "canceled" ? "이용 종료일" : "다음 결제일"}
                                             </span>
                                             <span className="text-cur-ink font-medium">{nextDate}</span>
+                                        </div>
+                                    )}
+                                    {sub?.pending_plan && sub.pending_plan !== sub.plan && (
+                                        <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-3 py-2 text-[13px] text-cur-primary">
+                                            다음 결제일부터 {sub.pending_plan === "monthly_pro" ? "Pro 플랜(4,900원)" : "베이직 플랜(1,900원)"}으로 변경 예정
                                         </div>
                                     )}
                                 </div>
@@ -165,15 +250,31 @@ export default function AccountPage() {
                                 {active && sub?.status !== "canceled" ? (
                                     <>
                                         {changingMethod ? (
-                                            <SubscribeButtons
-                                                mode="update"
-                                                onSuccess={async () => {
-                                                    setChangingMethod(false)
-                                                    await load()
-                                                }}
-                                                ctaSuffix="로 변경"
-                                                successText="결제수단이 변경되었습니다."
-                                            />
+                                            <div className="space-y-3">
+                                                {methodLabel && (
+                                                    <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
+                                                        <span className="text-[13px] text-cur-muted">현재 결제수단</span>
+                                                        <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
+                                                    </div>
+                                                )}
+                                                <p className="text-[13px] text-cur-muted text-center">변경할 결제수단을 선택하세요</p>
+                                                <SubscribeButtons
+                                                    mode="update"
+                                                    onSuccess={async () => {
+                                                        setChangingMethod(false)
+                                                        await load()
+                                                    }}
+                                                    ctaSuffix="로 변경"
+                                                    successText="결제수단이 변경되었습니다."
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => setChangingMethod(false)}
+                                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                                >
+                                                    취소
+                                                </Button>
+                                            </div>
                                         ) : (
                                             <Button
                                                 onClick={() => setChangingMethod(true)}
@@ -201,6 +302,88 @@ export default function AccountPage() {
                                         <SubscribeButtons onSuccess={load} />
                                     </>
                                 )}
+                            </div>
+                        )}
+
+                        {/* Pro: 월간 보고서 자동 발송 설정 */}
+                        {pro && (
+                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <Mail className="w-5 h-5 text-cur-primary" />
+                                    <h2 className="text-[16px] font-bold text-cur-ink">월간 보고서 자동 발송</h2>
+                                </div>
+                                <p className="text-[13px] text-cur-muted leading-relaxed">
+                                    매월 1일, 지난 달 안전활동을 AI가 분석한 보고서를 아래 이메일로 자동 발송합니다.
+                                    받는 분은 별도 가입·로그인이 필요 없습니다. (최대 5개)
+                                </p>
+
+                                <div className="space-y-2">
+                                    {recipients.length === 0 ? (
+                                        <p className="text-[13px] text-cur-muted-soft py-2">등록된 수신처가 없습니다.</p>
+                                    ) : (
+                                        recipients.map((email) => (
+                                            <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
+                                                <span className="text-[14px] text-cur-ink">{email}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => removeRecipient(email)}
+                                                    disabled={savingRecipients}
+                                                    className="h-7 w-7 text-cur-muted hover:text-cur-error"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="email"
+                                        value={newEmail}
+                                        onChange={(e) => setNewEmail(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }}
+                                        placeholder="사장님/안전관리자 이메일"
+                                        className="h-11"
+                                    />
+                                    <Button
+                                        onClick={addRecipient}
+                                        disabled={savingRecipients || !newEmail.trim()}
+                                        className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0"
+                                    >
+                                        {savingRecipients ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                    </Button>
+                                </div>
+
+                                {recipients.length > 0 && (
+                                    <Button
+                                        onClick={sendNow}
+                                        disabled={sending}
+                                        className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                                    >
+                                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> 이번 달 보고서 지금 보내기</>}
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 베이직 구독자 → Pro 업그레이드 권유 */}
+                        {active && !pro && !isGrandfather && (
+                            <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-cur-primary" />
+                                    <h2 className="text-[16px] font-bold text-cur-ink">Pro로 업그레이드</h2>
+                                </div>
+                                <p className="text-[13px] text-cur-muted leading-relaxed">
+                                    위험성평가 자동 생성과 월간 안전 보고서 자동 발송까지. 월 4,900원으로 이용하세요.
+                                </p>
+                                <Button
+                                    onClick={() => router.push("/pricing")}
+                                    className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                                >
+                                    Pro 플랜 보기
+                                </Button>
                             </div>
                         )}
 

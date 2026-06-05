@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, ArrowLeft, Loader2, LogOut } from "lucide-react"
+import { CheckCircle2, Minus, ArrowLeft, Loader2, LogOut, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
+import { cn } from "@/lib/utils"
+
+type PlanId = "monthly_basic" | "monthly_pro"
 
 const STATUS_LABEL: Record<string, string> = {
     trialing: "무료체험 중",
@@ -15,21 +18,39 @@ const STATUS_LABEL: Record<string, string> = {
     canceled: "해지됨",
 }
 
+const PLAN_LABEL: Record<PlanId, string> = {
+    monthly_basic: "베이직",
+    monthly_pro: "Pro",
+}
+
+// 기능 비교표 (text가 있으면 텍스트, 없으면 ✓/— 표시)
+const FEATURES: { label: string; basic?: boolean; pro?: boolean; basicText?: string; proText?: string }[] = [
+    { label: "TBM 일지 작성", basicText: "월 80회", proText: "월 200회" },
+    { label: "TBM 회의록 작성", basicText: "월 10회", proText: "월 30회" },
+    { label: "AI 일지·회의록 자동 생성 (녹음·음성)", basic: true, pro: true },
+    { label: "무제한 프로젝트 및 인원 등록", basic: true, pro: true },
+    { label: "클라우드 보안 저장 (1년 보관)", basic: true, pro: true },
+    { label: "참석자 전자 서명", basic: true, pro: true },
+    { label: "위험성평가 자동 생성", basic: false, pro: true },
+    { label: "월간 안전 보고서 자동 발송", basic: false, pro: true },
+    { label: "사장·안전관리자 메일 자동 전달 (가입 불필요)", basic: false, pro: true },
+]
+
 export default function PricingPage() {
     const router = useRouter()
-    const features = [
-        "스마트 TBM 일지 자동 생성",
-        "TBM 회의록 자동 요약",
-        "무제한 프로젝트 및 인원 등록",
-        "클라우드 보안 저장 (1년 보관)",
-        "참석자 전자 서명 기능",
-    ]
 
     const [loading, setLoading] = useState(true)
     const [hasUser, setHasUser] = useState(false)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
+    const [selected, setSelected] = useState<PlanId | null>(null)
+    const [changing, setChanging] = useState(false)
+    const [changeMsg, setChangeMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
-    const loadSubscription = async () => setSub(await fetchSubscription())
+    const loadSubscription = async () => {
+        const s = await fetchSubscription()
+        setSub(s)
+        return s
+    }
 
     const handleLogout = async () => {
         await supabase.auth.signOut()
@@ -40,15 +61,184 @@ export default function PricingPage() {
         ;(async () => {
             const { data } = await supabase.auth.getUser()
             setHasUser(!!data?.user)
-            await loadSubscription()
+            const s = await loadSubscription()
+            // 구독 중이면 현재 플랜을 기본 선택, 아니면 미선택 상태로 시작
+            if (isAllowed(s) && s?.plan) setSelected(s.plan as PlanId)
             setLoading(false)
         })()
     }, [])
 
     const subscribed = isAllowed(sub)
+    const isGrandfather = sub?.plan === "grandfather"
+    const currentPlan = (sub?.plan as PlanId | undefined) ?? null
+    const pending = (sub?.pending_plan as PlanId | null) ?? null
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
+
+    const changePlan = async (plan: PlanId) => {
+        setChangeMsg(null)
+        setChanging(true)
+        try {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const token = sessionData?.session?.access_token
+            const res = await fetch("/api/payments/change-plan", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ plan }),
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setChangeMsg({ type: "err", text: json.error || "플랜 변경 실패" })
+                return
+            }
+            const isCancel = plan === currentPlan
+            setChangeMsg({
+                type: "ok",
+                text: isCancel
+                    ? "플랜 변경 예약을 취소했습니다."
+                    : plan === "monthly_pro"
+                    ? "다음 결제일부터 Pro(4,900원)로 변경됩니다. 그때까지는 현재 플랜 그대로 이용됩니다."
+                    : "다음 결제일부터 베이직(1,900원)으로 변경됩니다. 그때까지는 Pro를 계속 이용할 수 있어요.",
+            })
+            await loadSubscription()
+        } finally {
+            setChanging(false)
+        }
+    }
+
+    // 선택된 플랜에 대한 하단 액션 영역
+    const renderAction = () => {
+        if (loading) {
+            return (
+                <Button disabled className="w-full h-12 rounded-xl">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                </Button>
+            )
+        }
+        // 평생 무료(기존 회원): 결제·변경 불필요, 모든 기능 이용 중
+        if (isGrandfather) {
+            return (
+                <div className="rounded-xl bg-cur-primary/5 border border-cur-primary/30 p-5 text-center space-y-1">
+                    <p className="font-bold text-cur-ink flex items-center justify-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-cur-primary" /> 평생 무료 이용 중
+                    </p>
+                    <p className="text-cur-muted text-[14px]">기존 회원 혜택으로 Pro 기능 포함 모든 기능을 무료로 이용하고 계십니다.</p>
+                </div>
+            )
+        }
+        if (!selected) {
+            return (
+                <p className="text-center text-[14px] text-cur-muted py-2">
+                    위에서 플랜을 선택해주세요.
+                </p>
+            )
+        }
+        // 이미 이 플랜 구독 중
+        if (subscribed && currentPlan === selected) {
+            return (
+                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center space-y-2">
+                    <p className="font-bold text-cur-ink">
+                        {PLAN_LABEL[selected]} · {STATUS_LABEL[sub!.status] ?? "이용 중"}
+                    </p>
+                    {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
+                    {pending && pending !== currentPlan && (
+                        <p className="text-[13px] text-cur-primary">
+                            다음 결제일부터 {PLAN_LABEL[pending]}로 변경 예정
+                        </p>
+                    )}
+                </div>
+            )
+        }
+        // 다른 플랜 구독 중 → 이 플랜으로 변경(예약)
+        if (subscribed && currentPlan !== selected) {
+            const toPro = selected === "monthly_pro"
+            // 이미 이 플랜으로 변경 예약된 상태 → 예약 취소 안내
+            if (pending === selected) {
+                return (
+                    <div className="space-y-2">
+                        <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-center text-[14px] text-cur-ink">
+                            다음 결제일부터 <b>{PLAN_LABEL[selected]}</b>로 변경 예정입니다.
+                        </div>
+                        <Button onClick={() => changePlan(currentPlan!)} disabled={changing} variant="ghost" className="w-full h-10 text-cur-muted hover:text-cur-ink text-[13px]">
+                            {changing ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경 예약 취소"}
+                        </Button>
+                    </div>
+                )
+            }
+            return (
+                <div className="space-y-2">
+                    <Button
+                        onClick={() => changePlan(selected)}
+                        disabled={changing}
+                        className={cn("w-full font-bold h-12 rounded-xl text-white hover:opacity-90", toPro ? "bg-cur-primary" : "bg-cur-ink")}
+                    >
+                        {changing ? <Loader2 className="w-4 h-4 animate-spin" /> : toPro ? "Pro로 업그레이드" : "베이직으로 변경"}
+                    </Button>
+                    <p className="text-[12px] text-cur-muted-soft text-center">변경은 다음 결제일부터 적용됩니다.</p>
+                </div>
+            )
+        }
+        // 미구독 → 결제수단 선택
+        return (
+            <div className="space-y-3">
+                <p className="text-center text-[14px] font-medium text-cur-ink">
+                    {PLAN_LABEL[selected]} 플랜 · {selected === "monthly_pro" ? "4,900원" : "1,900원"}/월
+                </p>
+                <SubscribeButtons onSuccess={loadSubscription} plan={selected} />
+            </div>
+        )
+    }
+
+    // 플랜 선택 헤더 타일
+    const PlanTile = ({ plan }: { plan: PlanId }) => {
+        const isPro = plan === "monthly_pro"
+        const active = selected === plan
+        const mine = subscribed && currentPlan === plan
+        return (
+            <button
+                type="button"
+                onClick={() => setSelected(plan)}
+                className={cn(
+                    "relative flex-1 text-left rounded-2xl border-2 p-4 transition-all",
+                    active ? "border-cur-primary bg-cur-primary/[0.04]" : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+                )}
+            >
+                {mine && (
+                    <div className="absolute -top-2.5 left-3 bg-cur-ink text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> 내 플랜
+                    </div>
+                )}
+                {isPro && (
+                    <div className="absolute -top-2.5 right-3 bg-cur-primary text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" /> 추천
+                    </div>
+                )}
+                <div className="flex items-center gap-2 mb-1">
+                    <span
+                        className={cn(
+                            "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0",
+                            active ? "border-cur-primary" : "border-cur-muted-soft"
+                        )}
+                    >
+                        {active && <span className="w-2 h-2 rounded-full bg-cur-primary" />}
+                    </span>
+                    <span className="font-bold text-cur-ink text-[16px]">{PLAN_LABEL[plan]}</span>
+                </div>
+                <div className="flex items-end gap-1 pl-6">
+                    <span className="text-[24px] font-bold text-cur-ink tracking-tight">
+                        {isPro ? "4,900" : "1,900"}
+                    </span>
+                    <span className="text-[13px] text-cur-muted mb-1">원/월</span>
+                </div>
+                <div className="pl-6 mt-1">
+                    <span className="inline-block bg-cur-primary/10 text-cur-primary text-[11px] font-bold px-2 py-0.5 rounded-full">
+                        첫 달 무료
+                    </span>
+                </div>
+            </button>
+        )
+    }
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
@@ -72,60 +262,77 @@ export default function PricingPage() {
                 )}
             </div>
 
-            <div className="flex-1 max-w-4xl mx-auto w-full py-12 px-6">
-                <div className="text-center mb-12">
-                    <h2 className="text-[28px] font-bold text-cur-ink mb-4">현장의 안전을 위한 완벽한 선택</h2>
-                    <p className="text-cur-muted text-[16px]">안전톡톡e와 함께 더 편리하고 안전한 현장을 만들어보세요.</p>
+            <div className="flex-1 max-w-md mx-auto w-full py-10 px-5">
+                <div className="text-center mb-8">
+                    <h2 className="text-[26px] font-bold text-cur-ink mb-3">현장의 안전을 위한 완벽한 선택</h2>
+                    <p className="text-cur-muted text-[15px]">플랜을 선택하고 결제수단을 정하세요.</p>
                 </div>
 
-                <div className="max-w-md mx-auto">
-                    <div className="bg-cur-card rounded-2xl p-8 border border-cur-hairline shadow-sm flex flex-col">
-                        <div className="mb-6">
-                            <h3 className="text-[20px] font-bold text-cur-ink mb-2">월간 구독</h3>
-                            <p className="text-cur-muted text-[14px]">매달 부담 없이 결제하는 베이직 플랜</p>
-                        </div>
-
-                        <div className="mb-6">
-                            <div className="flex items-end gap-2 mb-1">
-                                <span className="text-[36px] font-bold text-cur-ink tracking-tight">1,900원</span>
-                                <span className="text-[16px] text-cur-muted mb-2">/ 월</span>
-                            </div>
-                            <div className="inline-block bg-cur-primary/10 text-cur-primary text-[12px] font-bold px-3 py-1 rounded-full">
-                                첫 달 무료 체험
-                            </div>
-                        </div>
-
-                        <div className="space-y-4 mb-8 flex-1">
-                            {features.map((feature, idx) => (
-                                <div key={idx} className="flex items-start gap-3">
-                                    <CheckCircle2 className="w-5 h-5 text-cur-primary shrink-0" />
-                                    <span className="text-[15px] text-cur-ink">{feature}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        {loading ? (
-                            <Button disabled className="w-full h-12 rounded-xl">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            </Button>
-                        ) : subscribed ? (
-                            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">
-                                <p className="font-bold text-cur-ink">{STATUS_LABEL[sub!.status] ?? "이용 중"}</p>
-                                {nextDate && <p className="text-cur-muted text-[14px] mt-1">다음 결제일: {nextDate}</p>}
-                                <Button
-                                    onClick={() => router.push("/account")}
-                                    className="mt-4 w-full bg-cur-ink text-white font-bold h-11 rounded-xl hover:opacity-90"
-                                >
-                                    구독 관리
-                                </Button>
-                            </div>
-                        ) : (
-                            <SubscribeButtons onSuccess={loadSubscription} />
+                {changeMsg && (
+                    <div
+                        className={cn(
+                            "mb-6 text-[14px] rounded-xl p-4 text-center",
+                            changeMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"
                         )}
+                    >
+                        {changeMsg.text}
                     </div>
+                )}
+
+                {/* 1단계: 플랜 선택 */}
+                <div className="flex gap-3 mb-6">
+                    <PlanTile plan="monthly_basic" />
+                    <PlanTile plan="monthly_pro" />
                 </div>
 
-                <div className="mt-12 text-center text-[13px] text-cur-muted-soft bg-cur-card p-6 rounded-xl border border-cur-hairline">
+                {/* 기능 비교표 */}
+                <div className="bg-cur-card rounded-2xl border border-cur-hairline overflow-hidden mb-6">
+                    <table className="w-full text-[14px] border-collapse">
+                        <thead>
+                            <tr className="border-b border-cur-hairline bg-cur-elevated/50">
+                                <th className="text-left font-semibold text-cur-muted px-4 py-3 text-[13px]">기능</th>
+                                <th className={cn("w-16 text-center font-bold py-3 text-[13px]", selected === "monthly_basic" ? "text-cur-primary" : "text-cur-ink")}>
+                                    베이직
+                                </th>
+                                <th className={cn("w-16 text-center font-bold py-3 text-[13px]", selected === "monthly_pro" ? "text-cur-primary" : "text-cur-ink")}>
+                                    Pro
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {FEATURES.map((f, idx) => (
+                                <tr key={idx} className="border-b border-cur-hairline last:border-0">
+                                    <td className="px-4 py-3 text-cur-ink leading-snug">{f.label}</td>
+                                    <td className="text-center py-3">
+                                        {f.basicText ? (
+                                            <span className="text-[13px] font-semibold text-cur-ink">{f.basicText}</span>
+                                        ) : f.basic ? (
+                                            <CheckCircle2 className="w-5 h-5 text-cur-primary inline-block" />
+                                        ) : (
+                                            <Minus className="w-4 h-4 text-cur-muted-soft inline-block" />
+                                        )}
+                                    </td>
+                                    <td className={cn("text-center py-3", selected === "monthly_pro" && "bg-cur-primary/[0.04]")}>
+                                        {f.proText ? (
+                                            <span className="text-[13px] font-semibold text-cur-primary">{f.proText}</span>
+                                        ) : f.pro ? (
+                                            <CheckCircle2 className="w-5 h-5 text-cur-primary inline-block" />
+                                        ) : (
+                                            <Minus className="w-4 h-4 text-cur-muted-soft inline-block" />
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* 2단계: 결제 / 액션 */}
+                <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline">
+                    {renderAction()}
+                </div>
+
+                <div className="mt-8 text-center text-[13px] text-cur-muted-soft bg-cur-card p-6 rounded-xl border border-cur-hairline">
                     <p className="mb-2 font-medium">환불 규정 안내</p>
                     <p>결제일로부터 7일 이내, 서비스 이용 이력(AI 생성 등)이 없는 경우에 한해 100% 환불 가능합니다.</p>
                     <p>디지털 서비스 특성상 1회라도 이용하신 경우 해당 월 결제건에 대한 환불은 제한됩니다.</p>

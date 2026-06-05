@@ -222,17 +222,15 @@ export default function DashboardPage() {
                     </div>
 
                     {isRangeMode && dateRange?.from && (
-                        <div className="bg-cur-primary p-5 rounded-[12px] shadow-[0_4px_12px_rgba(0,0,0,0.08)] text-cur-on-primary animate-in slide-in-from-bottom-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="font-semibold text-[16px]">
+                        <div className="bg-cur-card border border-cur-hairline p-4 rounded-[12px] animate-in slide-in-from-bottom-4 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <div className="font-semibold text-[15px] text-cur-ink">
                                     {format(dateRange.from, "MM.dd")} ~ {dateRange.to ? format(dateRange.to, "MM.dd") : "-"}
                                 </div>
-                                <Badge variant="secondary" className="bg-cur-ink text-cur-on-primary border border-cur-ink hover:bg-cur-ink px-2 py-0.5 text-[11px] font-semibold tracking-wide">
-                                    {rangeCount}개 선택됨
-                                </Badge>
+                                <span className="text-[13px] text-cur-muted">{rangeCount}개 선택됨</span>
                             </div>
-                            <Button onClick={handleBatchDownload} className="w-full bg-cur-card text-cur-ink hover:bg-cur-canvas h-10 text-[14px] font-medium rounded-[8px]">
-                                <Printer className="mr-2 w-4 h-4" /> 일괄 다운로드 (PDF)
+                            <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
+                                일괄 다운로드 (PDF)
                             </Button>
                         </div>
                     )}

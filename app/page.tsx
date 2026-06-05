@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users, ChevronRight } from "lucide-react"
+import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users, ChevronRight, ShieldCheck } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 
@@ -322,6 +322,27 @@ export default function MainPage() {
                 <div className="space-y-0.5">
                   <h3 className="text-[16px] font-semibold text-cur-ink">안전보건교육일지 작성</h3>
                   <p className="text-cur-muted text-[14px]">정기 교육일지 등을 AI로 똑똑하게 기록 관리</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />
+            </div>
+          </div>
+
+          <div
+            onClick={() => router.push('/risk-assessment')}
+            className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
+          >
+            <div className="p-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[16px] font-semibold text-cur-ink">위험성평가 자동 생성</h3>
+                    <span className="bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
+                  </div>
+                  <p className="text-cur-muted text-[14px]">작업만 입력하면 AI가 위험성평가표 작성</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />

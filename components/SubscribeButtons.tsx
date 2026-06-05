@@ -35,11 +35,13 @@ export function SubscribeButtons({
     ctaSuffix = "로 시작하기",
     successText = "구독이 시작되었습니다! 첫 달은 무료입니다.",
     mode = "subscribe",
+    plan = "monthly_basic",
 }: {
     onSuccess?: () => void
     ctaSuffix?: string
     successText?: string
     mode?: "subscribe" | "update"
+    plan?: "monthly_basic" | "monthly_pro"
 }) {
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
@@ -73,7 +75,7 @@ export function SubscribeButtons({
                 channelKey,
                 billingKeyMethod: method.billingKeyMethod,
                 issueId: crypto.randomUUID().replace(/-/g, ""),
-                issueName: "안전톡톡e 월간구독",
+                issueName: plan === "monthly_pro" ? "안전톡톡e Pro 월간구독" : "안전톡톡e 월간구독",
                 customer: {
                     customerId: user.id,
                     fullName,
@@ -92,7 +94,7 @@ export function SubscribeButtons({
             const res = await fetch("/api/payments/billing-key", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ billingKey: issueResponse.billingKey, method: method.key, mode }),
+                body: JSON.stringify({ billingKey: issueResponse.billingKey, method: method.key, mode, plan }),
             })
             const json = await res.json()
             if (!res.ok) {

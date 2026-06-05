@@ -4,6 +4,7 @@ import {
   chargeWithBillingKey,
   addOneMonth,
   PLAN,
+  getPlan,
 } from "@/lib/portone";
 
 export const MAX_FAILED_ATTEMPTS = 3;
@@ -11,6 +12,8 @@ export const MAX_FAILED_ATTEMPTS = 3;
 export interface SubscriptionRow {
   id: string;
   user_id: string;
+  plan?: string | null;
+  pending_plan?: string | null;
   billing_key: string | null;
   amount: number;
   status: string;
@@ -45,7 +48,9 @@ export async function chargeSubscription(
   sub: SubscriptionRow,
   opts: { amount?: number; customerEmail?: string } = {}
 ): Promise<ChargeResult> {
-  const amount = opts.amount ?? sub.amount ?? PLAN.amount;
+  // 예약된 플랜 변경(pending_plan)이 있으면 이번 결제부터 새 플랜 금액으로 청구하고 전환
+  const amount =
+    opts.amount ?? (sub.pending_plan ? getPlan(sub.pending_plan).amount : sub.amount ?? PLAN.amount);
   const paymentId = periodPaymentId(sub);
   const now = new Date();
 
@@ -66,7 +71,7 @@ export async function chargeSubscription(
   const res = await chargeWithBillingKey({
     paymentId,
     billingKey: sub.billing_key,
-    orderName: PLAN.name,
+    orderName: getPlan(sub.pending_plan ?? sub.plan).name,
     amount,
     customer: { id: sub.user_id, email: opts.customerEmail },
   });
@@ -100,6 +105,10 @@ export async function chargeSubscription(
       sub.current_period_end && new Date(sub.current_period_end) > now
         ? new Date(sub.current_period_end)
         : now;
+    // 예약 변경이 있으면 이번 결제에서 플랜 전환 (없으면 plan/amount 건드리지 않음)
+    const planChange = sub.pending_plan
+      ? { plan: getPlan(sub.pending_plan).id, amount, pending_plan: null }
+      : {};
     // 낙관적 잠금: 우리가 본 current_period_end 그대로일 때만 진행 (동시 실행 이중 진행 방지)
     let q = admin
       .from("subscriptions")
@@ -108,6 +117,7 @@ export async function chargeSubscription(
         current_period_end: addOneMonth(base).toISOString(),
         failed_attempts: 0,
         updated_at: now.toISOString(),
+        ...planChange,
       })
       .eq("id", sub.id);
     q = sub.current_period_end
