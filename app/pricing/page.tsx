@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
-import { cn } from "@/lib/utils"
+import { cn, paymentsEnabled } from "@/lib/utils"
 
 type PlanId = "monthly_basic" | "monthly_pro"
 
@@ -62,8 +62,8 @@ export default function PricingPage() {
             const { data } = await supabase.auth.getUser()
             setHasUser(!!data?.user)
             const s = await loadSubscription()
-            // 구독 중이면 현재 플랜을 기본 선택, 아니면 미선택 상태로 시작
-            if (isAllowed(s) && s?.plan) setSelected(s.plan as PlanId)
+            // 구독 중이면 현재 플랜을 기본 선택 (grandfather는 베이직으로 취급)
+            if (isAllowed(s) && s?.plan) setSelected(s.plan === "grandfather" ? "monthly_basic" : (s.plan as PlanId))
             setLoading(false)
         })()
     }, [])
@@ -116,17 +116,54 @@ export default function PricingPage() {
                 </Button>
             )
         }
-        // 평생 무료(기존 회원): 결제·변경 불필요, 모든 기능 이용 중
+        const payOff = !paymentsEnabled()
+
+        // 화이트리스트(영구 무료 베이직)
         if (isGrandfather) {
+            // Pro를 보려고 선택한 경우 → 카드 등록 필요
+            if (selected === "monthly_pro") {
+                return (
+                    <div className="space-y-3">
+                        <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-[13px] text-cur-ink text-center">
+                            Pro 기능(위험성평가·월간 보고서)을 이용하려면 <b>카드 등록</b> 후 Pro 구독이 필요합니다.
+                        </div>
+                        {payOff ? (
+                            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">
+                                <p className="text-[14px] font-medium text-cur-ink">결제 준비 중입니다</p>
+                                <p className="text-[13px] text-cur-muted mt-1">실제 결제 연동 작업 중이에요. 곧 오픈됩니다.</p>
+                            </div>
+                        ) : (
+                            <SubscribeButtons onSuccess={loadSubscription} plan="monthly_pro" ctaSuffix="로 Pro 시작" />
+                        )}
+                    </div>
+                )
+            }
             return (
-                <div className="rounded-xl bg-cur-primary/5 border border-cur-primary/30 p-5 text-center space-y-1">
-                    <p className="font-bold text-cur-ink flex items-center justify-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-cur-primary" /> 평생 무료 이용 중
-                    </p>
-                    <p className="text-cur-muted text-[14px]">기존 회원 혜택으로 Pro 기능 포함 모든 기능을 무료로 이용하고 계십니다.</p>
+                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-5 text-center space-y-1">
+                    <p className="font-bold text-cur-ink">베이직 · 영구 무료 이용 중</p>
+                    <p className="text-cur-muted text-[13px]">기존 가입자 혜택입니다. Pro 기능이 필요하면 위에서 Pro를 선택하세요.</p>
                 </div>
             )
         }
+
+        // 결제 준비 중(실연동 전): 신규 결제·플랜 변경 차단
+        if (payOff) {
+            if (selected && subscribed && currentPlan === selected) {
+                return (
+                    <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center space-y-1">
+                        <p className="font-bold text-cur-ink">{PLAN_LABEL[selected]} · {STATUS_LABEL[sub!.status] ?? "이용 중"}</p>
+                        {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
+                    </div>
+                )
+            }
+            return (
+                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">
+                    <p className="text-[14px] font-medium text-cur-ink">결제 준비 중입니다</p>
+                    <p className="text-[13px] text-cur-muted mt-1">실제 결제 연동 작업 중이에요. 곧 오픈됩니다.</p>
+                </div>
+            )
+        }
+
         if (!selected) {
             return (
                 <p className="text-center text-[14px] text-cur-muted py-2">
@@ -194,7 +231,7 @@ export default function PricingPage() {
     const PlanTile = ({ plan }: { plan: PlanId }) => {
         const isPro = plan === "monthly_pro"
         const active = selected === plan
-        const mine = subscribed && currentPlan === plan
+        const mine = subscribed && (currentPlan === plan || (isGrandfather && plan === "monthly_basic"))
         return (
             <button
                 type="button"

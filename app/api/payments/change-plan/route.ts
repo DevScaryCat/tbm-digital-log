@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, getPlan } from "@/lib/portone";
+import { paymentsEnabled } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -7,6 +8,9 @@ export const runtime = "nodejs";
 // 카드 재등록 없이 plan/amount만 교체 — 다음 결제일부터 새 금액 적용.
 export async function POST(request: Request) {
   try {
+    if (!paymentsEnabled()) {
+      return NextResponse.json({ error: "결제 기능 준비 중입니다." }, { status: 403 });
+    }
     const user = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

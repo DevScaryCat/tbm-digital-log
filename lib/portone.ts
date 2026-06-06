@@ -37,9 +37,8 @@ export function getPlan(planId?: string | null): PlanDef {
   return PLANS.monthly_basic;
 }
 
-/** 해당 플랜이 Pro 기능을 허용하는지 (grandfather=기존 무료 회원은 전체 기능 허용) */
+/** 해당 플랜이 Pro 기능을 허용하는지 (grandfather=영구 무료 '베이직'이므로 Pro 아님) */
 export function isProPlan(planId?: string | null): boolean {
-  if (planId === "grandfather") return true;
   return getPlan(planId).pro;
 }
 

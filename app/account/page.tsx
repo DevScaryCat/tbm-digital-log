@@ -207,13 +207,13 @@ export default function AccountPage() {
                                     <XCircle className="w-5 h-5 text-cur-muted" />
                                 )}
                                 <h2 className="text-[18px] font-bold text-cur-ink">
-                                    {isGrandfather ? "평생 무료 이용 중" : STATUS_LABEL[sub?.status ?? ""] ?? "구독 없음"}
+                                    {isGrandfather ? "베이직 · 영구 무료" : STATUS_LABEL[sub?.status ?? ""] ?? "구독 없음"}
                                 </h2>
                             </div>
 
                             {isGrandfather ? (
-                                <p className="text-[14px] text-cur-muted">
-                                    기존 사용자 혜택으로 모든 기능을 무료로 이용하고 계십니다. 별도 결제가 필요 없습니다.
+                                <p className="text-[14px] text-cur-muted leading-relaxed">
+                                    기존 가입자 혜택으로 베이직 요금제를 영구 무료로 이용 중입니다. 위험성평가·월간 보고서 등 Pro 기능은 카드 등록 후 Pro로 업그레이드하면 이용하실 수 있어요.
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
@@ -368,8 +368,8 @@ export default function AccountPage() {
                             </div>
                         )}
 
-                        {/* 베이직 구독자 → Pro 업그레이드 권유 */}
-                        {active && !pro && !isGrandfather && (
+                        {/* 베이직/화이트리스트 → Pro 업그레이드 권유 */}
+                        {active && !pro && (
                             <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
                                 <div className="flex items-center gap-2">
                                     <Sparkles className="w-5 h-5 text-cur-primary" />

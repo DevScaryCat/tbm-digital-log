@@ -13,16 +13,20 @@ export interface SubscriptionRow {
     trial_end?: string | null
 }
 
-/** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (monthly_pro 또는 grandfather) */
+/** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather는 영구 무료 베이직이라 Pro 아님) */
 export function isProActive(sub: SubscriptionRow | null): boolean {
-    return isAllowed(sub) && (sub?.plan === "monthly_pro" || sub?.plan === "grandfather")
+    return isAllowed(sub) && sub?.plan === "monthly_pro"
+}
+
+/** 화이트리스트(영구 무료 베이직) 여부 */
+export function isWhitelist(sub: SubscriptionRow | null): boolean {
+    return sub?.plan === "grandfather"
 }
 
 /** 메인/헤더에 표시할 플랜 배지. 사용 가능한 구독이 없으면 null */
 export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean } | null {
     if (!isAllowed(sub)) return null
     if (sub?.plan === "monthly_pro") return { label: "Pro", isPro: true }
-    if (sub?.plan === "grandfather") return { label: "Pro", isPro: true }
     return { label: "베이직", isPro: false }
 }
 

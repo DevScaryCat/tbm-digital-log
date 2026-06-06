@@ -8,6 +8,7 @@ import {
   getPlan,
 } from "@/lib/portone";
 import { chargeSubscription } from "@/lib/billing";
+import { paymentsEnabled } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,9 @@ const PROVIDER_LABEL: Record<string, string> = {
 // 그 외        : 신규 구독(첫 달 무료) 또는 재구독(체험 소진 시 즉시 결제)
 export async function POST(request: Request) {
   try {
+    if (!paymentsEnabled()) {
+      return NextResponse.json({ error: "결제 기능 준비 중입니다." }, { status: 403 });
+    }
     const user = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Loader2, CreditCard } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
+import { paymentsEnabled } from "@/lib/utils"
 
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID
 
@@ -109,6 +110,15 @@ export function SubscribeButtons({
         } finally {
             setProcessing(null)
         }
+    }
+
+    if (!paymentsEnabled()) {
+        return (
+            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">
+                <p className="text-[14px] font-medium text-cur-ink">결제 준비 중입니다</p>
+                <p className="text-[13px] text-cur-muted mt-1">실제 결제 연동 작업 중이에요. 곧 오픈됩니다.</p>
+            </div>
+        )
     }
 
     return (

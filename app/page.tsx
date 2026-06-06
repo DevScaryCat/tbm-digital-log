@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users, ChevronRight, ShieldCheck } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
+import { NoticeBanner } from "@/components/NoticeBanner"
 
 export default function MainPage() {
   const router = useRouter()
@@ -205,6 +206,7 @@ export default function MainPage() {
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
+          <NoticeBanner />
           <div className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-[-0.11px]">
