@@ -85,6 +85,16 @@ export default function DashboardPage() {
         setIsDrawerOpen(true)
     }
 
+    const handleDelete = async (log: any) => {
+        const label = log.type === 'minute' ? '회의록' : '교육일지'
+        if (!confirm(`이 ${label}을(를) 삭제할까요?\n참석자·서명도 함께 삭제되며 되돌릴 수 없습니다.`)) return
+        const table = log.type === 'minute' ? 'tbm_minutes' : 'tbm_logs'
+        const { error } = await supabase.from(table).delete().eq('id', log.id)
+        if (error) { alert('삭제 실패: ' + error.message); return }
+        setLogs(prev => prev.filter(l => !(l.id === log.id && l.type === log.type)))
+        setSelectedLogs(prev => prev.filter(l => !(l.id === log.id && l.type === log.type)))
+    }
+
     const handleBatchDownload = () => {
         if (!dateRange?.from || !dateRange?.to) return alert("기간을 선택해주세요.")
 
@@ -287,7 +297,15 @@ export default function DashboardPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        <ChevronRight className="text-cur-muted w-5 h-5" />
+                                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                                onClick={() => handleDelete(log)}
+                                                className="text-[12px] text-cur-muted hover:text-cur-error px-2 py-1 rounded-[6px] hover:bg-cur-error/10"
+                                            >
+                                                삭제
+                                            </button>
+                                            <ChevronRight className="text-cur-muted w-5 h-5" />
+                                        </div>
                                     </CardContent>
                                 </Card>
                             ))
