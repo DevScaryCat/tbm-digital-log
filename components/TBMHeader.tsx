@@ -5,8 +5,7 @@ import { useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { LogOut, LayoutDashboard, User, Home, Loader2, CreditCard } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth, addMonths, format } from "date-fns"
@@ -159,35 +158,13 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
             )}
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-10 px-2 rounded-[8px] hover:bg-cur-elevated text-cur-body">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[14px] font-medium text-cur-body hidden md:inline-block text-right">
-                            {userName}
-                        </span>
-                        <Avatar className="h-8 w-8 border border-cur-hairline">
-                            <AvatarFallback className="bg-cur-elevated text-cur-ink font-semibold text-[11px] uppercase tracking-wide">
-                                {userName[0]}
-                            </AvatarFallback>
-                        </Avatar>
-                    </div>
+                <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body">
+                    <span className="text-[14px] font-medium text-cur-body">{userName}</span>
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                <DropdownMenuLabel className="text-[13px] text-cur-muted font-semibold tracking-wide uppercase px-3 py-2 flex items-center gap-1.5">
-                    내 계정 ({userName})
-                    {badge && (
-                        <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] ${
-                                badge.isPro ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-muted border border-cur-hairline"
-                            }`}
-                        >
-                            {badge.label}
-                        </span>
-                    )}
-                </DropdownMenuLabel>
                 {usage && (
                     <>
-                        <DropdownMenuSeparator className="bg-cur-hairline" />
                         <div className="px-3 py-2.5 space-y-2.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-[11px] text-cur-muted-soft font-semibold">이번 달 사용량</span>
