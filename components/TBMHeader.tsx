@@ -191,11 +191,10 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 안전문서 달력
                 </DropdownMenuItem>
-                {badge?.isPro && (
-                    <DropdownMenuItem onClick={() => setReportSettingsOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                        <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 자동 보고서 설정
-                    </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={() => setReportSettingsOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                    <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 자동 보고서 설정
+                    <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                     <LogOut className="mr-2 h-4 w-4" /> 로그아웃
@@ -240,7 +239,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </>
             )}
 
-            <ReportSettingsDialog open={reportSettingsOpen} onOpenChange={setReportSettingsOpen} />
+            <ReportSettingsDialog open={reportSettingsOpen} onOpenChange={setReportSettingsOpen} pro={badge?.isPro ?? false} />
 
             <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
                 <DialogContent showCloseButton={true} className="max-w-sm w-[calc(100%-2rem)] rounded-[12px] p-6 border-cur-hairline shadow-[0_16px_48px_rgba(0,0,0,0.1)] bg-cur-card font-sans">

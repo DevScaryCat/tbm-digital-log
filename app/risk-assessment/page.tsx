@@ -520,7 +520,7 @@ export default function RiskAssessmentPage() {
                 </div>
             </div>
 
-            <ReportSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+            <ReportSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} pro={pro} />
         </div>
     )
 }

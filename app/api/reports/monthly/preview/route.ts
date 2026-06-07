@@ -6,9 +6,9 @@ export const runtime = "nodejs";
 
 // 월간 보고서가 어떻게 발송되는지 미리보기 (샘플 데이터, AI 호출 없음)
 export async function GET(request: Request) {
-  const { user, isPro } = await getUserAndSubscription(request);
+  // 샘플 데이터(실제 데이터·AI 호출 없음)라 베이직 사용자도 '예시 화면'으로 미리볼 수 있게 허용
+  const { user } = await getUserAndSubscription(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isPro) return NextResponse.json({ error: "Pro 플랜 기능입니다." }, { status: 403 });
 
   const now = new Date();
   const company = (user.user_metadata as any)?.company_name || "○○건설 ○○현장";

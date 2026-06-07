@@ -1,18 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2 } from "lucide-react"
+import { Loader2, Sparkles } from "lucide-react"
 
 /**
  * 자동 보고서 설정 모달 — 수신처/발송일/미리보기.
  * 헤더 드롭다운과 위험성평가 페이지에서 공용으로 사용.
+ * pro=false면 '예시 화면' 모드: 미리보기는 보이되 저장은 막고 업그레이드를 유도.
  */
-export function ReportSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ReportSettingsDialog({ open, onOpenChange, pro = false }: { open: boolean; onOpenChange: (o: boolean) => void; pro?: boolean }) {
+    const router = useRouter()
     const [recipients, setRecipients] = useState<string[]>([])
     const [newEmail, setNewEmail] = useState("")
     const [sendDay, setSendDay] = useState(1)
@@ -66,20 +69,40 @@ export function ReportSettingsDialog({ open, onOpenChange }: { open: boolean; on
     const addRecipient = async () => {
         const email = newEmail.trim()
         if (!email) return
+        if (!pro) { setMsg({ type: "err", text: "예시 화면입니다 — Pro 구독 시 실제로 등록·발송됩니다." }); return }
         if (recipients.includes(email)) { setMsg({ type: "err", text: "이미 등록된 이메일입니다." }); return }
         const ok = await saveSettings({ recipients: [...recipients, email] })
         if (ok) { setNewEmail(""); setMsg({ type: "ok", text: "수신처가 추가되었습니다." }) }
     }
-    const removeRecipient = async (email: string) => { await saveSettings({ recipients: recipients.filter((e) => e !== email) }) }
-    const changeSendDay = async (d: number) => { await saveSettings({ sendDay: d }) }
+    const removeRecipient = async (email: string) => { if (!pro) return; await saveSettings({ recipients: recipients.filter((e) => e !== email) }) }
+    const changeSendDay = async (d: number) => {
+        if (!pro) { setSendDay(d); return } // 예시: 로컬만 변경
+        await saveSettings({ sendDay: d })
+    }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md w-[calc(100%-2rem)] max-h-[85vh] overflow-y-auto rounded-2xl bg-cur-card border-cur-hairline">
                 <DialogHeader>
-                    <DialogTitle className="text-[18px] font-bold text-cur-ink">자동 보고서 설정</DialogTitle>
+                    <DialogTitle className="text-[18px] font-bold text-cur-ink flex items-center gap-2">
+                        자동 보고서 설정
+                        {!pro && <span className="bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>}
+                    </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-5 pt-2">
+                    {!pro && (
+                        <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-3 space-y-2">
+                            <p className="text-[13px] text-cur-primary font-semibold flex items-center gap-1.5">
+                                <Sparkles className="w-4 h-4" /> 예시 화면입니다
+                            </p>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                아래 미리보기처럼 매달 자동으로 보고서가 발송됩니다. Pro 구독 시 받는 사람·발송일을 실제로 설정할 수 있어요.
+                            </p>
+                            <Button onClick={() => { onOpenChange(false); router.push("/pricing") }} className="w-full h-9 rounded-lg bg-cur-primary text-white text-[13px] font-bold hover:opacity-90">
+                                Pro 플랜 보기
+                            </Button>
+                        </div>
+                    )}
                     <p className="text-[13px] text-cur-muted leading-relaxed">
                         매달 지정한 날짜에 지난달 안전활동(TBM·위험성평가)을 분석한 보고서를 사장·안전보건 담당자에게 자동 발송합니다. 받는 분은 가입·로그인 불필요.
                     </p>
