@@ -308,8 +308,8 @@ export default function MainPage() {
                   <HardHat className="w-6 h-6" />
                 </div>
                 <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-cur-ink">안전보건교육일지 작성</h3>
-                  <p className="text-cur-muted text-[14px]">정기 교육일지 등을 AI로 똑똑하게 기록 관리</p>
+                  <h3 className="text-[16px] font-semibold text-cur-ink">안전교육일지 작성</h3>
+                  <p className="text-cur-muted text-[14px]">TBM·정기교육 등 안전교육일지를 AI로 기록 관리</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />

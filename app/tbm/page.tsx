@@ -451,7 +451,7 @@ export default function TBMPage() {
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,
-                    instructor_name: formData.educationType === "TBM" ? "TBM (자율)" : formData.instructorName,
+                    instructor_name: formData.educationType === "TBM" ? null : formData.instructorName,
                     instructor_signature: instructorSignatureUrl,
                     education_content: formData.educationContent,
                     remarks: formData.remarks,
@@ -773,7 +773,7 @@ export default function TBMPage() {
         <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-ink">
             <div className="max-w-lg w-full mx-auto bg-cur-card sm:shadow-none sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
                 <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
-                    <TBMHeader />
+                    <TBMHeader title="안전교육일지" />
                 </div>
 
                 <div className="p-6 space-y-8 flex-1 pb-12 bg-cur-canvas-soft">
@@ -1172,7 +1172,7 @@ export default function TBMPage() {
                                 💡 AI 요약본 확인 안내
                             </p>
                             <p className="text-cur-muted font-medium">
-                                본 TBM 일지의 교육 내용 및 특이사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
+                                본 안전교육일지의 교육 내용 및 특이사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
                             </p>
                             <p className="font-semibold text-cur-ink bg-cur-elevated p-3 rounded-[8px] border border-cur-hairline">
                                 AI가 작성한 요약본은 참고용 초안입니다. 최종 저장하기 전에 내용이 실제 현장 상황과 맞는지 꼭 확인하고 수정해 주세요. 최종 기록된 내용에 대한 확인 책임은 작성자에게 있습니다.
