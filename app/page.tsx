@@ -133,52 +133,88 @@ export default function MainPage() {
 
   if (!user) {
     const features = [
-      { t: "스마트 TBM 일지·회의록", d: "말하면 AI가 안전교육일지로 자동 정리" },
-      { t: "위험성평가 자동 생성", d: "기간만 고르면 TBM을 분석해 평가표 완성" },
-      { t: "월간 안전 보고서", d: "사장·안전관리자에게 매달 자동 메일 발송" },
+      { n: "01", t: "스마트 안전교육일지·회의록", d: "현장에서 말하면 AI가 안전교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
+      { n: "02", t: "위험성평가 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
+      { n: "03", t: "월간 안전 보고서 자동 발송", d: "한 달 안전활동을 분석한 보고서를 사장·안전관리자에게 매달 자동으로 메일 발송." },
     ]
     return (
-      <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans text-cur-body">
-        <div className="absolute top-0 left-0 right-0 h-[55vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10" />
+      <div className="min-h-screen bg-cur-canvas font-sans text-cur-body">
+        {/* 상단 네비 */}
+        <header className="sticky top-0 z-20 bg-cur-canvas/80 backdrop-blur-sm border-b border-cur-hairline">
+          <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+            <Logo size="sm" />
+            <Button
+              onClick={() => router.push("/start")}
+              className="h-10 px-5 bg-cur-ink hover:opacity-90 text-white text-[14px] font-semibold rounded-[8px]"
+            >
+              시작하기
+            </Button>
+          </div>
+        </header>
 
-        <div className="flex-1 max-w-lg mx-auto w-full px-6 flex flex-col">
-          {/* 히어로 */}
-          <div className="pt-16 pb-10 flex flex-col items-center text-center gap-7 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <Logo size="lg" />
-            <div className="space-y-3">
-              <h1 className="text-[26px] sm:text-[30px] font-bold text-cur-ink leading-tight tracking-tight">
-                현장의 안전을<br />더 쉽고 똑똑하게
-              </h1>
-              <p className="text-cur-muted text-[15px] sm:text-[16px] leading-relaxed">
-                TBM 일지부터 위험성평가·월간 보고서까지<br />AI로 한 번에. 더 많은 대화로 더 안전한 현장을.
-              </p>
-            </div>
-            <div className="w-full space-y-2.5 pt-2">
+        {/* 히어로 */}
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[70%] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10" />
+          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-20 sm:py-28 lg:py-36 text-center flex flex-col items-center gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <span className="text-[12px] sm:text-[13px] font-semibold text-cur-primary bg-cur-primary/10 px-3 py-1.5 rounded-full">
+              현장 안전관리 AI · 안전톡톡e
+            </span>
+            <h1 className="text-[34px] sm:text-[56px] lg:text-[68px] font-bold text-cur-ink leading-[1.08] tracking-tight">
+              현장의 안전을<br className="hidden sm:block" /> 더 쉽고 똑똑하게
+            </h1>
+            <p className="text-cur-muted text-[16px] sm:text-[19px] leading-relaxed max-w-2xl">
+              TBM 일지부터 위험성평가, 월간 안전 보고서까지 — AI로 한 번에.
+              더 많은 대화로 더 안전한 현장을 만드세요.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto pt-2">
               <Button
                 onClick={() => router.push("/start")}
-                className="w-full h-13 py-4 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] transition-all"
+                className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
               >
-                시작하기
+                무료로 시작하기
               </Button>
-              <button
+              <Button
+                variant="outline"
                 onClick={() => router.push("/start")}
-                className="w-full text-[13px] text-cur-muted hover:text-cur-ink py-1"
+                className="h-12 px-8 border-cur-hairline text-cur-ink hover:bg-cur-elevated text-[16px] font-semibold rounded-[8px]"
               >
-                이미 계정이 있으신가요? 로그인
-              </button>
+                로그인
+              </Button>
             </div>
           </div>
+        </section>
 
-          {/* 기능 소개 */}
-          <div className="pb-16 space-y-3">
-            {features.map((f, i) => (
-              <div key={i} className="bg-cur-card border border-cur-hairline rounded-[12px] p-5">
-                <div className="font-semibold text-[15px] text-cur-ink mb-1">{f.t}</div>
-                <div className="text-[14px] text-cur-muted-soft leading-relaxed">{f.d}</div>
+        {/* 기능 소개 */}
+        <section className="max-w-6xl mx-auto px-5 sm:px-8 pb-24 sm:pb-32">
+          <div className="grid gap-4 sm:gap-5 sm:grid-cols-3">
+            {features.map((f) => (
+              <div
+                key={f.n}
+                className="bg-cur-card border border-cur-hairline rounded-[16px] p-6 sm:p-7 flex flex-col gap-3 hover:border-cur-primary/40 transition-colors"
+              >
+                <span className="text-[13px] font-mono font-bold text-cur-primary">{f.n}</span>
+                <h3 className="font-bold text-[18px] sm:text-[19px] text-cur-ink leading-snug">{f.t}</h3>
+                <p className="text-[14px] sm:text-[15px] text-cur-muted-soft leading-relaxed">{f.d}</p>
               </div>
             ))}
           </div>
-        </div>
+
+          {/* 하단 CTA */}
+          <div className="mt-16 sm:mt-20 bg-cur-ink rounded-[20px] px-6 sm:px-12 py-12 sm:py-16 text-center flex flex-col items-center gap-5">
+            <h2 className="text-[24px] sm:text-[34px] font-bold text-white leading-tight tracking-tight">
+              지금 바로 시작하세요
+            </h2>
+            <p className="text-white/70 text-[15px] sm:text-[16px] max-w-xl">
+              복잡한 설치 없이, 카카오/일반 계정으로 바로 현장 안전관리를 시작할 수 있습니다.
+            </p>
+            <Button
+              onClick={() => router.push("/start")}
+              className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] mt-1"
+            >
+              무료로 시작하기
+            </Button>
+          </div>
+        </section>
       </div>
     )
   }
