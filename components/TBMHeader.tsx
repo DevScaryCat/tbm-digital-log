@@ -184,7 +184,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 일지 관리 달력
+                    <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 안전문서 달력
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">

@@ -109,13 +109,20 @@ export default function DashboardPage() {
         return d >= dateRange!.from!.getTime() && d <= dateRange!.to!.getTime()
     }).length : 0;
 
-    const hasLogMatcher = (date: Date) => {
-        return logs.some(log => isSameDay(parseISO(log.date), date))
-    }
+    // 그 날짜에 교육일지(log) / 회의록(minute)이 있는지
+    const hasLogOn = (date: Date) => logs.some(l => l.type !== 'minute' && isSameDay(parseISO(l.date), date))
+    const hasMinuteOn = (date: Date) => logs.some(l => l.type === 'minute' && isSameDay(parseISO(l.date), date))
 
-    const commonModifiers = { hasLog: hasLogMatcher }
+    const commonModifiers = {
+        onlyLog: (date: Date) => hasLogOn(date) && !hasMinuteOn(date),
+        onlyMinute: (date: Date) => hasMinuteOn(date) && !hasLogOn(date),
+        bothDocs: (date: Date) => hasLogOn(date) && hasMinuteOn(date),
+    }
+    // 일지=주황 / 회의록=보라 / 둘다=보라+주황 나란히
     const commonModifiersClassNames = {
-        hasLog: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:bg-cur-primary after:rounded-full data-[selected=true]:after:bg-cur-card"
+        onlyLog: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:rounded-full after:bg-cur-primary data-[selected=true]:after:bg-cur-card",
+        onlyMinute: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:rounded-full after:bg-[#8145b5] data-[selected=true]:after:bg-cur-card",
+        bothDocs: "font-semibold relative before:content-[''] before:absolute before:bottom-1 before:left-1/2 before:-translate-x-[5px] before:w-[4px] before:h-[4px] before:rounded-full before:bg-[#8145b5] after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:translate-x-[1px] after:w-[4px] after:h-[4px] after:rounded-full after:bg-cur-primary data-[selected=true]:before:bg-cur-card data-[selected=true]:after:bg-cur-card",
     }
     const commonClassNames = {
         day_selected: "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active focus:bg-cur-primary rounded-[8px]",
@@ -127,7 +134,7 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-md mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
-                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10"><TBMHeader title="일지 달력보기" /></div>
+                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10"><TBMHeader title="안전문서 달력" /></div>
 
                 <div className="p-6 space-y-6 flex-1 bg-cur-canvas-soft">
 
