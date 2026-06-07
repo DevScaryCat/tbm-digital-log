@@ -7,8 +7,7 @@ import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ReportSettingsDialog } from "@/components/ReportSettingsDialog"
 import { DateRange } from "react-day-picker"
 import { Loader2 } from "lucide-react"
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth, startOfWeek, endOfMonth, subMonths } from "date-fns"
@@ -110,15 +109,8 @@ export default function RiskAssessmentPage() {
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
-    // 자동 보고서 설정 모달
+    // 자동 보고서 설정 모달 (수신처/발송일/미리보기는 ReportSettingsDialog가 자체 관리)
     const [settingsOpen, setSettingsOpen] = useState(false)
-    const [recipients, setRecipients] = useState<string[]>([])
-    const [newEmail, setNewEmail] = useState("")
-    const [sendDay, setSendDay] = useState(1)
-    const [savingSettings, setSavingSettings] = useState(false)
-    const [settingsMsg, setSettingsMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    const [previewHtml, setPreviewHtml] = useState("")
-    const [loadingPreview, setLoadingPreview] = useState(false)
 
     useEffect(() => {
         ;(async () => {
@@ -130,8 +122,22 @@ export default function RiskAssessmentPage() {
             if (!p) setStep(0) // 베이직: 설명 화면 먼저
             setCompanyName(user.user_metadata?.company_name || "")
             await loadTbmDates() // 달력 점 표시는 모두에게
-            if (p) await loadRecipients()
             setChecking(false)
+
+            // 안전문서 달력에서 기간을 골라 넘어온 경우 → 재선택 없이 바로 분석
+            try {
+                const raRange = localStorage.getItem("ra_range")
+                if (raRange) {
+                    localStorage.removeItem("ra_range")
+                    const { from, to } = JSON.parse(raRange)
+                    if (from) {
+                        const rng = { from: parseISO(from), to: to ? parseISO(to) : parseISO(from) }
+                        setRange(rng)
+                        setPreset(null)
+                        analyze(rng, p)
+                    }
+                }
+            } catch { /* 무시 */ }
         })()
     }, [router])
 
@@ -143,62 +149,6 @@ export default function RiskAssessmentPage() {
         const dates = new Set<string>()
         for (const r of [...((m as any[]) || []), ...((l as any[]) || [])]) if (r.date) dates.add(r.date)
         setTbmDates([...dates])
-    }
-    const authToken = async () => {
-        const { data } = await supabase.auth.getSession()
-        return data?.session?.access_token
-    }
-
-    const loadRecipients = async () => {
-        const res = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${await authToken()}` } })
-        if (res.ok) {
-            const j = await res.json()
-            const r = Array.isArray(j.recipients) ? j.recipients : []
-            setRecipients(r)
-            setSendDay(j.sendDay ?? 1)
-            if (r.length) setReportEmail(r.join(", "))
-        }
-    }
-
-    const saveSettings = async (next: { recipients?: string[]; sendDay?: number }) => {
-        setSavingSettings(true)
-        setSettingsMsg(null)
-        try {
-            const res = await fetch("/api/reports/recipients", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
-                body: JSON.stringify(next),
-            })
-            const j = await res.json()
-            if (!res.ok) { setSettingsMsg({ type: "err", text: j.error || "저장 실패" }); return false }
-            setRecipients(j.recipients ?? [])
-            setSendDay(j.sendDay ?? 1)
-            return true
-        } finally {
-            setSavingSettings(false)
-        }
-    }
-
-    const addRecipient = async () => {
-        const email = newEmail.trim()
-        if (!email) return
-        if (recipients.includes(email)) { setSettingsMsg({ type: "err", text: "이미 등록된 이메일입니다." }); return }
-        const ok = await saveSettings({ recipients: [...recipients, email] })
-        if (ok) { setNewEmail(""); setSettingsMsg({ type: "ok", text: "수신처가 추가되었습니다." }) }
-    }
-    const removeRecipient = async (email: string) => { await saveSettings({ recipients: recipients.filter((e) => e !== email) }) }
-    const changeSendDay = async (d: number) => { await saveSettings({ sendDay: d }) }
-
-    const openSettings = async () => {
-        setSettingsOpen(true)
-        setSettingsMsg(null)
-        if (!previewHtml) {
-            setLoadingPreview(true)
-            try {
-                const res = await fetch("/api/reports/monthly/preview", { headers: { Authorization: `Bearer ${await authToken()}` } })
-                if (res.ok) { const j = await res.json(); setPreviewHtml(j.html || "") }
-            } finally { setLoadingPreview(false) }
-        }
     }
 
     const countInRange = (): number => {
@@ -233,16 +183,18 @@ export default function RiskAssessmentPage() {
         return text
     }
 
-    const analyze = async () => {
-        if (!range?.from) { setMsg({ type: "err", text: "기간을 선택해주세요." }); return }
+    const analyze = async (rangeArg?: DateRange, proArg?: boolean) => {
+        const r = rangeArg ?? range
+        const isPro = proArg ?? pro
+        if (!r?.from) { setMsg({ type: "err", text: "기간을 선택해주세요." }); return }
         setMsg(null)
-        const fromS = format(range.from, "yyyy-MM-dd")
-        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
+        const fromS = format(r.from, "yyyy-MM-dd")
+        const toS = format(r.to ?? r.from, "yyyy-MM-dd")
         const label = fromS === toS ? fromS : `${fromS} ~ ${toS}`
         setAnalyzing(true)
         try {
             // 베이직: 체험(더미 결과). Pro: 실제 AI 분석
-            if (!pro) {
+            if (!isPro) {
                 await new Promise((r) => setTimeout(r, 1500))
                 setItems(SAMPLE_ITEMS)
                 setPeriodLabel(label)
@@ -335,9 +287,10 @@ export default function RiskAssessmentPage() {
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10 print:hidden">
                     <TBMHeader
                         title="위험성평가"
+                        backHref="/dashboard"
                         pageBadge={pro ? undefined : "체험"}
                         titleAction={pro ? (
-                            <Button variant="ghost" onClick={openSettings} className="h-9 px-3 text-[13px] text-cur-muted hover:text-cur-ink border border-cur-hairline rounded-[8px]">설정</Button>
+                            <Button variant="ghost" onClick={() => setSettingsOpen(true)} className="h-9 px-3 text-[13px] text-cur-muted hover:text-cur-ink border border-cur-hairline rounded-[8px]">설정</Button>
                         ) : undefined}
                     />
                 </div>
@@ -420,7 +373,7 @@ export default function RiskAssessmentPage() {
                                         </div>
                                         <span className="text-[13px] text-cur-muted">TBM {countInRange()}건</span>
                                     </div>
-                                    <Button onClick={analyze} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-medium rounded-[8px]">
+                                    <Button onClick={() => analyze()} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-medium rounded-[8px]">
                                         다음: AI 분석
                                     </Button>
                                 </div>
@@ -567,72 +520,7 @@ export default function RiskAssessmentPage() {
                 </div>
             </div>
 
-            {/* 자동 보고서 설정 모달 */}
-            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <DialogContent className="max-w-md w-[calc(100%-2rem)] max-h-[85vh] overflow-y-auto rounded-2xl bg-cur-card border-cur-hairline">
-                    <DialogHeader>
-                        <DialogTitle className="text-[18px] font-bold text-cur-ink">자동 보고서 설정</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-5 pt-2">
-                        <p className="text-[13px] text-cur-muted leading-relaxed">
-                            매달 지정한 날짜에 지난달 안전활동(TBM·위험성평가)을 분석한 보고서를 사장·안전보건 담당자에게 자동 발송합니다. 받는 분은 가입·로그인 불필요.
-                        </p>
-
-                        {settingsMsg && (
-                            <div className={`text-[13px] rounded-lg p-3 ${settingsMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{settingsMsg.text}</div>
-                        )}
-
-                        {/* 발송일 */}
-                        <div className="space-y-1.5">
-                            <Label className="text-[13px]">매달 발송일</Label>
-                            <select
-                                value={sendDay}
-                                onChange={(e) => changeSendDay(Number(e.target.value))}
-                                disabled={savingSettings}
-                                className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
-                            >
-                                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                                    <option key={d} value={d}>매달 {d}일</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* 수신처 */}
-                        <div className="space-y-2">
-                            <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
-                            {recipients.length === 0 ? (
-                                <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
-                            ) : (
-                                recipients.map((email) => (
-                                    <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
-                                        <span className="text-[14px] text-cur-ink truncate">{email}</span>
-                                        <button onClick={() => removeRecipient(email)} disabled={savingSettings} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2">삭제</button>
-                                    </div>
-                                ))
-                            )}
-                            <div className="flex gap-2">
-                                <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="사장님/안전관리자 이메일" className="h-11" />
-                                <Button onClick={addRecipient} disabled={savingSettings || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
-                                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* 미리보기 */}
-                        <div className="space-y-2">
-                            <Label className="text-[13px]">보고서 미리보기</Label>
-                            {loadingPreview ? (
-                                <div className="h-[300px] flex items-center justify-center border border-cur-hairline rounded-lg"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
-                            ) : previewHtml ? (
-                                <iframe title="보고서 미리보기" srcDoc={previewHtml} className="w-full h-[360px] border border-cur-hairline rounded-lg bg-white" />
-                            ) : (
-                                <p className="text-[13px] text-cur-muted-soft">미리보기를 불러오지 못했습니다.</p>
-                            )}
-                            <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <ReportSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         </div>
     )
 }

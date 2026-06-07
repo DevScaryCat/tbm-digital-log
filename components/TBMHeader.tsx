@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, LayoutDashboard, User, Home, Loader2, CreditCard } from "lucide-react"
+import { LogOut, LayoutDashboard, User, Home, ChevronLeft, Loader2, CreditCard, Mail } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth, addMonths, format } from "date-fns"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
+import { ReportSettingsDialog } from "@/components/ReportSettingsDialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +21,8 @@ interface TBMHeaderProps {
     onLogout?: () => void
     pageBadge?: string
     titleAction?: ReactNode
+    /** 좌상단 버튼을 홈(/) 대신 지정 경로로 '돌아가기'(←)로 표시 */
+    backHref?: string
 }
 
 // 플랜별 월 한도
@@ -71,13 +74,14 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
     )
 }
 
-export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleAction }: TBMHeaderProps) {
+export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleAction, backHref }: TBMHeaderProps) {
     const router = useRouter()
     const [userName, setUserName] = useState("사용자")
     const [badge, setBadge] = useState<{ label: string; isPro: boolean } | null>(null)
     const [plan, setPlan] = useState<string | null>(null)
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
+    const [reportSettingsOpen, setReportSettingsOpen] = useState(false)
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
@@ -183,9 +187,15 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
                 </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 안전문서 달력
                 </DropdownMenuItem>
+                {badge?.isPro && (
+                    <DropdownMenuItem onClick={() => setReportSettingsOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 자동 보고서 설정
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                     <LogOut className="mr-2 h-4 w-4" /> 로그아웃
@@ -205,13 +215,13 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
             ) : (
                 <>
                     <div className="flex justify-between items-center w-full">
-                        <Button 
+                        <Button
                             variant="outline"
                             size="icon"
-                            onClick={() => router.push('/')} 
+                            onClick={() => router.push(backHref ?? '/')}
                             className="h-10 w-10 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-colors"
                         >
-                            <Home className="w-5 h-5 text-cur-body" /> 
+                            {backHref ? <ChevronLeft className="w-5 h-5 text-cur-body" /> : <Home className="w-5 h-5 text-cur-body" />}
                         </Button>
                         {userProfileDropdown}
                     </div>
@@ -229,6 +239,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     </div>
                 </>
             )}
+
+            <ReportSettingsDialog open={reportSettingsOpen} onOpenChange={setReportSettingsOpen} />
 
             <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
                 <DialogContent showCloseButton={true} className="max-w-sm w-[calc(100%-2rem)] rounded-[12px] p-6 border-cur-hairline shadow-[0_16px_48px_rgba(0,0,0,0.1)] bg-cur-card font-sans">

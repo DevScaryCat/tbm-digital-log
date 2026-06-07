@@ -17,7 +17,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerC
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText } from "lucide-react"
+import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText, ShieldCheck } from "lucide-react"
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -30,6 +30,21 @@ export default function DashboardPage() {
     const [isRangeMode, setIsRangeMode] = useState(false)
     const [isDrawerOpen, setIsDrawerOpen] = useState(false)
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
+
+    // 위험성평가에서 돌아온 경우: 직전 선택 범위 복원 (1회용)
+    useEffect(() => {
+        try {
+            const saved = sessionStorage.getItem("dash_restore")
+            if (saved) {
+                sessionStorage.removeItem("dash_restore")
+                const { from, to } = JSON.parse(saved)
+                if (from) {
+                    setIsRangeMode(true)
+                    setDateRange({ from: parseISO(from), to: to ? parseISO(to) : parseISO(from) })
+                }
+            }
+        } catch { /* 무시 */ }
+    }, [])
 
     useEffect(() => {
         const loadData = async () => {
@@ -114,6 +129,16 @@ export default function DashboardPage() {
         router.push("/report/batch")
     }
 
+    const handleRiskAssessment = () => {
+        if (!dateRange?.from) return alert("기간을 선택해주세요.")
+        const from = format(dateRange.from, "yyyy-MM-dd")
+        const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
+        localStorage.setItem("ra_range", JSON.stringify({ from, to }))
+        // 위험성평가에서 돌아왔을 때 선택했던 범위를 그대로 복원하기 위해 저장 (1회용)
+        sessionStorage.setItem("dash_restore", JSON.stringify({ from, to }))
+        router.push("/risk-assessment")
+    }
+
     const rangeCount = dateRange?.from && dateRange?.to ? logs.filter(log => {
         const d = parseISO(log.date).getTime()
         return d >= dateRange!.from!.getTime() && d <= dateRange!.to!.getTime()
@@ -194,10 +219,10 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="flex flex-col">
                                     <Label className="font-semibold text-cur-ink text-[15px] cursor-pointer pointer-events-none">
-                                        기간 다운로드
+                                        기간 선택
                                     </Label>
                                     <span className="text-[13px] text-cur-muted-soft">
-                                        시작일과 종료일을 선택하세요
+                                        일괄 PDF · 위험성평가 생성
                                     </span>
                                 </div>
                             </div>
@@ -248,6 +273,10 @@ export default function DashboardPage() {
                             </div>
                             <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
                                 일괄 다운로드 (PDF)
+                            </Button>
+                            <Button onClick={handleRiskAssessment} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px]">
+                                <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 위험성평가
+                                <span className="ml-1.5 bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
                             </Button>
                         </div>
                     )}
