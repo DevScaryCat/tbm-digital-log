@@ -299,7 +299,7 @@ export default function MainPage() {
           </div>
 
           <div
-            onClick={() => router.push('/tbm')}
+            onClick={() => router.push('/safety-log')}
             className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
           >
             <div className="p-5 flex items-center justify-between">

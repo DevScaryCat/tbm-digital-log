@@ -1003,11 +1003,11 @@ export default function TBMMinutesPage() {
                                 <div className="flex items-center gap-2 text-cur-info font-bold text-[15px]"><QrCode className="w-5 h-5" /> 팀원 스마트폰으로 서명받기</div>
                                 {sessionId && (
                                     <div className="bg-cur-card p-3.5 rounded-[12px] shadow-sm border border-cur-hairline">
-                                        <QRCodeCanvas value={typeof window !== "undefined" ? `${window.location.origin}/tbm/sign/${sessionId}` : ""} size={150} level={"H"} />
+                                        <QRCodeCanvas value={typeof window !== "undefined" ? `${window.location.origin}/sign/${sessionId}` : ""} size={150} level={"H"} />
                                     </div>
                                 )}
                                 <p className="text-[13px] text-cur-info font-medium leading-relaxed">위 QR을 보여주거나 아래 링크를 카톡으로 보내세요.</p>
-                                <Button variant="outline" onClick={() => { if (typeof window !== "undefined" && sessionId) { navigator.clipboard.writeText(`${window.location.origin}/tbm/sign/${sessionId}`); alert("복사 완료!"); } }} className="bg-cur-card border-cur-info/30 text-cur-info hover:bg-cur-info/10 h-10 rounded-[8px] font-semibold text-[13px] px-5"><Copy className="w-4 h-4 mr-2" /> 링크 복사</Button>
+                                <Button variant="outline" onClick={() => { if (typeof window !== "undefined" && sessionId) { navigator.clipboard.writeText(`${window.location.origin}/sign/${sessionId}`); alert("복사 완료!"); } }} className="bg-cur-card border-cur-info/30 text-cur-info hover:bg-cur-info/10 h-10 rounded-[8px] font-semibold text-[13px] px-5"><Copy className="w-4 h-4 mr-2" /> 링크 복사</Button>
                             </div>
 
                             <div className="space-y-3">

@@ -1,4 +1,4 @@
-// app/tbm/sign/[sessionId]/page.tsx
+// app/sign/[sessionId]/page.tsx
 "use client"
 
 import { useState, useRef, useEffect } from "react"

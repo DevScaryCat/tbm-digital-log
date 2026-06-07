@@ -1,4 +1,4 @@
-// app/tbm/page.tsx
+// app/safety-log/page.tsx
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -1054,7 +1054,7 @@ export default function TBMPage() {
                                 {sessionId && (
                                     <div className="bg-cur-card p-3.5 rounded-[12px] shadow-sm border border-cur-hairline">
                                         <QRCodeCanvas
-                                            value={typeof window !== "undefined" ? `${window.location.origin}/tbm/sign/${sessionId}` : ""}
+                                            value={typeof window !== "undefined" ? `${window.location.origin}/sign/${sessionId}` : ""}
                                             size={150}
                                             level={"H"}
                                         />
@@ -1067,7 +1067,7 @@ export default function TBMPage() {
                                     variant="outline"
                                     onClick={() => {
                                         if (typeof window !== "undefined" && sessionId) {
-                                            navigator.clipboard.writeText(`${window.location.origin}/tbm/sign/${sessionId}`)
+                                            navigator.clipboard.writeText(`${window.location.origin}/sign/${sessionId}`)
                                             alert("서명 링크가 복사되었습니다.")
                                         }
                                     }}
