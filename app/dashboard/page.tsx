@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
-import { useRequireSubscription } from "@/lib/useSubscription"
+import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
+import { ReportSettingsDialog } from "@/components/ReportSettingsDialog"
 import { format, parseISO, isSameDay } from "date-fns"
 import { ko } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
@@ -17,7 +18,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerC
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText, ShieldCheck } from "lucide-react"
+import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText, ShieldCheck, Mail } from "lucide-react"
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -30,6 +31,8 @@ export default function DashboardPage() {
     const [isRangeMode, setIsRangeMode] = useState(false)
     const [isDrawerOpen, setIsDrawerOpen] = useState(false)
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [pro, setPro] = useState(false)
 
     // 위험성평가에서 돌아온 경우: 직전 선택 범위 복원 (1회용)
     useEffect(() => {
@@ -50,6 +53,8 @@ export default function DashboardPage() {
         const loadData = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) { router.push("/login"); return }
+
+            setPro(isProActive(await fetchSubscription()))
 
             const [{ data: logsData }, { data: minutesData }] = await Promise.all([
                 supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').order('date', { ascending: false }),
@@ -169,7 +174,17 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-md mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
-                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10"><TBMHeader title="안전문서 달력" /></div>
+                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10">
+                    <TBMHeader
+                        title="안전문서 달력"
+                        titleAction={isRangeMode ? (
+                            <Button onClick={() => setSettingsOpen(true)} variant="ghost" className="h-9 px-2.5 text-[12px] text-cur-muted hover:text-cur-ink border border-cur-hairline rounded-[8px] shrink-0">
+                                <Mail className="mr-1 w-3.5 h-3.5" /> 자동 보고서 설정
+                                <span className="ml-1 bg-cur-primary/15 text-cur-primary text-[9px] font-bold px-1 py-0.5 rounded-[3px] tracking-wide">PRO</span>
+                            </Button>
+                        ) : undefined}
+                    />
+                </div>
 
                 <div className="p-6 space-y-6 flex-1 bg-cur-canvas-soft">
 
@@ -351,6 +366,8 @@ export default function DashboardPage() {
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>
+
+            <ReportSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} pro={pro} />
         </div>
     )
-}  
+}

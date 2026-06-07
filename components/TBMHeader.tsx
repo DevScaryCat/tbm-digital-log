@@ -6,11 +6,10 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, LayoutDashboard, User, Home, ChevronLeft, Loader2, CreditCard, Mail } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, Loader2, CreditCard } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth, addMonths, format } from "date-fns"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
-import { ReportSettingsDialog } from "@/components/ReportSettingsDialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -81,7 +80,6 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     const [plan, setPlan] = useState<string | null>(null)
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
-    const [reportSettingsOpen, setReportSettingsOpen] = useState(false)
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
@@ -188,14 +186,6 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
-                <DropdownMenuItem onClick={() => router.push('/dashboard')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <LayoutDashboard className="mr-2 h-4 w-4 text-cur-muted" /> 안전문서 달력
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setReportSettingsOpen(true)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 자동 보고서 설정
-                    <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                     <LogOut className="mr-2 h-4 w-4" /> 로그아웃
                 </DropdownMenuItem>
@@ -238,8 +228,6 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     </div>
                 </>
             )}
-
-            <ReportSettingsDialog open={reportSettingsOpen} onOpenChange={setReportSettingsOpen} pro={badge?.isPro ?? false} />
 
             <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
                 <DialogContent showCloseButton={true} className="max-w-sm w-[calc(100%-2rem)] rounded-[12px] p-6 border-cur-hairline shadow-[0_16px_48px_rgba(0,0,0,0.1)] bg-cur-card font-sans">

@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Mic, LogOut, Loader2, FileText, Users, ChevronRight } from "lucide-react"
+import { HardHat, Mic, LogOut, Loader2, FileText, Users, ChevronRight, CalendarDays } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
@@ -25,6 +25,11 @@ export default function MainPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [totalEducationHours, setTotalEducationHours] = useState("0.0")
   const [requiredHours, setRequiredHours] = useState(16)
+
+  // 월별 건수 필터용 원본(날짜만) + 선택 월("all" = 전체)
+  const [logDates, setLogDates] = useState<string[]>([])
+  const [minuteDates, setMinuteDates] = useState<string[]>([])
+  const [selectedMonth, setSelectedMonth] = useState("all")
 
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [companyInput, setCompanyInput] = useState("")
@@ -59,6 +64,8 @@ export default function MainPage() {
 
       setTbmCount(tbmLogs?.length || 0)
       setTbmMinutesCount(minutesLogs?.length || 0)
+      setLogDates((tbmLogs || []).map(l => l.date).filter(Boolean))
+      setMinuteDates((minutesLogs || []).map(l => l.date).filter(Boolean))
 
       const now = new Date()
       const currentYear = now.getFullYear()
@@ -128,6 +135,13 @@ export default function MainPage() {
   const maxScale = rawPercent > 100 ? 150 : 100
   const fillWidth = Math.min(100, (rawPercent / maxScale) * 100)
   const tickPosition = (100 / maxScale) * 100
+
+  // 월 선택 옵션(데이터가 있는 달, 최신순) + 선택 월 기준 건수
+  const monthOptions = [...new Set([...logDates, ...minuteDates].map(d => d.slice(0, 7)))].sort().reverse()
+  const countInMonth = (dates: string[]) => selectedMonth === "all" ? dates.length : dates.filter(d => d.startsWith(selectedMonth)).length
+  const shownMinutes = countInMonth(minuteDates)
+  const shownLogs = countInMonth(logDates)
+  const monthLabel = (m: string) => `${m.slice(0, 4)}년 ${parseInt(m.slice(5, 7), 10)}월`
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
@@ -301,17 +315,40 @@ export default function MainPage() {
             </p>
           </div>
 
-          <div className="rounded-[12px] flex text-center divide-x divide-cur-hairline border border-cur-hairline bg-cur-card overflow-hidden">
-            <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
-              <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
-              <div className="text-[28px] font-bold text-cur-ink font-mono">
-                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : tbmMinutesCount}
-              </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-[13px] font-semibold text-cur-ink">활동 현황</h3>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-8 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
+                  <SelectItem value="all">전체</SelectItem>
+                  {monthOptions.map(m => (
+                    <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
-              <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 일지</div>
-              <div className="text-[28px] font-bold text-cur-ink font-mono">
-                {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : tbmCount}
+
+            <div className="rounded-[12px] flex text-center divide-x divide-cur-hairline border border-cur-hairline bg-cur-card overflow-hidden">
+              <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
+                <div className="text-[28px] font-bold text-cur-ink font-mono">
+                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownMinutes}
+                </div>
+              </div>
+              <div onClick={() => router.push('/analytics/education')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전교육일지</div>
+                <div className="text-[28px] font-bold text-cur-ink font-mono">
+                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
+                </div>
+              </div>
+              <div onClick={() => router.push('/dashboard')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전문서 달력</div>
+                <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
               </div>
             </div>
           </div>
