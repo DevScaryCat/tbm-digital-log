@@ -166,20 +166,23 @@ export default function MainPage() {
               TBM 일지부터 위험성평가, 월간 안전 보고서까지 — AI로 한 번에.
               더 많은 대화로 더 안전한 현장을 만드세요.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto pt-2">
-              <Button
-                onClick={() => router.push("/start")}
-                className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
-              >
-                무료로 시작하기
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push("/start")}
-                className="h-12 px-8 border-cur-hairline text-cur-ink hover:bg-cur-elevated text-[16px] font-semibold rounded-[8px]"
-              >
-                로그인
-              </Button>
+            <div className="flex flex-col items-center gap-3 w-full sm:w-auto pt-2">
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <Button
+                  onClick={() => router.push("/start")}
+                  className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
+                >
+                  첫 달 무료로 시작하기
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/start")}
+                  className="h-12 px-8 border-cur-hairline text-cur-ink hover:bg-cur-elevated text-[16px] font-semibold rounded-[8px]"
+                >
+                  로그인
+                </Button>
+              </div>
+              <p className="text-[13px] text-cur-muted-soft">첫 달 무료 체험 · 이후 월 1,900원 (Pro 4,900원)</p>
             </div>
           </div>
         </section>
@@ -202,16 +205,16 @@ export default function MainPage() {
           {/* 하단 CTA */}
           <div className="mt-16 sm:mt-20 bg-cur-ink rounded-[20px] px-6 sm:px-12 py-12 sm:py-16 text-center flex flex-col items-center gap-5">
             <h2 className="text-[24px] sm:text-[34px] font-bold text-white leading-tight tracking-tight">
-              지금 바로 시작하세요
+              첫 달 무료로 시작하세요
             </h2>
             <p className="text-white/70 text-[15px] sm:text-[16px] max-w-xl">
-              복잡한 설치 없이, 카카오/일반 계정으로 바로 현장 안전관리를 시작할 수 있습니다.
+              복잡한 설치 없이 카카오/일반 계정으로 바로 시작. 첫 달은 무료 체험이고, 이후 월 1,900원(Pro 4,900원)이에요. 언제든 해지할 수 있습니다.
             </p>
             <Button
               onClick={() => router.push("/start")}
               className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] mt-1"
             >
-              무료로 시작하기
+              첫 달 무료로 시작하기
             </Button>
           </div>
         </section>
