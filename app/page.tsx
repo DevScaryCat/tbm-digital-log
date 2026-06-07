@@ -8,9 +8,8 @@ import { useRequireSubscription } from "@/lib/useSubscription"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Mic, MessageSquareWarning, LogOut, UserCircle, Loader2, FileText, Users, ChevronRight, ShieldCheck } from "lucide-react"
+import { HardHat, Mic, LogOut, Loader2, FileText, Users, ChevronRight, ShieldCheck } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
@@ -31,7 +30,6 @@ export default function MainPage() {
   const [companyInput, setCompanyInput] = useState("")
   const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
   const [isUpdating, setIsUpdating] = useState(false)
-  const [privacyAgreed, setPrivacyAgreed] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -103,18 +101,6 @@ export default function MainPage() {
     }
   }
 
-  const handleKakaoLogin = async () => {
-    setIsLoading(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'kakao',
-      options: { redirectTo: `${window.location.origin}/` }
-    })
-    if (error) {
-      alert("카카오 로그인 에러: " + error.message)
-      setIsLoading(false)
-    }
-  }
-
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setUser(null)
@@ -146,51 +132,51 @@ export default function MainPage() {
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
   if (!user) {
+    const features = [
+      { t: "스마트 TBM 일지·회의록", d: "말하면 AI가 안전교육일지로 자동 정리" },
+      { t: "위험성평가 자동 생성", d: "기간만 고르면 TBM을 분석해 평가표 완성" },
+      { t: "월간 안전 보고서", d: "사장·안전관리자에게 매달 자동 메일 발송" },
+    ]
     return (
-      <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans">
-        <div className="absolute top-0 left-0 right-0 h-[50vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10"></div>
+      <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans text-cur-body">
+        <div className="absolute top-0 left-0 right-0 h-[55vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10" />
 
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700 max-w-lg mx-auto w-full">
-          <div className="space-y-6 flex flex-col items-center">
+        <div className="flex-1 max-w-lg mx-auto w-full px-6 flex flex-col">
+          {/* 히어로 */}
+          <div className="pt-16 pb-10 flex flex-col items-center text-center gap-7 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <Logo size="lg" />
-
             <div className="space-y-3">
-              <p className="text-cur-muted text-[16px] sm:text-[18px]">
-                더 많은 대화로 더 안전한 현장을
+              <h1 className="text-[26px] sm:text-[30px] font-bold text-cur-ink leading-tight tracking-tight">
+                현장의 안전을<br />더 쉽고 똑똑하게
+              </h1>
+              <p className="text-cur-muted text-[15px] sm:text-[16px] leading-relaxed">
+                TBM 일지부터 위험성평가·월간 보고서까지<br />AI로 한 번에. 더 많은 대화로 더 안전한 현장을.
               </p>
+            </div>
+            <div className="w-full space-y-2.5 pt-2">
+              <Button
+                onClick={() => router.push("/start")}
+                className="w-full h-13 py-4 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] transition-all"
+              >
+                시작하기
+              </Button>
+              <button
+                onClick={() => router.push("/start")}
+                className="w-full text-[13px] text-cur-muted hover:text-cur-ink py-1"
+              >
+                이미 계정이 있으신가요? 로그인
+              </button>
             </div>
           </div>
 
-          <div className="w-full space-y-5 bg-cur-card p-6 rounded-[12px] border border-cur-hairline">
-            <div className="flex items-start gap-3 bg-cur-elevated rounded-[8px] p-4 text-left">
-              <Checkbox
-                id="privacy-agree"
-                checked={privacyAgreed}
-                onCheckedChange={(checked) => setPrivacyAgreed(checked === true)}
-                className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px]"
-              />
-              <label htmlFor="privacy-agree" className="text-[14px] text-cur-body leading-[1.5] cursor-pointer">
-                <a href="/privacy" target="_blank" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
-                <a href="/terms" target="_blank" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
-              </label>
-            </div>
-
-            <Button
-              onClick={handleKakaoLogin}
-              disabled={!privacyAgreed}
-              className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
-            >
-              <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오 계정으로 시작
-            </Button>
-
-            <Button
-              onClick={() => router.push('/login')}
-              disabled={!privacyAgreed}
-              variant="outline"
-              className="w-full h-12 bg-cur-elevated border border-cur-hairline hover:bg-cur-elevated/80 text-cur-body text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
-            >
-              <UserCircle className="w-5 h-5 mr-2" /> 일반 계정으로 시작
-            </Button>
+          {/* 기능 소개 */}
+          <div className="pb-16 space-y-3">
+            {features.map((f, i) => (
+              <div key={i} className="bg-cur-card border border-cur-hairline rounded-[12px] p-5">
+                <div className="font-semibold text-[15px] text-cur-ink mb-1">{f.t}</div>
+                <div className="text-[14px] text-cur-muted-soft leading-relaxed">{f.d}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
