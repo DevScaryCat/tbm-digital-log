@@ -8,12 +8,10 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Calendar } from "@/components/ui/calendar"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateRange } from "react-day-picker"
-import { ko } from "date-fns/locale"
 import { Loader2 } from "lucide-react"
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth } from "date-fns"
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth, startOfWeek, endOfMonth, subMonths } from "date-fns"
 
 interface RiskItem {
     hazard: string
@@ -39,6 +37,14 @@ function levelFromRisk(risk: number): string {
     if (risk >= 4) return "보통"
     return "낮음"
 }
+
+// 기간 프리셋 (달력 대신 버튼 선택)
+const PRESETS: { key: string; label: string; range: () => DateRange }[] = [
+    { key: "week", label: "이번 주", range: () => ({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() }) },
+    { key: "month", label: "이번 달", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+    { key: "lastmonth", label: "지난 달", range: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
+    { key: "3m", label: "최근 3개월", range: () => ({ from: subMonths(new Date(), 3), to: new Date() }) },
+]
 
 const SAMPLE_ITEMS: RiskItem[] = [
     { hazard: "고소작업 중 추락", cause: "여러 날 반복된 비계·고소 작업, 안전대 미체결", frequency: 4, severity: 5, risk: 20, level: "매우높음", measures: "안전대 100% 체결, 작업발판·안전난간 점검, 추락방지망 설치", recurring: true },
@@ -92,6 +98,7 @@ export default function RiskAssessmentPage() {
     const [step, setStep] = useState<0 | 1 | 2 | 3>(1)
     const [analyzing, setAnalyzing] = useState(false)
     const [range, setRange] = useState<DateRange | undefined>()
+    const [preset, setPreset] = useState<string | null>(null)
     const [items, setItems] = useState<RiskItem[]>([])
     const [periodLabel, setPeriodLabel] = useState("")
     const [saving, setSaving] = useState(false)
@@ -321,7 +328,6 @@ export default function RiskAssessmentPage() {
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
     const recurringCount = items.filter((it) => it.recurring).length
-    const hasLog = (d: Date) => tbmDates.some((t) => t === format(d, "yyyy-MM-dd"))
 
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
@@ -388,35 +394,29 @@ export default function RiskAssessmentPage() {
                         </div>
                     )}
 
-                    {/* STEP 1: 기간 선택 */}
+                    {/* STEP 1: 기간 선택 (프리셋 버튼) */}
                     {!analyzing && step === 1 && (
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between px-1">
-                                <p className="text-[15px] font-semibold text-cur-ink">보고서를 생성할 범위를 선택하세요</p>
-                                <Button variant="outline" onClick={() => setRange({ from: startOfMonth(new Date()), to: new Date() })} className="h-9 px-3 rounded-[8px] border-cur-hairline text-[13px] font-medium">이번 달</Button>
-                            </div>
+                            <p className="text-[15px] font-semibold text-cur-ink px-1">보고서를 생성할 기간을 선택하세요</p>
 
-                            <div className="border border-cur-hairline rounded-[12px] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center">
-                                <Calendar
-                                    mode="range"
-                                    selected={range}
-                                    onSelect={setRange}
-                                    locale={ko}
-                                    className="w-full"
-                                    modifiers={{ hasLog }}
-                                    modifiersClassNames={{ hasLog: "font-semibold relative after:content-[''] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-[4px] after:h-[4px] after:bg-cur-primary after:rounded-full data-[selected=true]:after:bg-cur-card" }}
-                                    classNames={{
-                                        day_selected: "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active focus:bg-cur-primary rounded-[8px]",
-                                        day_today: "bg-cur-canvas text-cur-ink font-semibold rounded-[8px]",
-                                    }}
-                                />
+                            <div className="grid grid-cols-2 gap-2">
+                                {PRESETS.map((p) => (
+                                    <Button
+                                        key={p.key}
+                                        variant="outline"
+                                        onClick={() => { setRange(p.range()); setPreset(p.key) }}
+                                        className={`h-12 rounded-[8px] text-[14px] font-medium border ${preset === p.key ? "border-cur-primary bg-cur-primary/[0.06] text-cur-primary" : "border-cur-hairline text-cur-ink"}`}
+                                    >
+                                        {p.label}
+                                    </Button>
+                                ))}
                             </div>
 
                             {range?.from && (
                                 <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-4 space-y-3">
                                     <div className="flex justify-between items-center">
                                         <div className="font-semibold text-[15px] text-cur-ink">
-                                            {format(range.from, "MM.dd")} ~ {range.to ? format(range.to, "MM.dd") : "-"}
+                                            {format(range.from, "yyyy.MM.dd")} ~ {format(range.to ?? range.from, "yyyy.MM.dd")}
                                         </div>
                                         <span className="text-[13px] text-cur-muted">TBM {countInRange()}건</span>
                                     </div>
