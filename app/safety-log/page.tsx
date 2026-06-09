@@ -451,7 +451,7 @@ export default function TBMPage() {
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,
-                    instructor_name: formData.educationType === "TBM" ? null : formData.instructorName,
+                    instructor_name: formData.educationType === "TBM" ? "" : formData.instructorName,
                     instructor_signature: instructorSignatureUrl,
                     education_content: formData.educationContent,
                     remarks: formData.remarks,
