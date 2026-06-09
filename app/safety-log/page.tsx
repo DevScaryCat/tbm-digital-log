@@ -76,6 +76,7 @@ interface Participant {
 interface TBMData {
     date: Date | undefined
     startTime: string
+    endTime: string
     weather: string
     temperature: string
     companyName: string
@@ -151,6 +152,7 @@ export default function TBMPage() {
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 if (recognitionRef.current) recognitionRef.current.stop();
+                setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
                 setRecordingCount(prev => prev + 1);
             }
         };
@@ -191,6 +193,7 @@ export default function TBMPage() {
     const [formData, setFormData] = useState<TBMData>({
         date: new Date(),
         startTime: getCurrentTime(),
+        endTime: "",
         weather: "불러오는 중...",
         temperature: "",
         companyName: "",
@@ -447,7 +450,7 @@ export default function TBMPage() {
                     user_id: session.user.id,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
-                    end_time: new Date().toTimeString().slice(0, 5),
+                    end_time: formData.endTime || new Date().toTimeString().slice(0, 5),
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,
@@ -574,6 +577,8 @@ export default function TBMPage() {
         if (recognitionRef.current) {
             recognitionRef.current.stop()
         }
+        // 종료시간 = 마지막 녹음 종료 시각
+        setFormData(prev => ({ ...prev, endTime: getCurrentTime() }))
         setRecordingCount(prev => prev + 1)
     }
 
@@ -632,7 +637,8 @@ export default function TBMPage() {
             recognitionRef.current = recognition;
             setIsRecording(true);
             isRecordingRef.current = true;
-            setFormData(prev => ({ ...prev, startTime: getCurrentTime() }));
+            // 시작시간 = 첫 녹음 시작 시각 (여러 번 녹음해도 처음 것 유지)
+            setFormData(prev => ({ ...prev, startTime: recordingCount === 0 ? getCurrentTime() : prev.startTime }));
         } catch (err) {
             console.error(err);
             alert("마이크/음성인식 권한이 필요합니다.");
@@ -806,10 +812,23 @@ export default function TBMPage() {
                                         <Label className="text-[14px] font-semibold text-cur-ink">시작 시간</Label>
                                         <span className="text-[11px] text-cur-muted">녹음 시작 시 자동 갱신 (조작 불가)</span>
                                     </div>
-                                    <Input 
-                                        value={formData.startTime} 
-                                        disabled 
-                                        className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated" 
+                                    <Input
+                                        value={formData.startTime}
+                                        disabled
+                                        className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <Label className="text-[14px] font-semibold text-cur-ink">종료 시간</Label>
+                                        <span className="text-[11px] text-cur-muted">녹음 종료 시 자동 갱신 (조작 불가)</span>
+                                    </div>
+                                    <Input
+                                        value={formData.endTime}
+                                        disabled
+                                        placeholder="녹음 종료 후 자동 입력"
+                                        className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
                                     />
                                 </div>
 
