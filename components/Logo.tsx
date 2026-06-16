@@ -29,7 +29,7 @@ export function Logo({ size = "md", className }: { size?: LogoSize; className?: 
         )}
       >
         <span className="text-[0.78em] font-semibold text-cur-ink/65">안전</span>
-        <span className="-mt-[0.04em]">
+        <span className="-mt-[0.16em]">
           톡톡<span className="text-cur-primary ml-[0.12em]">e</span>
         </span>
       </div>
