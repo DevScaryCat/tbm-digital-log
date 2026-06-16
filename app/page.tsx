@@ -135,6 +135,10 @@ export default function MainPage() {
   const maxScale = rawPercent > 100 ? 150 : 100
   const fillWidth = Math.min(100, (rawPercent / maxScale) * 100)
   const tickPosition = (100 / maxScale) * 100
+  // 100% 초과 시: 0~100%는 진한 오렌지, 초과분은 연한 오렌지로 구분
+  const isOver = rawPercent > 100
+  const baseFill = isOver ? tickPosition : fillWidth
+  const overFill = isOver ? Math.max(0, fillWidth - tickPosition) : 0
 
   // 월 선택 옵션(데이터가 있는 달, 최신순) + 선택 월 기준 건수
   const monthOptions = [...new Set([...logDates, ...minuteDates].map(d => d.slice(0, 7)))].sort().reverse()
@@ -247,28 +251,19 @@ export default function MainPage() {
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
           <div className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-[-0.11px]">
+            <div className="flex items-center justify-between gap-3 mb-8">
+              <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 flex-wrap tracking-[-0.11px] min-w-0">
                 법정 의무 교육 진행도
-                <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold">
+                <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold shrink-0">
                   {user?.user_metadata?.worker_type || '현장 근로자 (비사무직)'}
                 </span>
               </h3>
+              <span className="text-[14px] font-bold text-cur-primary font-mono whitespace-nowrap shrink-0">
+                {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
+              </span>
             </div>
 
             <div className="relative mt-2 mb-8">
-              {/* Text above the bar */}
-              <div
-                className="absolute -top-7 text-[13px] font-bold text-cur-primary font-mono whitespace-nowrap"
-                style={
-                  fillWidth > 85
-                    ? { right: '0%' }
-                    : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
-                }
-              >
-                {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block text-cur-primary" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
-              </div>
-
               {/* Progress bar container */}
               <div className="w-full h-2 bg-cur-elevated rounded-full relative">
                 {/* 100% Tick Mark */}
@@ -289,11 +284,18 @@ export default function MainPage() {
                   100%
                 </div>
 
-                {/* Filled bar */}
+                {/* Filled bar — 0~100% 구간(진한 정상 오렌지) */}
                 <div
-                  className="h-full bg-gradient-to-r from-cur-primary-active to-cur-primary rounded-full transition-all duration-1000 ease-out absolute left-0 top-0"
-                  style={{ width: `${fillWidth}%` }}
+                  className={`h-full bg-gradient-to-r from-cur-primary-active to-cur-primary transition-all duration-1000 ease-out absolute left-0 top-0 ${isOver ? 'rounded-l-full' : 'rounded-full'}`}
+                  style={{ width: `${baseFill}%` }}
                 />
+                {/* 100% 초과분 (연한 오렌지) */}
+                {isOver && (
+                  <div
+                    className="h-full bg-[#ff9a5c] rounded-r-full transition-all duration-1000 ease-out absolute top-0"
+                    style={{ left: `${tickPosition}%`, width: `${overFill}%` }}
+                  />
+                )}
               </div>
 
               {/* Current Percentage Label below the right end of the filled bar */}
