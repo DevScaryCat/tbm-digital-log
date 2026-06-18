@@ -142,12 +142,10 @@ export default function RiskAssessmentPage() {
     }, [router])
 
     const loadTbmDates = async () => {
-        const [{ data: m }, { data: l }] = await Promise.all([
-            supabase.from("tbm_minutes").select("date").order("date", { ascending: false }).limit(300),
-            supabase.from("tbm_logs").select("date").order("date", { ascending: false }).limit(300),
-        ])
+        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전교육일지는 제외
+        const { data: m } = await supabase.from("tbm_minutes").select("date").order("date", { ascending: false }).limit(300)
         const dates = new Set<string>()
-        for (const r of [...((m as any[]) || []), ...((l as any[]) || [])]) if (r.date) dates.add(r.date)
+        for (const r of (m as any[]) || []) if (r.date) dates.add(r.date)
         setTbmDates([...dates])
     }
 
@@ -159,10 +157,11 @@ export default function RiskAssessmentPage() {
     }
 
     const buildRangeContext = async (fromS: string, toS: string): Promise<string> => {
-        const [{ data: minutes }, { data: logs }] = await Promise.all([
-            supabase.from("tbm_minutes").select("date, process_name, work_name, work_content, hazards, instructions, safety_phrase, ppe_check").gte("date", fromS).lte("date", toS).order("date"),
-            supabase.from("tbm_logs").select("date, education_type, education_content, remarks").gte("date", fromS).lte("date", toS).order("date"),
-        ])
+        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전교육일지(tbm_logs) 제외
+        const { data: minutes } = await supabase
+            .from("tbm_minutes")
+            .select("date, process_name, work_name, work_content, hazards, instructions, safety_phrase, ppe_check")
+            .gte("date", fromS).lte("date", toS).order("date")
         const blocks: string[] = []
         for (const m of (minutes as any[]) || []) {
             const hz = Array.isArray(m.hazards) ? m.hazards : []
@@ -171,11 +170,6 @@ export default function RiskAssessmentPage() {
                 m.process_name && `공정: ${m.process_name}`, m.work_name && `작업명: ${m.work_name}`,
                 m.work_content && `작업내용: ${m.work_content}`, m.ppe_check && `보호구: ${m.ppe_check}`,
                 hzText && `논의된 위험요인:\n${hzText}`, m.instructions && `지시사항: ${m.instructions}`,
-            ].filter(Boolean).join("\n"))
-        }
-        for (const l of (logs as any[]) || []) {
-            blocks.push(`=== TBM (${l.date}, 일지) ===\n` + [
-                l.education_type && `교육구분: ${l.education_type}`, l.education_content && `교육내용:\n${l.education_content}`, l.remarks && `특이사항: ${l.remarks}`,
             ].filter(Boolean).join("\n"))
         }
         let text = blocks.join("\n\n")
