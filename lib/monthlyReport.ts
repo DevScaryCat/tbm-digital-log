@@ -1,4 +1,5 @@
-// lib/monthlyReport.ts — 월간 안전 보고서 생성 + 발송 (크론/수동 공용)
+// lib/monthlyReport.ts — 월간 TBM 회의록 종합분석 보고서 생성 + 발송 (크론/수동 공용)
+// 위험요인은 TBM 회의록(tbm_minutes)에서만 집계한다. (분석 페이지와 동일 기준)
 import { SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
@@ -12,11 +13,17 @@ export interface ReportSubscription {
 }
 
 export interface ReportStats {
-  logCount: number;
-  minutesCount: number;
-  riskCount: number;
-  activeDays: number;
-  educationHours: string;
+  total: number; // 회의록 건수
+  high: number; // 위험성(상) 위험요인 수
+  mid: number; // 위험성(중) 위험요인 수
+}
+
+export interface HazardRow {
+  factor: string;
+  level: "상" | "중" | "하";
+  measure: string;
+  process: string;
+  date: string;
 }
 
 export interface ReportContent {
@@ -24,7 +31,8 @@ export interface ReportContent {
   year: number;
   month: number;
   stats: ReportStats;
-  topHazards: { name: string; count: number }[];
+  keywords: { word: string; count: number }[];
+  hazards: HazardRow[];
   aiSummary: string;
 }
 
@@ -37,16 +45,19 @@ function monthRange(year: number, month: number) {
   return { start, end };
 }
 
-function diffMinutes(start?: string | null, end?: string | null): number {
-  if (!start || !end) return 0;
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  let d = eh * 60 + em - (sh * 60 + sm);
-  if (d < 0) d += 1440;
-  return d > 0 ? d : 0;
+/** 위험 등급 → 상/중/하 (회의록 hazards.level은 이미 상/중/하) */
+function gradeOf(level: unknown): "상" | "중" | "하" {
+  const s = String(level ?? "").trim();
+  if (s === "상" || s === "매우높음" || s === "높음") return "상";
+  if (s === "중" || s === "보통") return "중";
+  if (s === "하" || s === "낮음") return "하";
+  const n = Number(s);
+  if (!isNaN(n)) { if (n >= 9) return "상"; if (n >= 4) return "중"; return "하"; }
+  return "중";
 }
+const rankOf = (l: string) => (l === "상" ? 3 : l === "중" ? 2 : 1);
 
-/** 한 사용자의 월간 데이터를 집계해 보고서 콘텐츠를 만든다. */
+/** 한 사용자의 월간 TBM 회의록을 집계해 보고서 콘텐츠를 만든다. */
 export async function buildReportContent(
   admin: SupabaseClient,
   userId: string,
@@ -56,73 +67,47 @@ export async function buildReportContent(
 ): Promise<ReportContent> {
   const { start, end } = monthRange(year, month);
 
-  const [{ data: logs }, { data: minutes }, { data: risks }] = await Promise.all([
-    admin
-      .from("tbm_logs")
-      .select("date, start_time, end_time")
-      .eq("user_id", userId)
-      .gte("date", start)
-      .lt("date", end),
-    admin
-      .from("tbm_minutes")
-      .select("date, start_time, end_time, hazards")
-      .eq("user_id", userId)
-      .gte("date", start)
-      .lt("date", end),
-    admin
-      .from("tbm_risk_assessments")
-      .select("date, items")
-      .eq("user_id", userId)
-      .gte("date", start)
-      .lt("date", end),
-  ]);
+  const { data: minutes } = await admin
+    .from("tbm_minutes")
+    .select("date, hazards, work_name, process_name")
+    .eq("user_id", userId)
+    .gte("date", start)
+    .lt("date", end);
+  const minuteRows = (minutes as any[]) || [];
 
-  const logRows = logs || [];
-  const minuteRows = minutes || [];
-  const riskRows = risks || [];
-
-  // 교육 시간 합계
-  let totalMins = 0;
-  for (const r of [...logRows, ...minuteRows]) {
-    totalMins += diffMinutes(r.start_time, r.end_time);
-  }
-
-  // 실시일수 (중복 날짜 제거)
-  const days = new Set<string>();
-  for (const r of [...logRows, ...minuteRows]) if (r.date) days.add(r.date);
-
-  // 위험요인 빈도 집계 (회의록 hazards.factor + 위험성평가 items.hazard)
-  const hazardCount = new Map<string, number>();
+  // 회의록에서 논의된 위험요인 펼치기
+  const items: HazardRow[] = [];
   for (const m of minuteRows) {
-    const hs = Array.isArray((m as any).hazards) ? (m as any).hazards : [];
+    const hs = Array.isArray(m.hazards) ? m.hazards : [];
     for (const h of hs) {
-      const name = String(h?.factor ?? "").trim();
-      if (name) hazardCount.set(name, (hazardCount.get(name) || 0) + 1);
+      const factor = String(h?.factor ?? "").trim();
+      if (!factor) continue;
+      items.push({
+        factor,
+        level: gradeOf(h?.level),
+        measure: String(h?.measure ?? "").trim(),
+        process: m.process_name || m.work_name || "",
+        date: m.date || "",
+      });
     }
   }
-  for (const ra of riskRows) {
-    const items = Array.isArray((ra as any).items) ? (ra as any).items : [];
-    for (const it of items) {
-      const name = String(it?.hazard ?? "").trim();
-      if (name) hazardCount.set(name, (hazardCount.get(name) || 0) + 1);
-    }
-  }
-  const topHazards = [...hazardCount.entries()]
+
+  // 핵심 위험 키워드 빈도
+  const freq = new Map<string, number>();
+  for (const it of items) freq.set(it.factor, (freq.get(it.factor) || 0) + 1);
+  const keywords = [...freq.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, count]) => ({ name, count }));
+    .slice(0, 8)
+    .map(([word, count]) => ({ word, count }));
 
-  const stats: ReportStats = {
-    logCount: logRows.length,
-    minutesCount: minuteRows.length,
-    riskCount: riskRows.length,
-    activeDays: days.size,
-    educationHours: (totalMins / 60).toFixed(1),
-  };
+  const high = items.filter((it) => it.level === "상").length;
+  const mid = items.filter((it) => it.level === "중").length;
+  const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 30);
 
-  const aiSummary = await generateAISummary(companyName, year, month, stats, topHazards);
+  const stats: ReportStats = { total: minuteRows.length, high, mid };
+  const aiSummary = await generateAISummary(companyName, year, month, stats, keywords);
 
-  return { companyName, year, month, stats, topHazards, aiSummary };
+  return { companyName, year, month, stats, keywords, hazards, aiSummary };
 }
 
 async function generateAISummary(
@@ -130,95 +115,145 @@ async function generateAISummary(
   year: number,
   month: number,
   stats: ReportStats,
-  topHazards: { name: string; count: number }[]
+  keywords: { word: string; count: number }[]
 ): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY) return "";
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const facts = [
       `현장/업체: ${companyName ?? "미상"}`,
-      `대상 기간: ${year}년 ${month}월`,
-      `TBM 일지 ${stats.logCount}건, TBM 회의록 ${stats.minutesCount}건, 위험성평가 ${stats.riskCount}건`,
-      `안전교육 실시일수 ${stats.activeDays}일, 누적 교육시간 ${stats.educationHours}시간`,
-      `주요 위험요인: ${topHazards.map((h) => `${h.name}(${h.count})`).join(", ") || "없음"}`,
+      `대상 기간: ${year}년 ${month}월 (TBM 회의록 기준)`,
+      `회의록 ${stats.total}건, 위험요인 등급 상 ${stats.high}건 / 중 ${stats.mid}건`,
+      `자주 논의된 위험요인: ${keywords.map((k) => `${k.word}(${k.count})`).join(", ") || "없음"}`,
     ].join("\n");
 
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 600,
+      max_tokens: 500,
       temperature: 0.3,
       system:
-        "당신은 건설·물류 현장의 안전보건 관리자입니다. 아래 한 달간 안전활동 집계를 바탕으로, 사업주/안전관리자가 한눈에 파악할 수 있는 '월간 안전현황 총평'을 작성하세요. 3~5문장으로, ① 이번 달 활동 요약 ② 주요 위험요인 경향 ③ 다음 달 권고사항 순으로 간결하게. 수치를 지어내지 말고 주어진 집계만 사용하세요.",
+        "당신은 건설·물류 현장의 안전보건 관리자입니다. 아래 한 달간 TBM 회의록 위험요인 집계만 보고, 사업주가 한눈에 파악할 '월간 회의록 안전 총평'을 작성하세요. 3~4문장으로 ① 이번 달 회의록 활동 요약 ② 반복·고위험 위험요인 경향 ③ 다음 달 권고 순으로 간결하게. 수치를 지어내지 말고 주어진 집계만 사용하세요.",
       messages: [{ role: "user", content: facts }],
     });
-    const text = msg.content
+    return msg.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
-    return text;
   } catch (e) {
     console.error("AI summary error:", e);
     return "";
   }
 }
 
-function levelColor(level: string): string {
-  switch (level) {
-    case "매우높음": return "#dc2626";
-    case "높음": return "#ea580c";
-    case "보통": return "#ca8a04";
-    default: return "#16a34a";
-  }
+function levelBadge(level: string): string {
+  const c =
+    level === "상"
+      ? { bg: "#fde7ec", fg: "#cf2d56" }
+      : level === "중"
+      ? { bg: "#ffeede", fg: "#d4691a" }
+      : { bg: "#e7f6ee", fg: "#1f8a65" };
+  return `<span style="display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:9999px;background:${c.bg};color:${c.fg};white-space:nowrap;">${level}</span>`;
 }
 
-/** 이메일/공개페이지용 HTML 본문 */
+/** 이메일/공개페이지용 HTML 본문 (분석 페이지와 동일 구성) */
 export function renderReportHtml(content: ReportContent, viewUrl?: string): string {
-  const { companyName, year, month, stats, topHazards, aiSummary } = content;
-  const hazardRows =
-    topHazards.length > 0
-      ? topHazards
+  const { companyName, year, month } = content;
+  const stats = content.stats || ({ total: 0, high: 0, mid: 0 } as ReportStats);
+  const keywords = content.keywords || [];
+  const hazards = content.hazards || [];
+  const aiSummary = content.aiSummary || "";
+
+  const topWords = keywords.slice(0, 2).map((k) => escapeHtml(k.word));
+  const keywordChips =
+    keywords.length > 0
+      ? keywords
           .map(
-            (h, i) =>
-              `<tr><td style="padding:8px 12px;border-bottom:1px solid #eee;">${i + 1}. ${escapeHtml(
-                h.name
-              )}</td><td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;color:#666;">${h.count}회</td></tr>`
+            (k) =>
+              `<span style="display:inline-block;font-size:13px;font-weight:600;color:#26251e;background:#f1f0ea;border:1px solid #e6e5e0;border-radius:9999px;padding:6px 12px;margin:0 6px 8px 0;">#${escapeHtml(
+                k.word
+              )} <span style="color:#888;font-weight:500;">(${k.count})</span></span>`
           )
           .join("")
-      : `<tr><td style="padding:8px 12px;color:#999;">집계된 위험요인이 없습니다.</td></tr>`;
+      : `<span style="font-size:13px;color:#999;">집계된 위험 키워드가 없습니다.</span>`;
+
+  const hazardRows =
+    hazards.length > 0
+      ? hazards
+          .map(
+            (h, i) =>
+              `<tr style="vertical-align:top;">
+                <td style="border-bottom:1px solid #eee;padding:8px 6px;text-align:center;color:#999;font-size:12px;">${i + 1}</td>
+                <td style="border-bottom:1px solid #eee;padding:8px 6px;">
+                  <div style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(h.factor)}</div>
+                  ${h.process ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(h.process)}${h.date ? ` · ${escapeHtml(h.date)}` : ""}</div>` : h.date ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(h.date)}</div>` : ""}
+                </td>
+                <td style="border-bottom:1px solid #eee;padding:8px 6px;text-align:center;">${levelBadge(h.level)}</td>
+                <td style="border-bottom:1px solid #eee;padding:8px 6px;font-size:12px;color:#444;">${escapeHtml(h.measure) || "-"}</td>
+              </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="4" style="padding:14px;color:#999;font-size:13px;text-align:center;">집계된 위험요인이 없습니다.</td></tr>`;
 
   return `
-  <div style="max-width:600px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
+  <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
     <div style="background:#f54e00;padding:20px 24px;border-radius:12px 12px 0 0;">
-      <div style="color:#fff;font-size:13px;opacity:.9;">안전톡톡e 월간 안전 보고서</div>
+      <div style="color:#fff;font-size:13px;opacity:.9;">안전톡톡e · 월간 TBM 회의록 종합분석</div>
       <div style="color:#fff;font-size:22px;font-weight:700;margin-top:4px;">${year}년 ${month}월</div>
       ${companyName ? `<div style="color:#fff;font-size:14px;opacity:.95;margin-top:2px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
-    <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;text-align:center;">
+    <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:24px;background:#fff;">
+
+      <!-- 통계 -->
+      <table style="width:100%;border-collapse:separate;border-spacing:8px;margin:-8px 0 18px;text-align:center;">
         <tr>
-          ${statCell("TBM 일지", `${stats.logCount}건`)}
-          ${statCell("회의록", `${stats.minutesCount}건`)}
-          ${statCell("위험성평가", `${stats.riskCount}건`)}
-        </tr>
-        <tr>
-          ${statCell("실시일수", `${stats.activeDays}일`)}
-          ${statCell("교육시간", `${stats.educationHours}h`)}
-          ${statCell("", "")}
+          <td style="width:33%;background:#fff;border:1px solid #e6e5e0;border-radius:8px;padding:12px 6px;">
+            <div style="font-size:12px;color:#807d72;margin-bottom:4px;">총 회의록</div>
+            <div style="font-size:22px;font-weight:700;color:#26251e;">${stats.total}<span style="font-size:13px;color:#888;margin-left:2px;">건</span></div>
+          </td>
+          <td style="width:33%;background:#fdecef;border:1px solid #f6cdd6;border-radius:8px;padding:12px 6px;">
+            <div style="font-size:12px;color:#cf2d56;margin-bottom:4px;">위험성 (상)</div>
+            <div style="font-size:22px;font-weight:700;color:#cf2d56;">${stats.high}<span style="font-size:13px;margin-left:2px;">건</span></div>
+          </td>
+          <td style="width:33%;background:#fff1e3;border:1px solid #ffd9b3;border-radius:8px;padding:12px 6px;">
+            <div style="font-size:12px;color:#d4691a;margin-bottom:4px;">위험성 (중)</div>
+            <div style="font-size:22px;font-weight:700;color:#d4691a;">${stats.mid}<span style="font-size:13px;margin-left:2px;">건</span></div>
+          </td>
         </tr>
       </table>
 
+      <!-- AI 안전 총평 -->
       ${
         aiSummary
-          ? `<div style="background:#fafaf7;border:1px solid #eee;border-radius:8px;padding:16px;margin-bottom:20px;">
-              <div style="font-size:13px;font-weight:700;color:#f54e00;margin-bottom:8px;">AI 안전현황 총평</div>
+          ? `<div style="background:#fafaf7;border:1px solid #eee;border-radius:10px;padding:16px;margin-bottom:20px;">
+              <div style="font-size:13px;font-weight:700;color:#f54e00;margin-bottom:8px;">✨ AI 안전 총평</div>
               <div style="font-size:14px;line-height:1.7;color:#444;white-space:pre-line;">${escapeHtml(aiSummary)}</div>
             </div>`
           : ""
       }
 
-      <div style="font-size:14px;font-weight:700;margin-bottom:8px;">주요 위험요인 TOP ${topHazards.length || ""}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:8px;">${hazardRows}</table>
+      <!-- 핵심 위험 키워드 -->
+      <div style="font-size:15px;font-weight:700;margin-bottom:10px;"># 핵심 위험 키워드</div>
+      <div style="margin-bottom:6px;">${keywordChips}</div>
+      ${
+        topWords.length > 0
+          ? `<div style="font-size:13px;color:#807d72;line-height:1.6;margin-bottom:22px;"><span style="color:#cf2d56;font-weight:700;">${topWords[0]}</span>${topWords[1] ? ` 및 <span style="color:#cf2d56;font-weight:700;">${topWords[1]}</span>` : ""} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.</div>`
+          : `<div style="margin-bottom:22px;"></div>`
+      }
+
+      <!-- 주요 위험요인 (엑셀표) -->
+      <div style="font-size:15px;font-weight:700;margin-bottom:10px;">주요 위험요인</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e6e5e0;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
+            <th style="padding:8px 6px;text-align:center;width:34px;">No</th>
+            <th style="padding:8px 6px;text-align:left;">유해·위험요인 / 공정</th>
+            <th style="padding:8px 6px;text-align:center;width:54px;">등급</th>
+            <th style="padding:8px 6px;text-align:left;">감소대책</th>
+          </tr>
+        </thead>
+        <tbody>${hazardRows}</tbody>
+      </table>
 
       ${
         viewUrl
@@ -228,16 +263,11 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
           : ""
       }
       <div style="font-size:12px;color:#999;margin-top:24px;text-align:center;line-height:1.6;">
-        본 메일은 안전톡톡e Pro 구독자가 설정한 수신처로 자동 발송되었습니다.<br/>
-        별도의 로그인 없이 위 버튼으로 보고서를 확인하실 수 있습니다.
+        본 보고서는 안전톡톡e가 ${year}년 ${month}월 TBM 회의록을 분석해 자동 생성했습니다.<br/>
+        위험요인은 작성된 회의록에서만 집계됩니다.
       </div>
     </div>
   </div>`;
-}
-
-function statCell(label: string, value: string): string {
-  if (!label) return `<td style="padding:10px;"></td>`;
-  return `<td style="padding:10px;"><div style="font-size:20px;font-weight:700;">${value}</div><div style="font-size:12px;color:#888;margin-top:2px;">${label}</div></td>`;
 }
 
 function escapeHtml(s: string): string {
@@ -285,8 +315,8 @@ export async function generateAndSendReport(
 
   const content = await buildReportContent(admin, sub.user_id, opts.companyName ?? null, year, month);
 
-  // 데이터가 전혀 없으면 발송하지 않음
-  if (content.stats.logCount + content.stats.minutesCount + content.stats.riskCount === 0) {
+  // 회의록이 전혀 없으면 발송하지 않음
+  if (content.stats.total === 0) {
     return { status: "no_data" };
   }
 
@@ -318,7 +348,7 @@ export async function generateAndSendReport(
   }
   const sent = await sendMail({
     to: recipients,
-    subject: `[안전톡톡e] ${content.companyName ? content.companyName + " " : ""}${year}년 ${month}월 안전 보고서`,
+    subject: `[안전톡톡e] ${content.companyName ? content.companyName + " " : ""}${year}년 ${month}월 TBM 회의록 분석 보고서`,
     html,
   });
   if (!sent.ok) {
