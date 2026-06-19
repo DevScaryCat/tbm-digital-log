@@ -136,6 +136,7 @@ export default function DashboardPage() {
 
     const handleRiskAssessment = () => {
         if (!dateRange?.from) return alert("기간을 선택해주세요.")
+        if (minutesInRange === 0) return alert("이 기간에 TBM 회의록이 없어 위험성평가를 만들 수 없습니다.")
         const from = format(dateRange.from, "yyyy-MM-dd")
         const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
         localStorage.setItem("ra_range", JSON.stringify({ from, to }))
@@ -147,6 +148,13 @@ export default function DashboardPage() {
     const rangeCount = dateRange?.from && dateRange?.to ? logs.filter(log => {
         const d = parseISO(log.date).getTime()
         return d >= dateRange!.from!.getTime() && d <= dateRange!.to!.getTime()
+    }).length : 0;
+
+    // 선택 기간에 포함된 TBM 회의록 수 (위험성평가는 회의록만 분석)
+    const minutesInRange = dateRange?.from ? logs.filter(log => {
+        if (log.type !== 'minute') return false
+        const d = parseISO(log.date).getTime()
+        return d >= dateRange!.from!.getTime() && d <= (dateRange.to ?? dateRange.from)!.getTime()
     }).length : 0;
 
     // 그 날짜에 교육일지(log) / 회의록(minute)이 있는지
@@ -289,10 +297,13 @@ export default function DashboardPage() {
                             <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
                                 일괄 다운로드 (PDF)
                             </Button>
-                            <Button onClick={handleRiskAssessment} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px]">
+                            <Button onClick={handleRiskAssessment} disabled={minutesInRange === 0} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
                                 <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 위험성평가
                                 <span className="ml-1.5 bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
                             </Button>
+                            {minutesInRange === 0 && (
+                                <p className="text-[12px] text-cur-muted-soft text-center -mt-1">이 기간에 TBM 회의록이 없어요. (위험성평가는 회의록만 분석)</p>
+                            )}
                         </div>
                     )}
 
