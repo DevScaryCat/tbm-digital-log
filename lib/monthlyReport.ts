@@ -260,12 +260,13 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
 
   return `
   <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
-    <div style="background:#f54e00;padding:20px 24px;border-radius:12px 12px 0 0;">
-      <div style="color:#fff;font-size:13px;opacity:.9;">안전톡톡e · TBM 회의록 종합분석</div>
-      <div style="color:#fff;font-size:22px;font-weight:700;margin-top:4px;">${escapeHtml(periodLabel)}</div>
-      ${companyName ? `<div style="color:#fff;font-size:14px;opacity:.95;margin-top:2px;">${escapeHtml(companyName)}</div>` : ""}
+    <div style="border:1px solid #e6e5e0;border-radius:14px;overflow:hidden;background:#fff;">
+    <div style="padding:22px 24px 18px;border-bottom:1px solid #eee;">
+      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안전톡톡e · TBM 회의록 종합분석</div>
+      <div style="color:#26251e;font-size:24px;font-weight:700;margin-top:8px;letter-spacing:-0.5px;">${escapeHtml(periodLabel)}</div>
+      ${companyName ? `<div style="color:#807d72;font-size:14px;margin-top:3px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
-    <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:24px;background:#fff;">
+    <div style="padding:24px;background:#fff;">
 
       <table style="width:100%;border-collapse:separate;border-spacing:8px;margin:-8px 0 18px;text-align:center;">
         <tr>
@@ -327,6 +328,7 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
         본 보고서는 안전톡톡e가 ${escapeHtml(periodLabel)} TBM 회의록을 분석해 자동 생성했습니다.<br/>
         위험요인은 작성된 회의록에서만 집계됩니다.
       </div>
+    </div>
     </div>
   </div>`;
 }
