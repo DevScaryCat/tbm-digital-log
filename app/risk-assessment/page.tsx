@@ -7,7 +7,6 @@ import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ReportSettingsDialog } from "@/components/ReportSettingsDialog"
 import { DateRange } from "react-day-picker"
 import { Loader2 } from "lucide-react"
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth, startOfWeek, endOfMonth, subMonths } from "date-fns"
@@ -109,8 +108,6 @@ export default function RiskAssessmentPage() {
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
-    // 자동 보고서 설정 모달 (수신처/발송일/미리보기는 ReportSettingsDialog가 자체 관리)
-    const [settingsOpen, setSettingsOpen] = useState(false)
 
     useEffect(() => {
         ;(async () => {
@@ -290,9 +287,6 @@ export default function RiskAssessmentPage() {
                         title="위험성평가"
                         backHref="/dashboard"
                         pageBadge={pro ? undefined : "체험"}
-                        titleAction={pro ? (
-                            <Button variant="ghost" onClick={() => setSettingsOpen(true)} className="h-9 px-3 text-[13px] text-cur-muted hover:text-cur-ink border border-cur-hairline rounded-[8px]">설정</Button>
-                        ) : undefined}
                     />
                 </div>
 
@@ -521,7 +515,6 @@ export default function RiskAssessmentPage() {
                 </div>
             </div>
 
-            <ReportSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} pro={pro} />
         </div>
     )
 }

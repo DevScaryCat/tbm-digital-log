@@ -10,7 +10,7 @@ import { Loader2, Sparkles } from "lucide-react"
 
 /**
  * 자동 보고서 설정 본문 — 수신처/발송일/미리보기.
- * 다이얼로그(ReportSettingsDialog)와 전용 페이지(/report-settings)에서 공용.
+ * 전용 페이지(/report-settings)에서 사용.
  * pro=false면 '예시 화면' 모드: 미리보기는 보이되 저장은 막고 업그레이드를 유도.
  */
 export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
