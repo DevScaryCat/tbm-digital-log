@@ -12,7 +12,6 @@
     "@anthropic-ai/sdk": "^0.72.1",
     "@portone/browser-sdk": "^0.1.8",
     "@portone/server-sdk": "^0.19.0",
-    "@ssabrojs/hwpxjs": "^0.4.0",
     "@supabase/supabase-js": "^2.94.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
