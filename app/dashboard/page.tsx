@@ -145,14 +145,14 @@ export default function DashboardPage() {
         router.push("/risk-assessment")
     }
 
-    const rangeCount = dateRange?.from && dateRange?.to ? logs.filter(log => {
-        const d = parseISO(log.date).getTime()
-        return d >= dateRange!.from!.getTime() && d <= dateRange!.to!.getTime()
-    }).length : 0;
-
-    // 선택 기간에 포함된 TBM 회의록 수 (위험성평가는 회의록만 분석)
+    // 선택 기간에 포함된 회의록/교육일지 수 (위험성평가는 회의록만 분석)
     const minutesInRange = dateRange?.from ? logs.filter(log => {
         if (log.type !== 'minute') return false
+        const d = parseISO(log.date).getTime()
+        return d >= dateRange!.from!.getTime() && d <= (dateRange.to ?? dateRange.from)!.getTime()
+    }).length : 0;
+    const logsInRange = dateRange?.from ? logs.filter(log => {
+        if (log.type === 'minute') return false
         const d = parseISO(log.date).getTime()
         return d >= dateRange!.from!.getTime() && d <= (dateRange.to ?? dateRange.from)!.getTime()
     }).length : 0;
@@ -292,7 +292,7 @@ export default function DashboardPage() {
                                 <div className="font-semibold text-[15px] text-cur-ink">
                                     {format(dateRange.from, "MM.dd")} ~ {dateRange.to ? format(dateRange.to, "MM.dd") : "-"}
                                 </div>
-                                <span className="text-[13px] text-cur-muted">{rangeCount}개 선택됨</span>
+                                <span className="text-[12px] text-cur-muted shrink-0">회의록 {minutesInRange}건 · 교육일지 {logsInRange}건</span>
                             </div>
                             <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
                                 일괄 다운로드 (PDF)
