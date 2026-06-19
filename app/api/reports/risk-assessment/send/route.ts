@@ -1,77 +1,12 @@
 import { NextResponse } from "next/server";
-import { getUserAndSubscription } from "@/lib/portone";
+import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
+import { buildRangeContent, renderReportHtml, RiskItem, ReportContent } from "@/lib/monthlyReport";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-interface RiskItem {
-  hazard: string;
-  cause: string;
-  frequency: number;
-  severity: number;
-  risk: number;
-  level: string;
-  measures: string;
-  recurring?: boolean;
-}
-
-function esc(s: string): string {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
-}
-
-function levelColor(level: string): string {
-  switch (level) {
-    case "매우높음": return "#dc2626";
-    case "높음": return "#ea580c";
-    case "보통": return "#ca8a04";
-    default: return "#16a34a";
-  }
-}
-
-function buildHtml(items: RiskItem[], meta: { company: string; period: string; date: string }): string {
-  const rows = items
-    .map(
-      (it, i) => `
-      <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;color:#888;">${i + 1}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;">
-          ${it.recurring ? `<span style="display:inline-block;font-size:11px;font-weight:700;color:#f54e00;background:#f54e0018;padding:1px 6px;border-radius:4px;margin-right:4px;">반복</span>` : ""}
-          <b>${esc(it.hazard)}</b><br/><span style="font-size:12px;color:#888;">${esc(it.cause)}</span>
-        </td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">${it.frequency}×${it.severity}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;"><b style="color:${levelColor(it.level)};">${it.risk} · ${esc(it.level)}</b></td>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">${esc(it.measures)}</td>
-      </tr>`
-    )
-    .join("");
-  const recurring = items.filter((it) => it.recurring).length;
-  return `
-  <div style="max-width:720px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
-    <div style="background:#f54e00;padding:20px 24px;border-radius:12px 12px 0 0;">
-      <div style="color:#fff;font-size:13px;opacity:.9;">안전톡톡e 위험성평가</div>
-      <div style="color:#fff;font-size:22px;font-weight:700;margin-top:4px;">${esc(meta.period)}</div>
-      ${meta.company ? `<div style="color:#fff;font-size:14px;opacity:.95;margin-top:2px;">${esc(meta.company)}</div>` : ""}
-    </div>
-    <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px;">
-      ${recurring ? `<div style="background:#f54e000d;border:1px solid #f54e0033;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#c2410c;">⟳ 반복 위험요인 ${recurring}건 — 여러 TBM에서 반복 등장, 우선 관리 대상</div>` : ""}
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <thead>
-          <tr style="background:#fafaf7;color:#666;font-size:12px;">
-            <th style="padding:8px 10px;text-align:center;border-bottom:1px solid #eee;">No</th>
-            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #eee;">유해·위험요인</th>
-            <th style="padding:8px 10px;text-align:center;border-bottom:1px solid #eee;">가능성×중대성</th>
-            <th style="padding:8px 10px;text-align:center;border-bottom:1px solid #eee;">위험성</th>
-            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #eee;">감소대책</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p style="font-size:12px;color:#999;margin-top:18px;">첨부된 엑셀(CSV) 파일로 편집·보관하실 수 있습니다. 작성일: ${esc(meta.date)}</p>
-    </div>
-  </div>`;
-}
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function buildCsv(items: RiskItem[], meta: { company: string; period: string; date: string }): string {
   const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
@@ -94,6 +29,8 @@ export async function POST(request: Request) {
   const recipients: string[] = [...new Set(rawRecipients)];
   const period = String(body?.period || "").trim() || "위험성평가";
   const company = String(body?.company || "").trim();
+  const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
+  const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
   const date = new Date().toISOString().slice(0, 10);
 
   if (items.length === 0) return NextResponse.json({ error: "보낼 위험성평가 내용이 없습니다." }, { status: 400 });
@@ -101,13 +38,20 @@ export async function POST(request: Request) {
   const invalid = recipients.find((e) => !EMAIL_RE.test(e));
   if (invalid) return NextResponse.json({ error: `이메일 형식 오류: ${invalid}` }, { status: 400 });
 
-  const meta = { company, period, date };
-  const html = buildHtml(items, meta);
-  const csv = buildCsv(items, meta);
+  const admin = getAdminClient();
+
+  // 통합 템플릿: 그 기간 TBM 회의록 종합분석 + 위험성평가 엑셀표
+  const content: ReportContent = from
+    ? await buildRangeContent(admin, user.id, company || null, from, to)
+    : { companyName: company || null, periodLabel: period, stats: { total: 0, high: 0, mid: 0 }, keywords: [], hazards: [], aiSummary: "" };
+  content.riskItems = items;
+
+  const html = renderReportHtml(content);
+  const csv = buildCsv(items, { company, period, date });
 
   const sent = await sendMail({
     to: recipients,
-    subject: `[안전톡톡e] ${company ? company + " " : ""}위험성평가 (${period})`,
+    subject: `[안전톡톡e] ${company ? company + " " : ""}TBM 회의록 분석 · 위험성평가 (${content.periodLabel})`,
     html,
     attachments: [{ filename: `위험성평가_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" }],
   });

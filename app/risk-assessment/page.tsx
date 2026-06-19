@@ -261,7 +261,14 @@ export default function RiskAssessmentPage() {
             const res = await fetch("/api/reports/risk-assessment/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
-                body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: companyName, recipients }),
+                body: JSON.stringify({
+                    items,
+                    period: `${periodLabel} 종합`,
+                    company: companyName,
+                    recipients,
+                    from: range?.from ? format(range.from, "yyyy-MM-dd") : undefined,
+                    to: range?.from ? format(range.to ?? range.from, "yyyy-MM-dd") : undefined,
+                }),
             })
             const j = await res.json()
             if (!res.ok) { setSendMsg({ type: "err", text: j.error || "발송 실패" }); return }

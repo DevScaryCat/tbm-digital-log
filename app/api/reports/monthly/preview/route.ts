@@ -15,8 +15,7 @@ export async function GET(request: Request) {
 
   const sample: ReportContent = {
     companyName: company,
-    year: now.getUTCFullYear(),
-    month: now.getUTCMonth() + 1,
+    periodLabel: `${now.getUTCFullYear()}년 ${now.getUTCMonth() + 1}월`,
     stats: { total: 16, high: 5, mid: 9 },
     keywords: [
       { word: "고소작업 중 추락", count: 7 },
