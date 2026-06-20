@@ -135,6 +135,23 @@ export async function buildRangeContent(
   return buildMinutesContent(admin, userId, companyName, fromDate, toDate, label);
 }
 
+/** 모델이 마크다운/머리말을 흘려도 메일·PDF에 날것 기호가 안 보이도록 줄글로 정리한다. */
+function sanitizeSummary(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1") // **굵게**
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1") // *기울임*
+    .replace(/`+/g, "")
+    .replace(/^\s*#{1,6}\s*/gm, "") // # 머리말
+    .replace(/^\s*[-*•]\s+/gm, "") // 글머리 기호
+    .replace(/^\s*[①-⑳]\s*/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "") // 1. 2)
+    .replace(/^\s*[-=_]{3,}\s*$/gm, "") // --- 구분선
+    .replace(/^\s*(안전\s*총평|기간)\s*[:：].*$/gim, "") // 라벨성 머리말
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 async function generateAISummary(
   companyName: string | null,
   periodLabel: string,
@@ -153,13 +170,26 @@ async function generateAISummary(
 
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 500,
-      temperature: 0.3,
-      system:
-        "당신은 건설·물류 현장의 안전보건 관리자입니다. 아래 기간의 TBM 회의록 위험요인 집계만 보고, 사업주가 한눈에 파악할 '안전 총평'을 작성하세요. 3~4문장으로 ① 회의록 활동 요약 ② 반복·고위험 위험요인 경향 ③ 권고 순으로 간결하게. 수치를 지어내지 말고 주어진 집계만 사용하세요.",
+      max_tokens: 400,
+      temperature: 0.4,
+      system: [
+        "당신은 건설·물류 현장의 베테랑 안전보건 관리자입니다.",
+        "아래 TBM 회의록 위험요인 집계만 보고, 사업주에게 보고하듯 '안전 총평'을 씁니다.",
+        "",
+        "[형식]",
+        "- 마크다운 절대 금지: #, *, **, -, ---, 번호목록(①, 1.) 어떤 기호도 쓰지 마세요. 순수한 줄글 문장만.",
+        "- 제목·머리말 없이 본문 문장으로 바로 시작합니다. ('안전 총평', '기간:' 같은 라벨 금지)",
+        "- 2~3문장, 200자 내외. 짧고 단정하게.",
+        "",
+        "[내용·어조]",
+        "- 가장 우선 관리할 위험을 구체적인 위험요인 이름으로 짚고, 실무적인 권고 한 가지를 덧붙입니다.",
+        "- 'AI가 분석한', '~로 보입니다', '~필요가 있어 보입니다' 같은 군더더기·기계적 표현을 피하고 현장 관리자가 말하듯 단정적으로.",
+        "- 주어진 집계 수치만 사용하고, 없는 수치·사실을 지어내지 마세요.",
+      ].join("\n"),
       messages: [{ role: "user", content: facts }],
     });
-    return msg.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+    const raw = msg.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+    return sanitizeSummary(raw);
   } catch (e) {
     console.error("AI summary error:", e);
     return "";
@@ -350,6 +380,51 @@ export interface GenerateResult {
   detail?: string;
 }
 
+type MailAttachment = { filename: string; content: string | Buffer; contentType?: string };
+
+/** 위험성평가표 → 엑셀(CSV) 문자열. BOM 포함(한글 깨짐 방지). */
+export function buildRiskCsv(
+  items: RiskItem[],
+  meta: { company: string; period: string; date: string }
+): string {
+  const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
+  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, it.level, it.measures]);
+  const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
+  return "﻿" + top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+}
+
+/**
+ * 보고서 메일 첨부 일괄 생성: 결재서류 PDF + (위험성평가표가 있으면) 엑셀 CSV.
+ * react-pdf는 무겁고 Node 전용이라 동적 import로 필요할 때만 로드한다.
+ */
+export async function buildReportAttachments(
+  content: ReportContent,
+  docTitle: string,
+  date: string
+): Promise<MailAttachment[]> {
+  const attachments: MailAttachment[] = [];
+
+  // 결재서류 PDF: 실패해도 메일(본문+CSV)은 나가도록 비치명적 처리.
+  try {
+    const { renderApprovalPdf } = await import("@/lib/approvalPdf");
+    const pdf = await renderApprovalPdf(content, docTitle);
+    attachments.push({ filename: `결재서류_${date}.pdf`, content: pdf, contentType: "application/pdf" });
+  } catch (e) {
+    console.error("결재서류 PDF 생성 실패:", e);
+  }
+
+  if (content.riskItems && content.riskItems.length > 0) {
+    const csv = buildRiskCsv(content.riskItems, {
+      company: content.companyName || "",
+      period: content.periodLabel,
+      date,
+    });
+    attachments.push({ filename: `위험성평가_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" });
+  }
+
+  return attachments;
+}
+
 export async function generateAndSendReport(
   admin: SupabaseClient,
   sub: ReportSubscription,
@@ -397,10 +472,14 @@ export async function generateAndSendReport(
   const html = renderReportHtml(content, viewUrl);
 
   if (!mailerConfigured()) return { status: "mail_failed", token, detail: "메일 미설정" };
+  const today = new Date().toISOString().slice(0, 10);
+  const docTitle = `${content.companyName ? content.companyName + " " : ""}${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
+  const attachments = await buildReportAttachments(content, docTitle, today);
   const sent = await sendMail({
     to: recipients,
     subject: `[안전톡톡e] ${content.companyName ? content.companyName + " " : ""}${year}년 ${month}월 TBM 회의록 분석 보고서`,
     html,
+    attachments,
   });
   if (!sent.ok) return { status: "mail_failed", token, detail: sent.error };
 

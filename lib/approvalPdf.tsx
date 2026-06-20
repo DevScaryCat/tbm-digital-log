@@ -1,17 +1,19 @@
 // lib/approvalPdf.tsx — 결재서류 PDF 생성 (react-pdf, 한글 폰트 임베드)
 import React from "react";
+import path from "node:path";
 import { Document, Page, View, Text, Svg, Rect, Font, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import type { ReportContent } from "@/lib/monthlyReport";
 
-const FONT = "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumgothic";
+// 폰트는 레포에 번들(lib/fonts)해 외부 CDN 의존 없이 Vercel에서도 안정적으로 임베드.
+const FONT_DIR = path.join(process.cwd(), "lib", "fonts");
 let fontReady = false;
 function ensureFont() {
   if (fontReady) return;
   Font.register({
     family: "Nanum",
     fonts: [
-      { src: `${FONT}/NanumGothic-Regular.ttf` },
-      { src: `${FONT}/NanumGothic-Bold.ttf`, fontWeight: "bold" },
+      { src: path.join(FONT_DIR, "NanumGothic-Regular.ttf") },
+      { src: path.join(FONT_DIR, "NanumGothic-Bold.ttf"), fontWeight: "bold" },
     ],
   });
   Font.registerHyphenationCallback((w) => [w]); // 한글 줄바꿈 깨짐 방지

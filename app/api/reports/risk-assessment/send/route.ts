@@ -1,19 +1,13 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
-import { buildRangeContent, renderReportHtml, RiskItem, ReportContent } from "@/lib/monthlyReport";
+import { buildRangeContent, renderReportHtml, buildReportAttachments, RiskItem, ReportContent } from "@/lib/monthlyReport";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function buildCsv(items: RiskItem[], meta: { company: string; period: string; date: string }): string {
-  const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
-  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, it.level, it.measures]);
-  const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
-  return "﻿" + top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
-}
 
 export async function POST(request: Request) {
   const { user, isPro } = await getUserAndSubscription(request);
@@ -47,13 +41,14 @@ export async function POST(request: Request) {
   content.riskItems = items;
 
   const html = renderReportHtml(content);
-  const csv = buildCsv(items, { company, period, date });
+  const docTitle = `${company ? company + " " : ""}TBM 회의록 종합분석 · 위험성평가 결재 보고서`;
+  const attachments = await buildReportAttachments(content, docTitle, date);
 
   const sent = await sendMail({
     to: recipients,
     subject: `[안전톡톡e] ${company ? company + " " : ""}TBM 회의록 분석 · 위험성평가 (${content.periodLabel})`,
     html,
-    attachments: [{ filename: `위험성평가_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" }],
+    attachments,
   });
   if (!sent.ok) return NextResponse.json({ error: "메일 발송 실패: " + (sent.error ?? "") }, { status: 502 });
 
