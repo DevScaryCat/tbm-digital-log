@@ -33,11 +33,12 @@ const s = StyleSheet.create({
   company: { fontSize: 10, color: C.muted, marginTop: 7, lineHeight: 1.3 },
   // 결재란
   appBox: { flexDirection: "row", borderWidth: 0.8, borderColor: C.ink },
-  appLabel: { width: 16, alignItems: "center", justifyContent: "center", borderRightWidth: 0.8, borderColor: C.ink, paddingVertical: 4 },
-  appLabelTxt: { fontSize: 8, color: C.ink, fontWeight: "bold" },
-  appCol: { width: 52, borderRightWidth: 0.8, borderColor: C.ink },
-  appColLast: { width: 52 },
-  appHead: { fontSize: 7.5, color: C.ink, textAlign: "center", paddingVertical: 2.5, borderBottomWidth: 0.8, borderColor: C.ink, backgroundColor: "#f4f3ee" },
+  appLabel: { width: 17, alignItems: "center", justifyContent: "center", borderRightWidth: 0.8, borderColor: C.ink },
+  appLabelTxt: { fontSize: 8, color: C.ink, fontWeight: "bold", lineHeight: 1.15 },
+  appCol: { width: 54, borderRightWidth: 0.8, borderColor: C.ink },
+  appColLast: { width: 54 },
+  appHead: { alignItems: "center", justifyContent: "center", paddingVertical: 4, borderBottomWidth: 0.8, borderColor: C.ink, backgroundColor: "#f4f3ee" },
+  appHeadTxt: { fontSize: 7.5, color: C.ink, lineHeight: 1 },
   appStamp: { height: 38 },
   sectionTitle: { fontSize: 11.5, color: C.ink, fontWeight: "bold", marginTop: 14, marginBottom: 6 },
   // 통계
@@ -50,7 +51,8 @@ const s = StyleSheet.create({
   aiHead: { fontSize: 9, fontWeight: "bold", color: C.primary, marginBottom: 4 },
   // 키워드
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  chip: { backgroundColor: C.chipBg, borderWidth: 0.5, borderColor: C.line, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 2, fontSize: 8.5, color: C.ink },
+  chip: { backgroundColor: C.chipBg, borderWidth: 0.5, borderColor: C.line, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 3, alignItems: "center", justifyContent: "center" },
+  chipTxt: { fontSize: 8.5, color: C.ink, lineHeight: 1 },
   // 표
   table: { borderWidth: 0.8, borderColor: C.line, borderRadius: 4 },
   th: { flexDirection: "row", backgroundColor: "#f4f3ee", borderBottomWidth: 0.8, borderColor: C.line },
@@ -79,7 +81,7 @@ function ApprovalGrid() {
       <View style={s.appLabel}><Text style={s.appLabelTxt}>결</Text><Text style={s.appLabelTxt}>재</Text></View>
       {cols.map((c, i) => (
         <View key={c} style={i === cols.length - 1 ? s.appColLast : s.appCol}>
-          <Text style={s.appHead}>{c}</Text>
+          <View style={s.appHead}><Text style={s.appHeadTxt}>{c}</Text></View>
           <View style={s.appStamp} />
         </View>
       ))}
@@ -160,7 +162,7 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
           <View wrap={false}>
             <Text style={s.sectionTitle}># 핵심 위험 키워드</Text>
             <View style={s.chips}>
-              {keywords.map((k) => <Text key={k.word} style={s.chip}>#{k.word} ({k.count})</Text>)}
+              {keywords.map((k) => <View key={k.word} style={s.chip}><Text style={s.chipTxt}>#{k.word} ({k.count})</Text></View>)}
             </View>
             {topWords.length > 0 ? (
               <Text style={{ fontSize: 8.5, color: C.muted, marginTop: 5 }}>
