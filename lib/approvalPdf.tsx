@@ -26,10 +26,11 @@ const C = {
 
 const s = StyleSheet.create({
   page: { paddingTop: 34, paddingBottom: 40, paddingHorizontal: 34, fontFamily: "Nanum", fontSize: 9.5, color: C.body, lineHeight: 1.5 },
-  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
+  header: { position: "relative", minHeight: 74, marginBottom: 14 },
+  appAbs: { position: "absolute", top: 0, right: 0 },
   brand: { fontSize: 8.5, color: C.primary, fontWeight: "bold" },
-  title: { fontSize: 19, color: C.ink, fontWeight: "bold", marginTop: 5 },
-  company: { fontSize: 10, color: C.muted, marginTop: 2 },
+  title: { fontSize: 17, color: C.ink, fontWeight: "bold", marginTop: 7, marginRight: 178, lineHeight: 1.25 },
+  company: { fontSize: 10, color: C.muted, marginTop: 7, lineHeight: 1.3 },
   // 결재란
   appBox: { flexDirection: "row", borderWidth: 0.8, borderColor: C.ink },
   appLabel: { width: 16, alignItems: "center", justifyContent: "center", borderRightWidth: 0.8, borderColor: C.ink, paddingVertical: 4 },
@@ -57,7 +58,7 @@ const s = StyleSheet.create({
   cell: { paddingVertical: 4, paddingHorizontal: 5, fontSize: 8.5 },
   thTxt: { fontSize: 8, color: C.muted, fontWeight: "bold" },
   badge: { fontSize: 8, fontWeight: "bold", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, alignSelf: "center" },
-  foot: { fontSize: 7.5, color: C.muted, textAlign: "center", marginTop: 18, lineHeight: 1.5 },
+  foot: { fontSize: 7.5, color: C.muted, textAlign: "center", marginTop: 16, paddingTop: 8, borderTopWidth: 0.5, borderColor: C.line, lineHeight: 1.5 },
 });
 
 function gradeColor(level: string) {
@@ -126,13 +127,11 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
   return (
     <Document title={docTitle} author="안전톡톡e">
       <Page size="A4" style={s.page} wrap>
-        <View style={s.topRow}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={s.brand}>안전톡톡e · TBM 회의록 종합분석</Text>
-            <Text style={s.title}>{docTitle}</Text>
-            <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
-          </View>
-          <ApprovalGrid />
+        <View style={s.header}>
+          <View style={s.appAbs}><ApprovalGrid /></View>
+          <Text style={s.brand}>안전톡톡e · TBM 회의록 종합분석</Text>
+          <Text style={s.title}>{docTitle}</Text>
+          <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
         </View>
 
         {/* 통계 */}
@@ -143,20 +142,22 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
         </View>
 
         {/* 등급 분포 그래프 */}
-        <Text style={s.sectionTitle}>위험등급 분포</Text>
-        <GradeChart high={stats.high} mid={stats.mid} low={lowCount} />
+        <View wrap={false}>
+          <Text style={s.sectionTitle}>위험등급 분포</Text>
+          <GradeChart high={stats.high} mid={stats.mid} low={lowCount} />
+        </View>
 
         {/* AI 총평 */}
         {content.aiSummary ? (
-          <>
+          <View wrap={false}>
             <Text style={s.sectionTitle}>AI 안전 총평</Text>
             <View style={s.aiBox}><Text>{content.aiSummary}</Text></View>
-          </>
+          </View>
         ) : null}
 
         {/* 핵심 위험 키워드 */}
         {keywords.length > 0 ? (
-          <>
+          <View wrap={false}>
             <Text style={s.sectionTitle}># 핵심 위험 키워드</Text>
             <View style={s.chips}>
               {keywords.map((k) => <Text key={k.word} style={s.chip}>#{k.word} ({k.count})</Text>)}
@@ -166,11 +167,11 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
                 {topWords.join(" 및 ")} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.
               </Text>
             ) : null}
-          </>
+          </View>
         ) : null}
 
         {/* 주요 위험요인 */}
-        <Text style={s.sectionTitle}>주요 위험요인</Text>
+        <Text style={s.sectionTitle} minPresenceAhead={72}>주요 위험요인</Text>
         <View style={s.table}>
           <View style={s.th}>
             <Text style={[s.cell, s.thTxt, { width: 24, textAlign: "center" }]}>No</Text>
@@ -196,7 +197,7 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
         {/* 위험성평가표 */}
         {riskItems.length > 0 ? (
           <>
-            <Text style={s.sectionTitle}>위험성평가표</Text>
+            <Text style={s.sectionTitle} minPresenceAhead={72}>위험성평가표</Text>
             <View style={s.table}>
               <View style={s.th}>
                 <Text style={[s.cell, s.thTxt, { width: 24, textAlign: "center" }]}>No</Text>
@@ -221,7 +222,7 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
           </>
         ) : null}
 
-        <Text style={s.foot} fixed>
+        <Text style={s.foot}>
           본 결재서류는 안전톡톡e가 {content.periodLabel} TBM 회의록을 분석해 자동 생성했습니다. · 위험요인은 작성된 회의록에서만 집계됩니다.
         </Text>
       </Page>
