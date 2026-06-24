@@ -371,8 +371,8 @@ export default function PricingPage() {
 
                 <div className="mt-8 text-center text-[13px] text-cur-muted-soft bg-cur-card p-6 rounded-xl border border-cur-hairline">
                     <p className="mb-2 font-medium">환불 규정 안내</p>
-                    <p>결제일로부터 7일 이내, 서비스 이용 이력(AI 생성 등)이 없는 경우에 한해 100% 환불 가능합니다.</p>
-                    <p>디지털 서비스 특성상 1회라도 이용하신 경우 해당 월 결제건에 대한 환불은 제한됩니다.</p>
+                    <p>구독 중도 해지 시, 이미 결제한 이용요금 중 이용하지 않은 잔여 기간을 일할 계산하여 환불해 드립니다.</p>
+                    <p>결제일로부터 7일 이내이며 서비스 이용 이력이 전혀 없는 경우에는 전액 환불이 가능합니다.</p>
                 </div>
             </div>
         </div>
