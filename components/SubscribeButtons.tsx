@@ -160,6 +160,13 @@ export function SubscribeButtons({
             {METHODS.length === 0 && (
                 <p className="text-[13px] text-cur-error text-center">결제수단이 설정되지 않았습니다. (환경변수 확인)</p>
             )}
+            <div className="mt-1 rounded-lg bg-cur-elevated/60 border border-cur-hairline p-3 text-[12px] leading-relaxed text-cur-muted">
+                <p className="font-medium text-cur-ink mb-1">정기결제(자동결제) 안내</p>
+                <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
+                <p>· 이용요금: {plan === "monthly_pro" ? "Pro 월 4,900원(VAT 포함)" : "월 1,900원(VAT 포함)"}.</p>
+                <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
+                <p>· 해지는 언제든 가능하며, 해지 시 다음 결제일부터 청구되지 않습니다.</p>
+            </div>
         </div>
     )
 }
