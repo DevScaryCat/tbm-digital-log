@@ -160,6 +160,20 @@ export async function chargeWithBillingKey(params: {
   );
 }
 
+/** 결제 취소/환불 (amount 미지정 시 전액, 지정 시 부분 환불) */
+export async function cancelPayment(params: {
+  paymentId: string;
+  amount?: number;
+  reason: string;
+}) {
+  const body: Record<string, any> = { reason: params.reason };
+  if (params.amount && params.amount > 0) body.amount = params.amount;
+  return portoneFetch(`/payments/${encodeURIComponent(params.paymentId)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** 빌링키 응답에서 표시용 카드정보 추출 (마스킹) */
 export function extractCardInfo(billingKeyBody: any) {
   try {

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, cancelPayment } from "@/lib/portone";
 
-// 구독 해지: 다음 결제일까지는 이용 가능, 이후 자동결제 중단
+export const runtime = "nodejs";
+
+const DAY = 24 * 60 * 60 * 1000;
+
+// 구독 해지
+// - 무료체험 중(결제 이력 없음): 다음 결제일까지 이용 가능, 자동결제만 중단
+// - 유료 기간 중: 이용하지 않은 잔여 기간을 일할 계산해 환불하고 즉시 종료
 export async function POST(request: Request) {
   try {
     const user = await getUserFromRequest(request);
@@ -12,7 +18,7 @@ export async function POST(request: Request) {
     const admin = getAdminClient();
     const { data: sub, error } = await admin
       .from("subscriptions")
-      .select("id, status, plan")
+      .select("id, status, plan, amount, current_period_end")
       .eq("user_id", user.id)
       .single();
 
@@ -26,19 +32,86 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, alreadyCanceled: true });
     }
 
+    const now = new Date();
+    const end = sub.current_period_end ? new Date(sub.current_period_end) : null;
+
+    // --- 이용 기간에 따른 환불 계산 ---
+    // 현재 유료 기간이 아직 남아있고 결제된 내역이 있으면, 잔여 기간만큼 일할 환불
+    let refundAmount = 0;
+    let paymentToRefund: string | null = null;
+    let paidAmount = 0;
+    if (end && end.getTime() > now.getTime()) {
+      const { data: lastPay } = await admin
+        .from("payments")
+        .select("payment_id, amount, paid_at")
+        .eq("user_id", user.id)
+        .eq("status", "paid")
+        .order("paid_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastPay?.payment_id && (lastPay.amount ?? 0) > 0) {
+        // 이번 결제 주기: 시작 = 마지막 결제일(없으면 종료-30일), 끝 = current_period_end
+        const start = lastPay.paid_at ? new Date(lastPay.paid_at) : new Date(end.getTime() - 30 * DAY);
+        const total = end.getTime() - start.getTime();
+        const remaining = end.getTime() - now.getTime();
+        if (total > 0 && remaining > 0) {
+          paidAmount = lastPay.amount;
+          refundAmount = Math.floor((paidAmount * remaining) / total);
+          refundAmount = Math.max(0, Math.min(refundAmount, paidAmount));
+          paymentToRefund = lastPay.payment_id;
+        }
+      }
+    }
+
+    // --- 환불 실행 (PortOne) ---
+    let refunded = 0;
+    let refundFailed = false;
+    if (paymentToRefund && refundAmount > 0) {
+      const res = await cancelPayment({
+        paymentId: paymentToRefund,
+        amount: refundAmount,
+        reason: "구독 중도 해지 - 잔여 기간 일할 환불",
+      });
+      if (res.ok) {
+        refunded = refundAmount;
+        await admin
+          .from("payments")
+          .update({ status: refunded >= paidAmount ? "canceled" : "partial_canceled" })
+          .eq("payment_id", paymentToRefund);
+      } else {
+        refundFailed = true;
+        console.error("환불 실패:", res.body);
+      }
+    }
+
+    // --- 구독 상태 갱신 ---
+    const update: Record<string, any> = {
+      status: "canceled",
+      canceled_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    // 환불에 성공했으면(잔여 기간 정산 완료) 즉시 종료, 무환불/실패면 기간 만료까지 이용
+    if (refunded > 0) update.current_period_end = now.toISOString();
+
     const { error: updErr } = await admin
       .from("subscriptions")
-      .update({
-        status: "canceled",
-        canceled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(update)
       .eq("id", sub.id);
 
     if (updErr) {
       return NextResponse.json({ error: "해지 처리 실패" }, { status: 500 });
     }
-    return NextResponse.json({ success: true });
+
+    return NextResponse.json({
+      success: true,
+      refunded,
+      ...(refundFailed
+        ? {
+            refundNotice:
+              "해지는 완료되었으나 자동 환불에 실패했습니다. 고객센터로 문의해주시면 잔여 기간을 환불해 드립니다.",
+          }
+        : {}),
+    });
   } catch (e) {
     console.error("cancel route error:", e);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });

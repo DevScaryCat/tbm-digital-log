@@ -140,7 +140,12 @@ export default function AccountPage() {
     }
 
     const handleCancel = async () => {
-        if (!confirm("정말 구독을 해지하시겠어요? 남은 기간까지는 계속 이용할 수 있습니다.")) return
+        if (
+            !confirm(
+                "정말 구독을 해지하시겠어요?\n무료체험 중이면 남은 기간까지 이용할 수 있고, 유료 이용 중이면 사용하지 않은 잔여 기간을 일할 계산해 환불해 드립니다."
+            )
+        )
+            return
         setBusy(true)
         setMsg(null)
         try {
@@ -154,7 +159,12 @@ export default function AccountPage() {
                 setMsg({ type: "err", text: json.error || "해지 실패" })
                 return
             }
-            setMsg({ type: "ok", text: "구독이 해지되었습니다. 남은 기간까지 이용 가능합니다." })
+            const text = json.refundNotice
+                ? json.refundNotice
+                : json.refunded > 0
+                ? `구독이 해지되었습니다. 잔여 기간분 ${Number(json.refunded).toLocaleString()}원이 환불 처리되었습니다.`
+                : "구독이 해지되었습니다. 남은 기간까지 이용 가능합니다."
+            setMsg({ type: "ok", text })
             await load()
         } finally {
             setBusy(false)
