@@ -25,13 +25,13 @@ const PLAN_LABEL: Record<PlanId, string> = {
 
 // 기능 비교표 (text가 있으면 텍스트, 없으면 ✓/— 표시)
 const FEATURES: { label: string; basic?: boolean; pro?: boolean; basicText?: string; proText?: string }[] = [
-    { label: "TBM 일지 작성", basicText: "월 80회", proText: "월 200회" },
     { label: "TBM 회의록 작성", basicText: "월 10회", proText: "월 30회" },
+    { label: "안전교육일지 작성", basicText: "월 80회", proText: "월 200회" },
+    { label: "위험성평가 생성", basic: false, proText: "월 20회" },
     { label: "AI 일지·회의록 자동 생성 (녹음·음성)", basic: true, pro: true },
     { label: "무제한 프로젝트 및 인원 등록", basic: true, pro: true },
     { label: "클라우드 보안 저장 (1년 보관)", basic: true, pro: true },
     { label: "참석자 전자 서명", basic: true, pro: true },
-    { label: "위험성평가 자동 생성", basic: false, pro: true },
     { label: "월간 안전 보고서 자동 발송", basic: false, pro: true },
     { label: "사장·안전관리자 메일 자동 전달 (가입 불필요)", basic: false, pro: true },
 ]
@@ -340,9 +340,9 @@ export default function PricingPage() {
                             {FEATURES.map((f, idx) => (
                                 <tr key={idx} className="border-b border-cur-hairline last:border-0">
                                     <td className="px-4 py-3 text-cur-ink leading-snug">{f.label}</td>
-                                    <td className="text-center py-3">
+                                    <td className={cn("text-center py-3", selected === "monthly_basic" && "bg-cur-primary/[0.04]")}>
                                         {f.basicText ? (
-                                            <span className="text-[13px] font-semibold text-cur-ink">{f.basicText}</span>
+                                            <span className="text-[13px] font-semibold text-cur-primary">{f.basicText}</span>
                                         ) : f.basic ? (
                                             <CheckCircle2 className="w-5 h-5 text-cur-primary inline-block" />
                                         ) : (

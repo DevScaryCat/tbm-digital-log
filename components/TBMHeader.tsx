@@ -27,10 +27,10 @@ interface TBMHeaderProps {
 // 플랜별 월 한도
 const LIMITS: Record<string, { log: number; minutes: number; ra: number }> = {
     monthly_basic: { log: 80, minutes: 10, ra: 0 },
-    monthly_pro: { log: 200, minutes: 30, ra: 50 },
+    monthly_pro: { log: 200, minutes: 30, ra: 20 },
 }
 function limitFor(plan: string | null, kind: "log" | "minutes" | "ra"): number {
-    if (plan === "grandfather") return Infinity
+    // grandfather(영구 무료)도 사용량 한도는 베이직과 동일 (DB 트리거 enforce_tbm_monthly_limit와 일치)
     return (LIMITS[plan ?? "monthly_basic"] ?? LIMITS.monthly_basic)[kind]
 }
 function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
@@ -53,17 +53,17 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
         )
     }
     const remaining = Math.max(0, limit - used)
-    // 잔량 기준 바 (가득 찬 상태에서 쓸수록 깎임)
-    const pct = Math.min(100, Math.max(0, Math.round((remaining / limit) * 100)))
+    // 사용량 기준 바 (0에서 채워지는 방향)
+    const pct = Math.min(100, Math.max(0, Math.round((used / limit) * 100)))
     const full = remaining <= 0
     const low = !full && remaining <= Math.max(1, Math.ceil(limit * 0.2))
-    const color = full ? "bg-red-500" : low ? "bg-amber-400" : "bg-cur-muted"
+    const color = full ? "bg-red-500" : low ? "bg-amber-400" : "bg-cur-primary"
     return (
         <div className="space-y-1">
             <div className="flex justify-between text-[12px]">
                 <span className="text-cur-muted">{label}</span>
                 <span className={`font-medium ${full ? "text-red-600" : low ? "text-amber-600" : "text-cur-ink"}`}>
-                    {remaining} / {limit} 남음
+                    {used} / {limit}회 사용
                 </span>
             </div>
             <div className="w-full h-1.5 bg-cur-elevated rounded-full overflow-hidden">
@@ -172,8 +172,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                                 <span className="text-[11px] text-cur-muted-soft font-semibold">이번 달 사용량</span>
                                 <span className="text-[11px] text-cur-muted-soft">{format(startOfMonth(addMonths(new Date(), 1)), "M월 d일")} 초기화</span>
                             </div>
-                            <UsageBar label="TBM 일지" used={usage.log} limit={limitFor(plan, "log")} />
                             <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
+                            <UsageBar label="안전교육일지" used={usage.log} limit={limitFor(plan, "log")} />
                             <UsageBar label="위험성평가" used={usage.ra} limit={limitFor(plan, "ra")} />
                         </div>
                     </>

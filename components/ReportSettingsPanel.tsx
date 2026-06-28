@@ -101,41 +101,46 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
             )}
 
-            {/* 발송일 */}
-            <div className="space-y-1.5">
-                <Label className="text-[13px]">매달 발송일</Label>
-                <select
-                    value={sendDay}
-                    onChange={(e) => changeSendDay(Number(e.target.value))}
-                    disabled={saving}
-                    className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
-                >
-                    {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>매달 {d}일</option>
-                    ))}
-                </select>
-            </div>
+            {/* 발송일 + 수신처 — Pro 전용 */}
+            {pro && (
+                <>
+                    {/* 발송일 */}
+                    <div className="space-y-1.5">
+                        <Label className="text-[13px]">매달 발송일</Label>
+                        <select
+                            value={sendDay}
+                            onChange={(e) => changeSendDay(Number(e.target.value))}
+                            disabled={saving}
+                            className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
+                        >
+                            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                                <option key={d} value={d}>매달 {d}일</option>
+                            ))}
+                        </select>
+                    </div>
 
-            {/* 수신처 */}
-            <div className="space-y-2">
-                <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
-                {recipients.length === 0 ? (
-                    <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
-                ) : (
-                    recipients.map((email) => (
-                        <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
-                            <span className="text-[14px] text-cur-ink truncate">{email}</span>
-                            <button onClick={() => removeRecipient(email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2">삭제</button>
+                    {/* 수신처 */}
+                    <div className="space-y-2">
+                        <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
+                        {recipients.length === 0 ? (
+                            <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
+                        ) : (
+                            recipients.map((email) => (
+                                <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
+                                    <span className="text-[14px] text-cur-ink truncate">{email}</span>
+                                    <button onClick={() => removeRecipient(email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2">삭제</button>
+                                </div>
+                            ))
+                        )}
+                        <div className="flex gap-2">
+                            <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="사장님/안전관리자 이메일" className="h-11" />
+                            <Button onClick={addRecipient} disabled={saving || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
+                            </Button>
                         </div>
-                    ))
-                )}
-                <div className="flex gap-2">
-                    <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="사장님/안전관리자 이메일" className="h-11" />
-                    <Button onClick={addRecipient} disabled={saving || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
-                    </Button>
-                </div>
-            </div>
+                    </div>
+                </>
+            )}
 
             {/* 미리보기 */}
             <div className="space-y-2">

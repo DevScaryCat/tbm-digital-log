@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { getUserAndSubscription } from "@/lib/portone";
+import { getUserAndSubscription, getAdminClient } from "@/lib/portone";
+import { startOfMonth } from "date-fns";
 
 export const runtime = "nodejs";
 
@@ -9,17 +10,32 @@ const anthropic = new Anthropic({
 });
 
 const MAX_TEXT_LEN = 12000;
+const RA_MONTHLY_LIMIT = 20;
 
 export async function POST(request: Request) {
   try {
-    // 인증 + Pro 구독 확인 (위험성평가 자동생성은 Pro 전용)
+    // 인증 + Pro 구독 확인 (위험성평가 생성은 Pro 전용)
     const { user, allowed, isPro } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
     if (!isPro)
       return NextResponse.json(
-        { error: "위험성평가 자동 생성은 Pro 플랜에서 이용할 수 있습니다." },
+        { error: "위험성평가 생성은 Pro 플랜에서 이용할 수 있습니다." },
         { status: 403 }
+      );
+
+    // 이번 달 위험성평가 생성 횟수 확인 (월 20회 한도)
+    const admin = getAdminClient();
+    const startISO = startOfMonth(new Date()).toISOString();
+    const { count } = await admin
+      .from("tbm_risk_assessments")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", startISO);
+    if ((count ?? 0) >= RA_MONTHLY_LIMIT)
+      return NextResponse.json(
+        { error: `이번 달 위험성평가 생성 한도(월 ${RA_MONTHLY_LIMIT}회)를 초과했습니다.` },
+        { status: 429 }
       );
 
     const { workName, workContent } = await request.json();
