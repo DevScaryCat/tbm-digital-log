@@ -3,6 +3,7 @@ import React from "react";
 import path from "node:path";
 import { Document, Page, View, Text, Svg, Rect, Font, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import type { ReportContent } from "@/lib/monthlyReport";
+import type { EducationReportContent } from "@/lib/educationReport";
 
 // 폰트는 레포에 번들(lib/fonts)해 외부 CDN 의존 없이 Vercel에서도 안정적으로 임베드.
 const FONT_DIR = path.join(process.cwd(), "lib", "fonts");
@@ -238,4 +239,79 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
 export async function renderApprovalPdf(content: ReportContent, docTitle: string): Promise<Buffer> {
   ensureFont();
   return renderToBuffer(<ApprovalDoc content={content} docTitle={docTitle} />);
+}
+
+// ───────────────────────── 안전교육일지 종합 결재서류 ─────────────────────────
+
+function EducationDoc({ content, docTitle }: { content: EducationReportContent; docTitle: string }) {
+  const stats = content.stats;
+  const types = content.types || [];
+  const days = content.days || [];
+  const keywords = content.keywords || [];
+  const typeLine = types.map((t) => `${t.type} ${t.count}회`).join("  ·  ");
+
+  return (
+    <Document title={docTitle} author="안전톡톡e">
+      <Page size="A4" style={s.page} wrap>
+        <View style={s.header}>
+          <View style={s.appAbs}><ApprovalGrid /></View>
+          <Text style={s.brand}>안전톡톡e · 안전교육일지 종합분석</Text>
+          <Text style={s.title}>{docTitle}</Text>
+          <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
+        </View>
+
+        {/* 통계 */}
+        <View style={s.statRow}>
+          <View style={s.statCell}><Text style={s.statLabel}>교육 횟수</Text><Text style={s.statVal}>{stats.sessions}회</Text></View>
+          <View style={s.statCell}><Text style={s.statLabel}>교육 일수</Text><Text style={s.statVal}>{stats.days}일</Text></View>
+          <View style={s.statCell}><Text style={s.statLabel}>연인원</Text><Text style={s.statVal}>{stats.headcount}명</Text></View>
+          <View style={s.statCell}><Text style={s.statLabel}>평균 인원</Text><Text style={s.statVal}>{stats.avg}</Text></View>
+        </View>
+
+        {/* 교육 유형 */}
+        {typeLine ? (
+          <Text style={{ fontSize: 8.5, color: C.muted, marginTop: 4 }}>교육 유형 · {typeLine}</Text>
+        ) : null}
+
+        {/* 자주 다룬 교육 주제 */}
+        {keywords.length > 0 ? (
+          <View wrap={false}>
+            <Text style={s.sectionTitle}># 자주 다룬 교육 주제</Text>
+            <View style={s.chips}>
+              {keywords.map((k, i) => <View key={i} style={s.chip}><Text style={s.chipTxt}>#{k}</Text></View>)}
+            </View>
+          </View>
+        ) : null}
+
+        {/* 날짜별 교육 요약 */}
+        <Text style={s.sectionTitle} minPresenceAhead={72}>날짜별 교육 요약</Text>
+        <View style={s.table}>
+          <View style={s.th}>
+            <Text style={[s.cell, s.thTxt, { width: 66 }]}>날짜</Text>
+            <Text style={[s.cell, s.thTxt, { width: 34, textAlign: "center" }]}>횟수</Text>
+            <Text style={[s.cell, s.thTxt, { flex: 1 }]}>교육 핵심 요약</Text>
+          </View>
+          {days.length === 0 ? (
+            <Text style={[s.cell, { color: C.muted, textAlign: "center", paddingVertical: 8 }]}>집계된 교육일지가 없습니다.</Text>
+          ) : days.map((d, i) => (
+            <View key={i} style={s.tr} wrap={false}>
+              <Text style={[s.cell, { width: 66, color: C.ink }]}>{d.date}</Text>
+              <Text style={[s.cell, { width: 34, textAlign: "center", color: C.muted }]}>{d.sessions}</Text>
+              <Text style={[s.cell, { flex: 1 }]}>{d.summary || `교육 ${d.sessions}회 실시`}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={s.foot}>
+          본 결재서류는 안전톡톡e가 {content.periodLabel} 안전교육일지를 분석해 자동 생성했습니다. · 날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
+        </Text>
+      </Page>
+    </Document>
+  );
+}
+
+/** 안전교육일지 결재서류 PDF 생성 → Buffer */
+export async function renderEducationApprovalPdf(content: EducationReportContent, docTitle: string): Promise<Buffer> {
+  ensureFont();
+  return renderToBuffer(<EducationDoc content={content} docTitle={docTitle} />);
 }

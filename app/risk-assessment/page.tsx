@@ -36,12 +36,11 @@ function levelFromRisk(risk: number): string {
     return "낮음"
 }
 
-// 기간 프리셋 (달력 대신 버튼 선택)
+// 기간 프리셋 (달력 대신 버튼 선택) — 위험성평가는 최대 1개월까지만
 const PRESETS: { key: string; label: string; range: () => DateRange }[] = [
     { key: "week", label: "이번 주", range: () => ({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() }) },
     { key: "month", label: "이번 달", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
     { key: "lastmonth", label: "지난 달", range: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
-    { key: "3m", label: "최근 3개월", range: () => ({ from: subMonths(new Date(), 3), to: new Date() }) },
 ]
 
 const SAMPLE_ITEMS: RiskItem[] = [
@@ -107,6 +106,8 @@ export default function RiskAssessmentPage() {
     const [reportEmail, setReportEmail] = useState("")
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 같은 기간 안전교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
+    const [eduStats, setEduStats] = useState<{ sessions: number; days: number; headcount: number; avg: string } | null>(null)
 
 
     useEffect(() => {
@@ -174,6 +175,22 @@ export default function RiskAssessmentPage() {
         return text
     }
 
+    // 같은 기간 안전교육일지(tbm_logs) 통계 — 미리보기 + 발송 여부 판단용 (RLS로 본인 데이터만)
+    const loadEduStats = async (fromS: string, toS: string) => {
+        const { data: rows } = await supabase.from("tbm_logs").select("id, date").gte("date", fromS).lte("date", toS)
+        const logs = (rows as { id: string; date: string }[]) || []
+        const sessions = logs.length
+        const days = new Set(logs.map((l) => l.date)).size
+        let headcount = 0
+        if (sessions > 0) {
+            const ids = logs.map((l) => l.id)
+            const { count } = await supabase.from("tbm_participants").select("id", { count: "exact", head: true }).in("log_id", ids)
+            headcount = count ?? 0
+        }
+        const avg = sessions ? (headcount / sessions).toFixed(1) : "0.0"
+        setEduStats({ sessions, days, headcount, avg })
+    }
+
     const analyze = async (rangeArg?: DateRange, proArg?: boolean) => {
         const r = rangeArg ?? range
         const isPro = proArg ?? pro
@@ -208,6 +225,7 @@ export default function RiskAssessmentPage() {
             setItems(json.items as RiskItem[])
             setPeriodLabel(label)
             setSendMsg(null)
+            await loadEduStats(fromS, toS)
             setStep(2)
         } catch {
             setMsg({ type: "err", text: "AI 분석 중 오류가 발생했습니다." })
@@ -255,21 +273,38 @@ export default function RiskAssessmentPage() {
                 return
             }
             const { data: sessionData } = await supabase.auth.getSession()
-            const res = await fetch("/api/reports/risk-assessment/send", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
-                body: JSON.stringify({
-                    items,
-                    period: `${periodLabel} 종합`,
-                    company: companyName,
-                    recipients,
-                    from: range?.from ? format(range.from, "yyyy-MM-dd") : undefined,
-                    to: range?.from ? format(range.to ?? range.from, "yyyy-MM-dd") : undefined,
+            const headers = { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` }
+            const fromS = range?.from ? format(range.from, "yyyy-MM-dd") : undefined
+            const toS = range?.from ? format(range.to ?? range.from, "yyyy-MM-dd") : undefined
+            const hasEdu = !!(eduStats && eduStats.sessions > 0) && !!fromS
+
+            // 메일 2개 동시 발송: ① 회의록 분석·위험성평가  ② 안전교육일지 종합(교육일지가 있을 때만)
+            const [r1, r2] = await Promise.all([
+                fetch("/api/reports/risk-assessment/send", {
+                    method: "POST", headers,
+                    body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: companyName, recipients, from: fromS, to: toS }),
                 }),
+                hasEdu
+                    ? fetch("/api/reports/education/send", {
+                        method: "POST", headers,
+                        body: JSON.stringify({ company: companyName, recipients, from: fromS, to: toS }),
+                    })
+                    : Promise.resolve(null),
+            ])
+
+            const j1 = await r1.json().catch(() => ({}))
+            const ok1 = r1.ok
+            let ok2 = false, eduSent = false
+            if (r2) { const j2 = await r2.json().catch(() => ({})); ok2 = r2.ok; eduSent = ok2 && (j2.sent ?? 0) > 0 }
+
+            if (!ok1 && !eduSent) { setSendMsg({ type: "err", text: j1.error || "발송 실패" }); return }
+            const parts: string[] = []
+            if (ok1) parts.push("회의록 분석·위험성평가")
+            if (eduSent) parts.push("안전교육일지 종합")
+            setSendMsg({
+                type: "ok",
+                text: `${recipients.length}곳으로 ${parts.join(" + ")} 메일${parts.length > 1 ? " 2개" : ""}를 발송했습니다.${hasEdu && !eduSent ? " (교육 메일은 실패)" : ""}`,
             })
-            const j = await res.json()
-            if (!res.ok) { setSendMsg({ type: "err", text: j.error || "발송 실패" }); return }
-            setSendMsg({ type: "ok", text: `${recipients.length}곳으로 발송했습니다. (엑셀 첨부)` })
         } finally { setSending(false) }
     }
 
@@ -278,6 +313,30 @@ export default function RiskAssessmentPage() {
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
     const recurringCount = items.filter((it) => it.recurring).length
+
+    // 같은 기간 교육일지 미리보기 (회의록 위험성평가와 함께 발송) — step 2·3 공용
+    const eduPreview = eduStats && eduStats.sessions > 0 ? (
+        <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+            <div className="flex items-center justify-between">
+                <h3 className="font-bold text-[16px]">안전교육일지 종합</h3>
+                <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/[0.08] px-2 py-1 rounded-full">메일 함께 발송</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                {[
+                    { label: "교육 횟수", value: eduStats.sessions, unit: "회" },
+                    { label: "교육 일수", value: eduStats.days, unit: "일" },
+                    { label: "연인원", value: eduStats.headcount, unit: "명" },
+                    { label: "평균 인원", value: eduStats.avg, unit: "명/회" },
+                ].map((st) => (
+                    <div key={st.label} className="bg-cur-canvas-soft border border-cur-hairline rounded-[8px] p-3 text-center">
+                        <div className="text-[11px] text-cur-muted mb-1">{st.label}</div>
+                        <div className="text-[18px] font-bold text-cur-ink font-mono">{st.value}<span className="text-[11px] text-cur-muted font-medium ml-0.5">{st.unit}</span></div>
+                    </div>
+                ))}
+            </div>
+            <p className="text-[12px] text-cur-muted-soft">날짜별 AI 교육 요약·주제 키워드가 담긴 보고서가 메일로 함께 발송됩니다. (결재서류 PDF + 엑셀)</p>
+        </div>
+    ) : null
 
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
@@ -440,6 +499,8 @@ export default function RiskAssessmentPage() {
                                 <Button variant="outline" onClick={addRow} className="w-full h-11 rounded-xl border-cur-hairline">항목 추가</Button>
                             </div>
 
+                            {eduPreview}
+
                             <Button onClick={() => setStep(3)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
                                 완료 — 내보내기
                             </Button>
@@ -487,6 +548,8 @@ export default function RiskAssessmentPage() {
                                 </div>
                             </div>
 
+                            {eduPreview}
+
                             {/* 내보내기 액션 */}
                             <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4 print:hidden">
                                 <h3 className="font-bold text-[15px]">내보내기 / 제출</h3>
@@ -500,7 +563,12 @@ export default function RiskAssessmentPage() {
 
                                 <div className="border-t border-cur-hairline pt-4 space-y-2">
                                     <h4 className="font-bold text-[14px]">보고서 바로 보내기</h4>
-                                    <p className="text-[13px] text-cur-muted">사장님·안전보건 담당자 이메일로 발송합니다. (엑셀 첨부, 가입 불필요)</p>
+                                    <p className="text-[13px] text-cur-muted">
+                                        사장님·안전보건 담당자 이메일로 발송합니다. (가입 불필요)
+                                        {eduStats && eduStats.sessions > 0
+                                            ? " · 회의록 위험성평가와 안전교육일지 종합, 메일 2개가 함께 발송됩니다."
+                                            : " · 결재서류 PDF·엑셀 첨부"}
+                                    </p>
                                     <div className="flex gap-2">
                                         <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (여러 명은 쉼표로 구분)" className="h-11" />
                                         <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
