@@ -25,6 +25,9 @@ export default function MainPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [totalEducationHours, setTotalEducationHours] = useState("0.0")
   const [requiredHours, setRequiredHours] = useState(16)
+  // 진행도 바 순차 애니메이션: 진한 바(0~100%) 먼저 → 초과분 이어서
+  const [animBase, setAnimBase] = useState(0)
+  const [animOver, setAnimOver] = useState(0)
 
   // 월별 건수 필터용 원본(날짜만) + 선택 월("all" = 전체)
   const [logDates, setLogDates] = useState<string[]>([])
@@ -139,6 +142,16 @@ export default function MainPage() {
   const isOver = rawPercent > 100
   const baseFill = isOver ? tickPosition : fillWidth
   const overFill = isOver ? Math.max(0, fillWidth - tickPosition) : 0
+
+  // 100%까지 진한 바가 먼저 차고, 다 찬 뒤(1초 후) 초과분을 이어서 채운다
+  useEffect(() => {
+    if (statsLoading) return
+    setAnimBase(0)
+    setAnimOver(0)
+    const t1 = setTimeout(() => setAnimBase(baseFill), 80)
+    const t2 = setTimeout(() => setAnimOver(overFill), 80 + 1000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [statsLoading, baseFill, overFill])
 
   // 월 선택 옵션(데이터가 있는 달, 최신순) + 선택 월 기준 건수
   const monthOptions = [...new Set([...logDates, ...minuteDates].map(d => d.slice(0, 7)))].sort().reverse()
@@ -287,13 +300,13 @@ export default function MainPage() {
                 {/* Filled bar — 0~100% 구간(진한 정상 오렌지) */}
                 <div
                   className={`h-full bg-gradient-to-r from-cur-primary-active to-cur-primary transition-all duration-1000 ease-out absolute left-0 top-0 ${isOver ? 'rounded-l-full' : 'rounded-full'}`}
-                  style={{ width: `${baseFill}%` }}
+                  style={{ width: `${animBase}%` }}
                 />
-                {/* 100% 초과분 (연한 오렌지) */}
+                {/* 100% 초과분 (연한 오렌지) — 진한 바가 다 찬 뒤 이어서 채워짐 */}
                 {isOver && (
                   <div
                     className="h-full bg-[#ff9a5c] rounded-r-full transition-all duration-1000 ease-out absolute top-0"
-                    style={{ left: `${tickPosition}%`, width: `${overFill}%` }}
+                    style={{ left: `${tickPosition}%`, width: `${animOver}%` }}
                   />
                 )}
               </div>
