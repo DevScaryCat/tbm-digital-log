@@ -8,7 +8,7 @@ import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/us
 import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { GraduationCap, Users, CalendarCheck, Hash, Loader2, Sparkles, ChevronRight, BookOpen } from "lucide-react"
+import { Hash, Loader2, Sparkles, ChevronRight, BookOpen } from "lucide-react"
 
 interface LogRow { id: string; date: string; education_type: string }
 interface DaySummary { date: string; summary: string }
@@ -196,12 +196,12 @@ export default function EducationAnalyticsPage() {
                         )}
                     </div>
 
-                    {/* 요약 카드 */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <StatCard icon={<GraduationCap className="w-4 h-4" />} label="교육 횟수" value={stats.sessions} unit="회" />
-                        <StatCard icon={<CalendarCheck className="w-4 h-4" />} label="교육 일수" value={stats.days} unit="일" />
-                        <StatCard icon={<Users className="w-4 h-4" />} label="연인원" value={stats.headcount} unit="명" />
-                        <StatCard icon={<Hash className="w-4 h-4" />} label="평균 인원" value={stats.avg} unit="명/회" />
+                    {/* 요약 카드 (회의록 분석 페이지와 동일 스타일) */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <EduStat label="교육 횟수" value={stats.sessions} unit="회" />
+                        <EduStat label="교육 일수" value={stats.days} unit="일" />
+                        <EduStat label="연인원" value={stats.headcount} unit="명" />
+                        <EduStat label="평균 인원" value={stats.avg} unit="명/회" />
                     </div>
 
                     {/* 교육 유형 분포 */}
@@ -279,7 +279,7 @@ export default function EducationAnalyticsPage() {
                             <div className="bg-cur-card p-5 rounded-[12px] border border-cur-hairline">
                                 <div className="flex flex-wrap gap-2">
                                     {keywords.map((kw, idx) => (
-                                        <div key={idx} className="flex items-center gap-1 bg-cur-elevated px-3 py-1.5 rounded-full border border-cur-hairline">
+                                        <div key={idx} className="flex items-center gap-1.5 bg-cur-elevated px-3 py-1.5 rounded-full border border-cur-hairline">
                                             <span className="text-[14px] font-semibold text-cur-ink">#{kw}</span>
                                         </div>
                                     ))}
@@ -297,11 +297,11 @@ export default function EducationAnalyticsPage() {
     )
 }
 
-function StatCard({ icon, label, value, unit }: { icon: React.ReactNode; label: string; value: number | string; unit: string }) {
+function EduStat({ label, value, unit }: { label: string; value: number | string; unit: string }) {
     return (
-        <div className="bg-cur-card p-3.5 rounded-[10px] border border-cur-hairline">
-            <div className="flex items-center gap-1 text-cur-muted mb-1.5">{icon}<span className="text-[11px] font-semibold">{label}</span></div>
-            <div className="text-[22px] font-bold text-cur-ink font-mono leading-none">{value}<span className="text-[12px] font-medium text-cur-muted ml-1">{unit}</span></div>
+        <div className="bg-cur-card p-4 rounded-[8px] border border-cur-hairline text-center">
+            <div className="text-[12px] text-cur-muted font-medium mb-1">{label}</div>
+            <div className="text-[24px] font-bold text-cur-ink font-mono">{value}<span className="text-[14px] font-medium text-cur-muted ml-1">{unit}</span></div>
         </div>
     )
 }

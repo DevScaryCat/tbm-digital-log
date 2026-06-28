@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
-import { format, parseISO, isSameDay } from "date-fns"
+import { format, parseISO, isSameDay, addDays, differenceInCalendarDays } from "date-fns"
 import { ko } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
@@ -30,6 +30,19 @@ export default function DashboardPage() {
     const [isRangeMode, setIsRangeMode] = useState(false)
     const [isDrawerOpen, setIsDrawerOpen] = useState(false)
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
+    const [rangeNote, setRangeNote] = useState<string | null>(null)
+
+    // 기간 선택은 최대 1개월까지 — 초과 선택 시 시작일+1개월로 자동 보정
+    const MAX_RANGE_DAYS = 31
+    const handleRangeSelect = (r: DateRange | undefined) => {
+        if (r?.from && r?.to && differenceInCalendarDays(r.to, r.from) > MAX_RANGE_DAYS) {
+            setDateRange({ from: r.from, to: addDays(r.from, MAX_RANGE_DAYS) })
+            setRangeNote("기간은 최대 1개월까지 선택할 수 있어요. 1개월로 맞췄어요.")
+        } else {
+            setDateRange(r)
+            setRangeNote(null)
+        }
+    }
 
     // 위험성평가에서 돌아온 경우: 직전 선택 범위 복원 (1회용)
     useEffect(() => {
@@ -252,7 +265,7 @@ export default function DashboardPage() {
                             <Calendar
                                 mode="range"
                                 selected={dateRange}
-                                onSelect={setDateRange}
+                                onSelect={handleRangeSelect}
                                 locale={ko}
                                 className="w-full"
                                 modifiers={commonModifiers}
@@ -281,6 +294,9 @@ export default function DashboardPage() {
                                 </div>
                                 <span className="text-[12px] text-cur-muted shrink-0">회의록 {minutesInRange}건 · 교육일지 {logsInRange}건</span>
                             </div>
+                            {rangeNote && (
+                                <p className="text-[12px] text-amber-600 bg-amber-50 rounded-[8px] px-3 py-2 -mt-1">{rangeNote}</p>
+                            )}
                             <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
                                 일괄 다운로드 (PDF)
                             </Button>
