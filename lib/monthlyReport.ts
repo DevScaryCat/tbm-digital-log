@@ -493,6 +493,39 @@ export async function generateAndSendReport(
   return { status: "sent", token };
 }
 
+/**
+ * 임의 기간(주간 등) 회의록 보고서를 즉시 발송 — monthly_reports 기록 없이.
+ * 크론 주간 발송에서 사용. (월간은 generateAndSendReport 사용)
+ */
+export async function generateAndSendRangeReport(
+  admin: SupabaseClient,
+  userId: string,
+  recipients: string[],
+  companyName: string | null,
+  fromDate: string,
+  toDate: string
+): Promise<GenerateResult> {
+  const valid = recipients.filter((e) => e && e.includes("@"));
+  if (valid.length === 0) return { status: "no_recipients" };
+  if (!mailerConfigured()) return { status: "mail_failed", detail: "메일 미설정" };
+
+  const content = await buildRangeContent(admin, userId, companyName, fromDate, toDate);
+  if (content.stats.total === 0) return { status: "no_data" };
+
+  const html = renderReportHtml(content);
+  const today = new Date().toISOString().slice(0, 10);
+  const docTitle = `${content.companyName ? content.companyName + " " : ""}${content.periodLabel} TBM 회의록 종합분석 결재 보고서`;
+  const attachments = await buildReportAttachments(content, docTitle, today);
+  const sent = await sendMail({
+    to: valid,
+    subject: `[안전톡톡e] ${content.companyName ? content.companyName + " " : ""}TBM 회의록 분석 보고서 (${content.periodLabel})`,
+    html,
+    attachments,
+  });
+  if (!sent.ok) return { status: "mail_failed", detail: sent.error };
+  return { status: "sent" };
+}
+
 /** 직전 월 (year, month) 반환 — 크론이 매월 1일 실행될 때 사용 */
 export function previousMonth(now: Date): { year: number; month: number } {
   const y = now.getUTCFullYear();

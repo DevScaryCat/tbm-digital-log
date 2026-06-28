@@ -2,6 +2,7 @@
 // tbm_logs(교육일지)를 기간 집계 + 날짜별 AI 1줄 요약 + 주제 키워드. 위험성평가는 하지 않는다(교육 실시 기록).
 import { SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import { sendMail, mailerConfigured } from "@/lib/mailer";
 
 export interface EducationDay {
   date: string;
@@ -313,4 +314,40 @@ export async function buildEducationAttachments(
   });
 
   return attachments;
+}
+
+export type EduSendResult = { status: "sent" | "no_recipients" | "no_data" | "mail_failed"; detail?: string };
+
+/**
+ * 안전교육일지 기간 종합 보고서를 빌드해 메일 발송(결재 PDF + CSV).
+ * 수동 발송 라우트·크론 자동발송이 공유한다.
+ */
+export async function generateAndSendEducationReport(
+  admin: SupabaseClient,
+  userId: string,
+  recipients: string[],
+  companyName: string | null,
+  fromDate: string,
+  toDate: string
+): Promise<EduSendResult> {
+  const valid = [...new Set(recipients.map((e) => String(e).trim()).filter((e) => e && e.includes("@")))];
+  if (valid.length === 0) return { status: "no_recipients" };
+  if (!mailerConfigured()) return { status: "mail_failed", detail: "메일 미설정" };
+
+  const periodLabel = fromDate === toDate ? fromDate : `${fromDate} ~ ${toDate}`;
+  const content = await buildEducationRangeContent(admin, userId, companyName, fromDate, toDate, `${periodLabel} 종합`);
+  if (!content) return { status: "no_data" };
+
+  const date = new Date().toISOString().slice(0, 10);
+  const html = renderEducationReportHtml(content);
+  const docTitle = `${companyName ? companyName + " " : ""}안전교육일지 종합 보고서`;
+  const attachments = await buildEducationAttachments(content, docTitle, date);
+  const sent = await sendMail({
+    to: valid,
+    subject: `[안전톡톡e] ${companyName ? companyName + " " : ""}안전교육일지 종합 보고서 (${content.periodLabel})`,
+    html,
+    attachments,
+  });
+  if (!sent.ok) return { status: "mail_failed", detail: sent.error };
+  return { status: "sent" };
 }

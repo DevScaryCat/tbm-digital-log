@@ -19,12 +19,14 @@ export async function GET(request: Request) {
   const admin = getAdminClient();
   const { data } = await admin
     .from("subscriptions")
-    .select("report_recipients, report_send_day")
+    .select("report_recipients, report_send_day, report_frequency, report_weekday")
     .eq("user_id", user.id)
     .maybeSingle();
   return NextResponse.json({
     recipients: data?.report_recipients ?? [],
     sendDay: data?.report_send_day ?? 1,
+    frequency: data?.report_frequency ?? "monthly",
+    weekday: data?.report_weekday ?? 1,
     isPro,
   });
 }
@@ -59,13 +61,20 @@ export async function POST(request: Request) {
   if (body.sendDay !== undefined) {
     update.report_send_day = clampDay(body.sendDay);
   }
+  if (body.frequency !== undefined) {
+    update.report_frequency = body.frequency === "weekly" ? "weekly" : "monthly";
+  }
+  if (body.weekday !== undefined) {
+    const w = Math.round(Number(body.weekday));
+    update.report_weekday = Number.isFinite(w) ? Math.min(6, Math.max(0, w)) : 1;
+  }
 
   const admin = getAdminClient();
   const { data, error } = await admin
     .from("subscriptions")
     .update(update)
     .eq("user_id", user.id)
-    .select("report_recipients, report_send_day")
+    .select("report_recipients, report_send_day, report_frequency, report_weekday")
     .maybeSingle();
   if (error) {
     console.error("recipients update error:", error);
@@ -75,5 +84,7 @@ export async function POST(request: Request) {
     success: true,
     recipients: data?.report_recipients ?? [],
     sendDay: data?.report_send_day ?? 1,
+    frequency: data?.report_frequency ?? "monthly",
+    weekday: data?.report_weekday ?? 1,
   });
 }
