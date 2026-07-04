@@ -98,7 +98,6 @@ export default function RiskAssessmentPage() {
     const [preset, setPreset] = useState<string | null>(null)
     const [items, setItems] = useState<RiskItem[]>([])
     const [periodLabel, setPeriodLabel] = useState("")
-    const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     const [tbmDates, setTbmDates] = useState<string[]>([])
 
@@ -244,22 +243,6 @@ export default function RiskAssessmentPage() {
         }))
     }
     const addRow = () => setItems((prev) => [...prev, { hazard: "", cause: "", frequency: 1, severity: 1, risk: 1, level: "낮음", measures: "", recurring: false }])
-    const removeRow = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx))
-
-    const save = async () => {
-        if (items.length === 0) return
-        setSaving(true); setMsg(null)
-        try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) { router.replace("/login"); return }
-            const { error } = await supabase.from("tbm_risk_assessments").insert({
-                user_id: user.id, date: today, company_name: companyName || null, location: null,
-                work_name: `${periodLabel} 종합`, work_content: null, items,
-            })
-            if (error) { setMsg({ type: "err", text: "저장 실패: " + error.message }); return }
-            setMsg({ type: "ok", text: "저장되었습니다." })
-        } finally { setSaving(false) }
-    }
 
     const sendReport = async () => {
         const recipients = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
@@ -463,7 +446,6 @@ export default function RiskAssessmentPage() {
                                                 <th className="border border-cur-hairline px-1 py-2 text-center w-12">중대성</th>
                                                 <th className="border border-cur-hairline px-2 py-2 text-center w-20">위험성</th>
                                                 <th className="border border-cur-hairline px-2 py-2 text-left">감소대책</th>
-                                                <th className="border border-cur-hairline px-1 py-2 w-8"></th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -486,9 +468,6 @@ export default function RiskAssessmentPage() {
                                                     </td>
                                                     <td className="border border-cur-hairline px-1 py-1">
                                                         <textarea value={it.measures} onChange={(e) => updateItem(idx, { measures: e.target.value })} rows={2} className="w-full bg-transparent text-cur-body px-1 py-0.5 rounded resize-none focus:outline-none focus:bg-cur-primary/5" />
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
-                                                        <button onClick={() => removeRow(idx)} className="text-[12px] text-cur-muted hover:text-cur-error">삭제</button>
                                                     </td>
                                                 </tr>
                                             ))}
@@ -557,18 +536,9 @@ export default function RiskAssessmentPage() {
                                     <Button variant="outline" onClick={() => exportCsv(items, { period: periodLabel, company: companyName, date: today })} className="h-11 rounded-xl border-cur-hairline">엑셀로 내보내기</Button>
                                     <Button variant="outline" onClick={() => window.print()} className="h-11 rounded-xl border-cur-hairline">PDF로 내보내기</Button>
                                 </div>
-                                <Button onClick={save} disabled={saving} className="w-full h-11 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90">
-                                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "앱에 저장"}
-                                </Button>
 
                                 <div className="border-t border-cur-hairline pt-4 space-y-2">
-                                    <h4 className="font-bold text-[14px]">보고서 바로 보내기</h4>
-                                    <p className="text-[13px] text-cur-muted">
-                                        사장님·안전보건 담당자 이메일로 발송합니다. (가입 불필요)
-                                        {eduStats && eduStats.sessions > 0
-                                            ? " · 회의록 위험성평가와 안전보건교육일지 종합, 메일 2개가 함께 발송됩니다."
-                                            : " · 결재서류 PDF·엑셀 첨부"}
-                                    </p>
+                                    <h4 className="font-bold text-[14px]">이메일로 보고서 전송</h4>
                                     <div className="flex gap-2">
                                         <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (여러 명은 쉼표로 구분)" className="h-11" />
                                         <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">

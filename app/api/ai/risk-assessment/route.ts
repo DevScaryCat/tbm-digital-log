@@ -154,6 +154,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // 생성 1건 = 월 한도 카운트 (별도 '앱에 저장' 버튼 대체 — 저장 조회 화면은 없고 카운팅·사용량 표시용)
+    const { error: countErr } = await admin.from("tbm_risk_assessments").insert({
+      user_id: user.id,
+      date: new Date().toISOString().slice(0, 10),
+      work_name: `${workName || "기간"} 위험성평가`,
+      items,
+    });
+    if (countErr) console.error("RA count insert error:", countErr);
+
     return NextResponse.json({ items });
   } catch (error: unknown) {
     console.error("Risk Assessment AI Error:", error);
