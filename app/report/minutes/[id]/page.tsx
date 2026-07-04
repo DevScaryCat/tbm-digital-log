@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { Printer, ArrowLeft, Loader2, Home } from "lucide-react"
 
@@ -57,6 +58,13 @@ export default function MinutesReportPage() {
 
                 if (minutesError) throw minutesError
 
+                const parts = (partData || []) as MinuteParticipant[]
+                // 서명: 저장된 public URL → signed URL (버킷 private 대응)
+                const sig = await resolveSignedMap([
+                    minutesData?.leader_signature,
+                    ...parts.map((p) => p.signature),
+                ])
+
                 let parsedHazards: Hazard[] = []
                 if (minutesData) {
                     if (typeof minutesData.hazards === 'string') {
@@ -68,14 +76,15 @@ export default function MinutesReportPage() {
                     } else if (Array.isArray(minutesData.hazards)) {
                         parsedHazards = minutesData.hazards as Hazard[]
                     }
-                    
+
                     const finalData: TbmMinute = {
                         ...minutesData,
-                        hazards: parsedHazards
+                        hazards: parsedHazards,
+                        leader_signature: signed(sig, minutesData.leader_signature),
                     }
                     setMinutes(finalData)
                 }
-                setParticipants(partData || [])
+                setParticipants(parts.map((p) => ({ ...p, signature: signed(sig, p.signature) })))
             } catch (error) {
                 console.error("데이터 로드 실패:", error)
                 alert("회의록 데이터를 불러오지 못했습니다.")

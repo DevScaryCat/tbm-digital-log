@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { Printer, ArrowLeft, Loader2, Home } from "lucide-react"
 
@@ -50,8 +51,19 @@ export default function ReportPage() {
 
                 if (logError) throw logError
 
-                setLog(logData)
-                setParticipants(partData || [])
+                // 서명/사진: 저장된 public URL → signed URL (버킷 private 대응)
+                const parts = partData || []
+                const sig = await resolveSignedMap([
+                    logData?.confirmation_signature, logData?.instructor_signature, logData?.photo_url,
+                    ...parts.map((p: Participant) => p.signature),
+                ])
+                setLog(logData ? {
+                    ...logData,
+                    confirmation_signature: signed(sig, logData.confirmation_signature),
+                    instructor_signature: signed(sig, logData.instructor_signature),
+                    photo_url: signed(sig, logData.photo_url),
+                } : null)
+                setParticipants(parts.map((p: Participant) => ({ ...p, signature: signed(sig, p.signature) })))
             } catch (error) {
                 console.error("데이터 로드 실패:", error)
                 alert("일지 데이터를 불러오지 못했습니다.")

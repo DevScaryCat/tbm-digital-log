@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabaseClient"
+import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { ReportView } from "@/components/ReportView"
 import { Printer, ArrowLeft, Loader2 } from "lucide-react"
@@ -29,15 +30,28 @@ export default function BatchReportPage() {
             const { data: logsData } = await supabase.from('tbm_logs').select('*').in('id', ids).order('date', { ascending: true })
 
             if (logsData) {
-                setLogs(logsData)
-
                 // 2. 각 로그별 참석자 가져오기
                 const pMap: Record<string, any[]> = {}
                 for (const log of logsData) {
                     const { data: pData } = await supabase.from('tbm_participants').select('*').eq('log_id', log.id)
                     pMap[log.id] = pData || []
                 }
-                setParticipantsMap(pMap)
+
+                // 3. 서명/사진: 저장된 public URL → signed URL (버킷 private 대응) — 전체를 한 번에 발급
+                const allUrls: (string | null | undefined)[] = []
+                for (const log of logsData) allUrls.push(log.instructor_signature, log.confirmation_signature, log.photo_url)
+                for (const arr of Object.values(pMap)) for (const p of arr) allUrls.push(p.signature)
+                const sig = await resolveSignedMap(allUrls)
+
+                setLogs(logsData.map((l: any) => ({
+                    ...l,
+                    instructor_signature: signed(sig, l.instructor_signature),
+                    confirmation_signature: signed(sig, l.confirmation_signature),
+                    photo_url: signed(sig, l.photo_url),
+                })))
+                const signedMap: Record<string, any[]> = {}
+                for (const [k, arr] of Object.entries(pMap)) signedMap[k] = arr.map((p: any) => ({ ...p, signature: signed(sig, p.signature) }))
+                setParticipantsMap(signedMap)
             }
             setLoading(false)
         }
