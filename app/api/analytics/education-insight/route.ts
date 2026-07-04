@@ -4,7 +4,7 @@ import { generateEducationInsight } from "@/lib/educationReport";
 
 export const runtime = "nodejs";
 
-// 안전교육일지 월간 분석 — Pro 전용.
+// 안전보건교육일지 월간 분석 — Pro 전용.
 // 날짜별로 그날 교육 내용을 한 줄로 통합 요약 + 자주 다룬 주제 키워드를 생성한다.
 // signature(해당 월 일지 스냅샷)가 캐시와 같으면 AI 재호출 없이 캐시 반환.
 // 일지가 추가·수정되면 signature가 달라져 그때만 재생성한다.

@@ -9,7 +9,7 @@ export const maxDuration = 300;
 // Vercel Cron(매일 00:00 UTC): Pro 구독자에게 자동 보고서 발송
 // - 월간(report_frequency='monthly'): 발송일(report_send_day)==오늘 → 지난달 종합
 // - 주간(report_frequency='weekly'): 요일(report_weekday)==오늘 → 직전 7일 종합
-// 회의록 종합 + 안전교육일지 종합, 메일 2개. report_last_sent_on으로 같은 날 중복 발송 방지.
+// 회의록 종합 + 안전보건교육일지 종합, 메일 2개. report_last_sent_on으로 같은 날 중복 발송 방지.
 export async function POST(request: Request) {
   return run(request);
 }
@@ -107,7 +107,7 @@ async function run(request: Request) {
       if (m.status === "sent") results.minutesSent++;
       else if (m.status === "mail_failed") results.failed++;
 
-      // ② 안전교육일지 종합
+      // ② 안전보건교육일지 종합
       const e = await generateAndSendEducationReport(admin, sub.user_id, recipients, companyName, from, to);
       if (e.status === "sent") results.eduSent++;
       else if (e.status === "mail_failed") results.failed++;

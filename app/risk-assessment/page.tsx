@@ -106,7 +106,7 @@ export default function RiskAssessmentPage() {
     const [reportEmail, setReportEmail] = useState("")
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    // 같은 기간 안전교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
+    // 같은 기간 안전보건교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
     const [eduStats, setEduStats] = useState<{ sessions: number; days: number; headcount: number; avg: string } | null>(null)
 
 
@@ -140,7 +140,7 @@ export default function RiskAssessmentPage() {
     }, [router])
 
     const loadTbmDates = async () => {
-        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전교육일지는 제외
+        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전보건교육일지는 제외
         const { data: m } = await supabase.from("tbm_minutes").select("date").order("date", { ascending: false }).limit(300)
         const dates = new Set<string>()
         for (const r of (m as any[]) || []) if (r.date) dates.add(r.date)
@@ -155,7 +155,7 @@ export default function RiskAssessmentPage() {
     }
 
     const buildRangeContext = async (fromS: string, toS: string): Promise<string> => {
-        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전교육일지(tbm_logs) 제외
+        // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전보건교육일지(tbm_logs) 제외
         const { data: minutes } = await supabase
             .from("tbm_minutes")
             .select("date, process_name, work_name, work_content, hazards, instructions, safety_phrase, ppe_check")
@@ -175,7 +175,7 @@ export default function RiskAssessmentPage() {
         return text
     }
 
-    // 같은 기간 안전교육일지(tbm_logs) 통계 — 미리보기 + 발송 여부 판단용 (RLS로 본인 데이터만)
+    // 같은 기간 안전보건교육일지(tbm_logs) 통계 — 미리보기 + 발송 여부 판단용 (RLS로 본인 데이터만)
     const loadEduStats = async (fromS: string, toS: string) => {
         const { data: rows } = await supabase.from("tbm_logs").select("id, date").gte("date", fromS).lte("date", toS)
         const logs = (rows as { id: string; date: string }[]) || []
@@ -278,7 +278,7 @@ export default function RiskAssessmentPage() {
             const toS = range?.from ? format(range.to ?? range.from, "yyyy-MM-dd") : undefined
             const hasEdu = !!(eduStats && eduStats.sessions > 0) && !!fromS
 
-            // 메일 2개 동시 발송: ① 회의록 분석·위험성평가  ② 안전교육일지 종합(교육일지가 있을 때만)
+            // 메일 2개 동시 발송: ① 회의록 분석·위험성평가  ② 안전보건교육일지 종합(교육일지가 있을 때만)
             const [r1, r2] = await Promise.all([
                 fetch("/api/reports/risk-assessment/send", {
                     method: "POST", headers,
@@ -300,7 +300,7 @@ export default function RiskAssessmentPage() {
             if (!ok1 && !eduSent) { setSendMsg({ type: "err", text: j1.error || "발송 실패" }); return }
             const parts: string[] = []
             if (ok1) parts.push("회의록 분석·위험성평가")
-            if (eduSent) parts.push("안전교육일지 종합")
+            if (eduSent) parts.push("안전보건교육일지 종합")
             setSendMsg({
                 type: "ok",
                 text: `${recipients.length}곳으로 ${parts.join(" + ")} 메일${parts.length > 1 ? " 2개" : ""}를 발송했습니다.${hasEdu && !eduSent ? " (교육 메일은 실패)" : ""}`,
@@ -318,7 +318,7 @@ export default function RiskAssessmentPage() {
     const eduPreview = eduStats && eduStats.sessions > 0 ? (
         <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
             <div className="flex items-center justify-between">
-                <h3 className="font-bold text-[16px]">안전교육일지 종합</h3>
+                <h3 className="font-bold text-[16px]">안전보건교육일지 종합</h3>
                 <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/[0.08] px-2 py-1 rounded-full">메일 함께 발송</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -566,7 +566,7 @@ export default function RiskAssessmentPage() {
                                     <p className="text-[13px] text-cur-muted">
                                         사장님·안전보건 담당자 이메일로 발송합니다. (가입 불필요)
                                         {eduStats && eduStats.sessions > 0
-                                            ? " · 회의록 위험성평가와 안전교육일지 종합, 메일 2개가 함께 발송됩니다."
+                                            ? " · 회의록 위험성평가와 안전보건교육일지 종합, 메일 2개가 함께 발송됩니다."
                                             : " · 결재서류 PDF·엑셀 첨부"}
                                     </p>
                                     <div className="flex gap-2">

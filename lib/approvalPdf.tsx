@@ -241,7 +241,7 @@ export async function renderApprovalPdf(content: ReportContent, docTitle: string
   return renderToBuffer(<ApprovalDoc content={content} docTitle={docTitle} />);
 }
 
-// ───────────────────────── 안전교육일지 종합 결재서류 ─────────────────────────
+// ───────────────────────── 안전보건교육일지 종합 결재서류 ─────────────────────────
 
 function EducationDoc({ content, docTitle }: { content: EducationReportContent; docTitle: string }) {
   const stats = content.stats;
@@ -255,7 +255,7 @@ function EducationDoc({ content, docTitle }: { content: EducationReportContent; 
       <Page size="A4" style={s.page} wrap>
         <View style={s.header}>
           <View style={s.appAbs}><ApprovalGrid /></View>
-          <Text style={s.brand}>안전톡톡e · 안전교육일지 종합분석</Text>
+          <Text style={s.brand}>안전톡톡e · 안전보건교육일지 종합분석</Text>
           <Text style={s.title}>{docTitle}</Text>
           <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
         </View>
@@ -303,14 +303,14 @@ function EducationDoc({ content, docTitle }: { content: EducationReportContent; 
         </View>
 
         <Text style={s.foot}>
-          본 결재서류는 안전톡톡e가 {content.periodLabel} 안전교육일지를 분석해 자동 생성했습니다. · 날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
+          본 결재서류는 안전톡톡e가 {content.periodLabel} 안전보건교육일지를 분석해 자동 생성했습니다. · 날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
         </Text>
       </Page>
     </Document>
   );
 }
 
-/** 안전교육일지 결재서류 PDF 생성 → Buffer */
+/** 안전보건교육일지 결재서류 PDF 생성 → Buffer */
 export async function renderEducationApprovalPdf(content: EducationReportContent, docTitle: string): Promise<Buffer> {
   ensureFont();
   return renderToBuffer(<EducationDoc content={content} docTitle={docTitle} />);

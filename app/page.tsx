@@ -138,6 +138,8 @@ export default function MainPage() {
   }
 
   const rawPercent = (parseFloat(totalEducationHours) / requiredHours) * 100
+  // 현재 반기 라벨 (반기별로 0에서 새로 누적 — 상반기 1~6월 / 하반기 7~12월)
+  const halfLabel = (() => { const d = new Date(); return `${d.getFullYear()} ${d.getMonth() < 6 ? '상반기' : '하반기'}` })()
   const maxScale = rawPercent > 100 ? 150 : 100
   const fillWidth = Math.min(100, (rawPercent / maxScale) * 100)
   const tickPosition = (100 / maxScale) * 100
@@ -167,7 +169,7 @@ export default function MainPage() {
 
   if (!user) {
     const features = [
-      { n: "01", t: "스마트 안전교육일지·회의록", d: "현장에서 말하면 AI가 안전교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
+      { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
       { n: "02", t: "위험성평가 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
       { n: "03", t: "월간 안전 보고서 자동 발송", d: "한 달 안전활동을 분석한 보고서를 사장·안전관리자에게 매달 자동으로 메일 발송." },
     ]
@@ -327,6 +329,7 @@ export default function MainPage() {
               </div>
             </div>
             <p className="text-[12px] text-cur-muted mt-3 leading-relaxed">
+              <span className="font-semibold text-cur-body">{halfLabel}</span> 기준 ·{' '}
               {user?.user_metadata?.worker_type === '사무직 / 판매직'
                 ? '반기별 6시간 이상 (정기교육 TBM 대체 가능)'
                 : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
@@ -357,7 +360,7 @@ export default function MainPage() {
                 </div>
               </div>
               <div onClick={() => router.push('/analytics/education')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
-                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전교육일지</div>
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전보건교육일지</div>
                 <div className="text-[28px] font-bold text-cur-ink font-mono">
                   {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
                 </div>
@@ -402,8 +405,8 @@ export default function MainPage() {
                   <HardHat className="w-6 h-6" />
                 </div>
                 <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-cur-ink">안전교육일지 작성</h3>
-                  <p className="text-cur-muted text-[14px]">TBM·정기교육 등 안전교육일지를 AI로 기록 관리</p>
+                  <h3 className="text-[16px] font-semibold text-cur-ink">안전보건교육일지 작성</h3>
+                  <p className="text-cur-muted text-[14px]">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />

@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload } from "lucide-react"
+import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload, FileText } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
@@ -1062,6 +1062,11 @@ export default function TBMMinutesPage() {
                             <h2 className="text-[24px] font-bold text-cur-ink mb-2 tracking-tight">저장 완료</h2>
                             <p className="text-[14px] text-cur-muted-soft text-center mb-10 font-medium">안전가이드라인 TBM 회의록 작성이 완료되었습니다.</p>
                             <div className="w-full max-w-xs space-y-3">
+                                {savedLogId && (
+                                    <Button onClick={() => router.push(`/report/minutes/${savedLogId}`)} className="w-full bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary h-12 text-[15px] font-bold rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)]">
+                                        <FileText className="mr-2 w-4 h-4" /> 작성된 회의록 보기
+                                    </Button>
+                                )}
                                 <Button variant="outline" onClick={() => router.push('/')} className="w-full h-12 text-[14px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] bg-cur-card hover:bg-cur-elevated">메인 화면으로</Button>
                             </div>
                         </div>

@@ -8,7 +8,7 @@ export const maxDuration = 60;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// 안전교육일지 기간 종합 보고서 발송 — Pro 전용. (회의록 위험성평가 발송과 한 쌍)
+// 안전보건교육일지 기간 종합 보고서 발송 — Pro 전용. (회의록 위험성평가 발송과 한 쌍)
 export async function POST(request: Request) {
   const { user, isPro } = await getUserAndSubscription(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });

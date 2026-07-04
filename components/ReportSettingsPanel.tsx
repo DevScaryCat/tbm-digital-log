@@ -103,7 +103,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
             )}
             <p className="text-[13px] text-cur-muted leading-relaxed">
                 지정한 주기(매주·매달)에 안전활동을 분석한 보고서를 사장·안전보건 담당자에게 자동 발송합니다.
-                <span className="text-cur-body font-medium"> 회의록 종합·안전교육일지 종합 메일 2개</span>로 발송되며, 받는 분은 가입·로그인 불필요.
+                <span className="text-cur-body font-medium"> 회의록 종합·안전보건교육일지 종합 메일 2개</span>로 발송되며, 받는 분은 가입·로그인 불필요.
             </p>
 
             {msg && (

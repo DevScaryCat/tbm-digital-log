@@ -26,7 +26,7 @@ const PLAN_LABEL: Record<PlanId, string> = {
 // 기능 비교표 (text가 있으면 텍스트, 없으면 ✓/— 표시)
 const FEATURES: { label: string; basic?: boolean; pro?: boolean; basicText?: string; proText?: string }[] = [
     { label: "TBM 회의록 작성", basicText: "월 10회", proText: "월 30회" },
-    { label: "안전교육일지 작성", basicText: "월 80회", proText: "월 200회" },
+    { label: "안전보건교육일지 작성", basicText: "월 80회", proText: "월 200회" },
     { label: "위험성평가 생성", basic: false, proText: "월 20회" },
     { label: "AI 일지·회의록 자동 생성 (녹음·음성)", basic: true, pro: true },
     { label: "무제한 프로젝트 및 인원 등록", basic: true, pro: true },

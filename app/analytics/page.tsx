@@ -145,7 +145,7 @@ export default function AnalyticsDashboardPage() {
             <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
 
                 <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
-                    <TBMHeader title="TBM 회의록 종합분석" backHref="/" pageBadge={pro ? undefined : "예시"} />
+                    <TBMHeader title="TBM 회의록 종합분석" pageBadge={pro ? undefined : "예시"} />
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">

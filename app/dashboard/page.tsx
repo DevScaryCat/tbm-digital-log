@@ -340,7 +340,7 @@ export default function DashboardPage() {
                                     <CardContent className="p-5 flex items-center justify-between">
                                         <div>
                                             <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                <Badge className={cn("text-cur-on-primary font-medium text-[11px] px-2 py-0.5 rounded-[4px] border-none shadow-none hover:opacity-90", log.type === 'minute' ? "bg-[#8145b5]" : "bg-cur-primary")}>{log.type === 'minute' ? 'TBM 회의록' : '안전교육일지'}</Badge>
+                                                <Badge className={cn("text-cur-on-primary font-medium text-[11px] px-2 py-0.5 rounded-[4px] border-none shadow-none hover:opacity-90", log.type === 'minute' ? "bg-[#8145b5]" : "bg-cur-primary")}>{log.type === 'minute' ? 'TBM 회의록' : '안전보건교육일지'}</Badge>
                                                 {log.type !== 'minute' && log.education_type && (
                                                     <span className="text-[11px] text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[4px]">{log.education_type}</span>
                                                 )}

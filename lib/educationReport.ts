@@ -1,4 +1,4 @@
-// lib/educationReport.ts — 안전교육일지 기간 종합 보고서 (회의록 보고서와 별개)
+// lib/educationReport.ts — 안전보건교육일지 기간 종합 보고서 (회의록 보고서와 별개)
 // tbm_logs(교육일지)를 기간 집계 + 날짜별 AI 1줄 요약 + 주제 키워드. 위험성평가는 하지 않는다(교육 실시 기록).
 import { SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -113,7 +113,7 @@ export async function generateEducationInsight(
 }
 
 /**
- * 한 사용자의 [fromDate, toDate] 안전교육일지를 집계해 보고서 콘텐츠를 만든다.
+ * 한 사용자의 [fromDate, toDate] 안전보건교육일지를 집계해 보고서 콘텐츠를 만든다.
  * 교육일지가 한 건도 없으면 null.
  */
 export async function buildEducationRangeContent(
@@ -237,7 +237,7 @@ export function renderEducationReportHtml(content: EducationReportContent): stri
   <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
     <div style="border:1px solid #e6e5e0;border-radius:14px;overflow:hidden;background:#fff;">
     <div style="padding:22px 24px 18px;border-bottom:1px solid #eee;">
-      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안전톡톡e · 안전교육일지 종합분석</div>
+      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안전톡톡e · 안전보건교육일지 종합분석</div>
       <div style="color:#26251e;font-size:24px;font-weight:700;margin-top:8px;letter-spacing:-0.5px;">${escapeHtml(periodLabel)}</div>
       ${companyName ? `<div style="color:#807d72;font-size:14px;margin-top:3px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
@@ -264,7 +264,7 @@ export function renderEducationReportHtml(content: EducationReportContent): stri
       </table>
 
       <div style="font-size:12px;color:#999;margin-top:24px;text-align:center;line-height:1.6;">
-        본 보고서는 안전톡톡e가 ${escapeHtml(periodLabel)} 안전교육일지를 분석해 자동 생성했습니다.<br/>
+        본 보고서는 안전톡톡e가 ${escapeHtml(periodLabel)} 안전보건교육일지를 분석해 자동 생성했습니다.<br/>
         날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
       </div>
     </div>
@@ -278,7 +278,7 @@ export function buildEducationCsv(content: EducationReportContent): string {
   const header = ["날짜", "교육 횟수", "교육 핵심 요약"];
   const rows = days.map((d) => [d.date, d.sessions, d.summary]);
   const top = [
-    ["안전교육일지 종합"],
+    ["안전보건교육일지 종합"],
     ["현장/업체", content.companyName || "-", "대상기간", content.periodLabel],
     ["교육 횟수", `${stats.sessions}회`, "교육 일수", `${stats.days}일`, "연인원", `${stats.headcount}명`, "평균", `${stats.avg}명/회`],
     ["교육 유형", types.map((t) => `${t.type} ${t.count}회`).join(" / ") || "-"],
@@ -302,13 +302,13 @@ export async function buildEducationAttachments(
   try {
     const { renderEducationApprovalPdf } = await import("@/lib/approvalPdf");
     const pdf = await renderEducationApprovalPdf(content, docTitle);
-    attachments.push({ filename: `안전교육일지_결재서류_${date}.pdf`, content: pdf, contentType: "application/pdf" });
+    attachments.push({ filename: `안전보건교육일지_결재서류_${date}.pdf`, content: pdf, contentType: "application/pdf" });
   } catch (e) {
     console.error("교육 결재서류 PDF 생성 실패:", e);
   }
 
   attachments.push({
-    filename: `안전교육일지_종합_${date}.csv`,
+    filename: `안전보건교육일지_종합_${date}.csv`,
     content: buildEducationCsv(content),
     contentType: "text/csv;charset=utf-8",
   });
@@ -319,7 +319,7 @@ export async function buildEducationAttachments(
 export type EduSendResult = { status: "sent" | "no_recipients" | "no_data" | "mail_failed"; detail?: string };
 
 /**
- * 안전교육일지 기간 종합 보고서를 빌드해 메일 발송(결재 PDF + CSV).
+ * 안전보건교육일지 기간 종합 보고서를 빌드해 메일 발송(결재 PDF + CSV).
  * 수동 발송 라우트·크론 자동발송이 공유한다.
  */
 export async function generateAndSendEducationReport(
@@ -340,11 +340,11 @@ export async function generateAndSendEducationReport(
 
   const date = new Date().toISOString().slice(0, 10);
   const html = renderEducationReportHtml(content);
-  const docTitle = `${companyName ? companyName + " " : ""}안전교육일지 종합 보고서`;
+  const docTitle = `${companyName ? companyName + " " : ""}안전보건교육일지 종합 보고서`;
   const attachments = await buildEducationAttachments(content, docTitle, date);
   const sent = await sendMail({
     to: valid,
-    subject: `[안전톡톡e] ${companyName ? companyName + " " : ""}안전교육일지 종합 보고서 (${content.periodLabel})`,
+    subject: `[안전톡톡e] ${companyName ? companyName + " " : ""}안전보건교육일지 종합 보고서 (${content.periodLabel})`,
     html,
     attachments,
   });

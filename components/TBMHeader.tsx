@@ -173,7 +173,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                                 <span className="text-[11px] text-cur-muted-soft">{format(startOfMonth(addMonths(new Date(), 1)), "M월 d일")} 초기화</span>
                             </div>
                             <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
-                            <UsageBar label="안전교육일지" used={usage.log} limit={limitFor(plan, "log")} />
+                            <UsageBar label="안전보건교육일지" used={usage.log} limit={limitFor(plan, "log")} />
                             <UsageBar label="위험성평가" used={usage.ra} limit={limitFor(plan, "ra")} />
                         </div>
                     </>

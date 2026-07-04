@@ -168,7 +168,7 @@ export default function EducationAnalyticsPage() {
             <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
 
                 <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
-                    <TBMHeader title="안전교육일지 종합분석" backHref="/" pageBadge={pro ? undefined : "예시"} />
+                    <TBMHeader title="안전보건교육일지 종합분석" pageBadge={pro ? undefined : "예시"} />
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
@@ -176,7 +176,7 @@ export default function EducationAnalyticsPage() {
                     {!pro && (
                         <div className="rounded-[12px] bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-2">
                             <p className="text-[13px] text-cur-primary font-semibold flex items-center gap-1.5"><Sparkles className="w-4 h-4" /> 예시 화면입니다</p>
-                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. Pro 구독 시 내가 작성한 안전교육일지를 월별로 분석해 교육 인원 통계와 날짜별 AI 교육 요약을 보여드립니다.</p>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. Pro 구독 시 내가 작성한 안전보건교육일지를 월별로 분석해 교육 인원 통계와 날짜별 AI 교육 요약을 보여드립니다.</p>
                             <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90">Pro 플랜 보기</Button>
                         </div>
                     )}
