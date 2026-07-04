@@ -107,6 +107,7 @@ export default function RiskAssessmentPage() {
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 같은 기간 안전보건교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
     const [eduStats, setEduStats] = useState<{ sessions: number; days: number; headcount: number; avg: string } | null>(null)
+    const [eduDownloading, setEduDownloading] = useState<"csv" | "pdf" | null>(null)
 
 
     useEffect(() => {
@@ -243,6 +244,32 @@ export default function RiskAssessmentPage() {
         }))
     }
     const addRow = () => setItems((prev) => [...prev, { hazard: "", cause: "", frequency: 1, severity: 1, risk: 1, level: "낮음", measures: "", recurring: false }])
+
+    // 안전보건교육일지 종합을 파일(엑셀/PDF)로 내려받기 — 서버가 기간 교육일지를 분석해 생성
+    const downloadEducation = async (fmt: "csv" | "pdf") => {
+        if (!range?.from) return
+        const fromS = format(range.from, "yyyy-MM-dd")
+        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
+        setEduDownloading(fmt)
+        try {
+            const { data: s } = await supabase.auth.getSession()
+            const res = await fetch(`/api/reports/education/download?from=${fromS}&to=${toS}&format=${fmt}`, {
+                headers: { Authorization: `Bearer ${s?.session?.access_token}` },
+            })
+            if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement("a")
+            a.href = url
+            a.download = `안전보건교육일지_종합_${today}.${fmt}`
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch {
+            alert("다운로드 중 오류가 발생했습니다.")
+        } finally {
+            setEduDownloading(null)
+        }
+    }
 
     const sendReport = async () => {
         const recipients = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
@@ -527,15 +554,36 @@ export default function RiskAssessmentPage() {
                                 </div>
                             </div>
 
-                            {eduPreview}
+                            <div className="print:hidden">{eduPreview}</div>
 
                             {/* 내보내기 액션 */}
                             <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4 print:hidden">
                                 <h3 className="font-bold text-[15px]">내보내기 / 제출</h3>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Button variant="outline" onClick={() => exportCsv(items, { period: periodLabel, company: companyName, date: today })} className="h-11 rounded-xl border-cur-hairline">엑셀로 내보내기</Button>
-                                    <Button variant="outline" onClick={() => window.print()} className="h-11 rounded-xl border-cur-hairline">PDF로 내보내기</Button>
+
+                                {/* 위험성평가표 */}
+                                <div className="space-y-2">
+                                    <p className="text-[13px] font-semibold text-cur-body">위험성평가표</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button variant="outline" onClick={() => exportCsv(items, { period: periodLabel, company: companyName, date: today })} className="h-11 rounded-xl border-cur-hairline">엑셀</Button>
+                                        <Button variant="outline" onClick={() => window.print()} className="h-11 rounded-xl border-cur-hairline">PDF</Button>
+                                    </div>
                                 </div>
+
+                                {/* 안전보건교육일지 종합 (기간 내 교육일지가 있을 때) — 회의록과 분리된 별도 파일 */}
+                                {eduStats && eduStats.sessions > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[13px] font-semibold text-cur-body">안전보건교육일지 종합</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("csv")} className="h-11 rounded-xl border-cur-hairline">
+                                                {eduDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
+                                            </Button>
+                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("pdf")} className="h-11 rounded-xl border-cur-hairline">
+                                                {eduDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
+                                            </Button>
+                                        </div>
+                                        <p className="text-[11px] text-cur-muted-soft">교육일지가 분리된 별도 파일로 저장됩니다. (PDF는 생성에 잠시 걸려요)</p>
+                                    </div>
+                                )}
 
                                 <div className="border-t border-cur-hairline pt-4 space-y-2">
                                     <h4 className="font-bold text-[14px]">이메일로 보고서 전송</h4>

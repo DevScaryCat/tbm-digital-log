@@ -123,23 +123,23 @@ export default function DashboardPage() {
         setSelectedLogs(prev => prev.filter(l => !(l.id === log.id && l.type === log.type)))
     }
 
-    const handleBatchDownload = () => {
-        if (!dateRange?.from || !dateRange?.to) return alert("기간을 선택해주세요.")
-
+    // 기간 내 특정 타입(log=교육일지 / minute=회의록) 문서를 별도 PDF로 일괄 저장
+    const batchDownload = (kind: 'log' | 'minute') => {
+        if (!dateRange?.from) return alert("기간을 선택해주세요.")
         const from = dateRange.from.getTime()
-        const to = dateRange.to.getTime()
-
-        const targetLogs = logs.filter(log => {
-            if (log.type === 'minute') return false; 
-            const d = parseISO(log.date).getTime()
-            return d >= from && d <= to
-        })
-
-        if (targetLogs.length === 0) return alert("선택된 기간에 작성된 일지가 없습니다.")
-
-        const ids = targetLogs.map(l => l.id)
-        localStorage.setItem("batch_print_ids", JSON.stringify(ids))
-        router.push("/report/batch")
+        const to = (dateRange.to ?? dateRange.from).getTime()
+        const target = logs.filter(l => (kind === 'minute' ? l.type === 'minute' : l.type !== 'minute') && (() => {
+            const d = parseISO(l.date).getTime(); return d >= from && d <= to
+        })())
+        if (target.length === 0) return alert(kind === 'minute' ? "선택된 기간에 회의록이 없습니다." : "선택된 기간에 안전보건교육일지가 없습니다.")
+        const ids = target.map(l => l.id)
+        if (kind === 'minute') {
+            localStorage.setItem("batch_minute_ids", JSON.stringify(ids))
+            router.push("/report/batch/minutes")
+        } else {
+            localStorage.setItem("batch_print_ids", JSON.stringify(ids))
+            router.push("/report/batch")
+        }
     }
 
     const handleRiskAssessment = () => {
@@ -297,9 +297,14 @@ export default function DashboardPage() {
                             {rangeNote && (
                                 <p className="text-[12px] text-amber-600 bg-amber-50 rounded-[8px] px-3 py-2 -mt-1">{rangeNote}</p>
                             )}
-                            <Button onClick={handleBatchDownload} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[14px] font-medium rounded-[8px]">
-                                일괄 다운로드 (PDF)
-                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={() => batchDownload('log')} disabled={logsInRange === 0} className="bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[13px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
+                                    교육일지 PDF
+                                </Button>
+                                <Button onClick={() => batchDownload('minute')} disabled={minutesInRange === 0} className="bg-[#0b285b] text-white hover:opacity-90 h-10 text-[13px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
+                                    회의록 PDF
+                                </Button>
+                            </div>
                             <Button onClick={handleRiskAssessment} disabled={minutesInRange === 0} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
                                 <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 위험성평가
                                 <span className="ml-1.5 bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
