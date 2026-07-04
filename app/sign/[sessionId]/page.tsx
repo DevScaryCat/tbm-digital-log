@@ -75,7 +75,9 @@ export default function SignPage() {
                 .from('signatures')
                 .upload(fileName, blob, {
                     contentType: 'image/png',
-                    upsert: true
+                    // 무계정(anon) 업로드: upsert=true는 존재확인 SELECT가 필요해 private 버킷에서 RLS 위반.
+                    // 파일명이 랜덤이라 upsert 불필요 → false (순수 INSERT).
+                    upsert: false
                 })
 
             if (uploadError) throw uploadError
