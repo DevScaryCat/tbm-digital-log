@@ -24,9 +24,12 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [weekday, setWeekday] = useState(1)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    const [previewHtml, setPreviewHtml] = useState("")
+    const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
+    const [minutesHtml, setMinutesHtml] = useState("")
+    const [eduHtml, setEduHtml] = useState("")
     const [loadingPreview, setLoadingPreview] = useState(false)
-    const [previewReady, setPreviewReady] = useState(false)
+    const [minutesReady, setMinutesReady] = useState(false)
+    const [eduReady, setEduReady] = useState(false)
 
     const authToken = async () => {
         const { data } = await supabase.auth.getSession()
@@ -47,8 +50,15 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
             }
             setLoadingPreview(true)
             try {
-                const pre = await fetch("/api/reports/monthly/preview", { headers: { Authorization: `Bearer ${token}` } })
-                if (pre.ok && !cancelled) { const j = await pre.json(); setPreviewHtml(j.html || "") }
+                const h = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+                const [m, e] = await Promise.all([
+                    fetch("/api/reports/minutes/render", { method: "POST", headers: h, body: "{}" }),
+                    fetch("/api/reports/education/render", { method: "POST", headers: h, body: "{}" }),
+                ])
+                if (!cancelled) {
+                    if (m.ok) { const j = await m.json(); setMinutesHtml(j.html || "") }
+                    if (e.ok) { const j = await e.json(); setEduHtml(j.html || "") }
+                }
             } finally { if (!cancelled) setLoadingPreview(false) }
         })()
         return () => { cancelled = true }
@@ -181,30 +191,54 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 </>
             )}
 
-            {/* 미리보기 — iframe 콘텐츠가 그려진 뒤 페이드인(툭 튀어나옴 방지) */}
+            {/* 미리보기 — 회의록 종합 / 안전보건교육일지 종합 2개 탭 (실제 발송 형식) */}
             <div className="space-y-2">
                 <Label className="text-[13px]">보고서 미리보기</Label>
+                <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
+                    {([["minutes", "회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
+                        <button
+                            key={key}
+                            onClick={() => setPreviewTab(key)}
+                            className={`flex-1 h-9 rounded-md text-[13px] font-semibold transition-colors ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
                 <div className="relative h-[360px] border border-cur-hairline rounded-lg overflow-hidden bg-white">
-                    {previewHtml ? (
+                    {minutesHtml && (
                         <iframe
-                            title="보고서 미리보기"
-                            srcDoc={previewHtml}
-                            onLoad={() => setPreviewReady(true)}
-                            className={`w-full h-full transition-opacity duration-500 ${previewReady ? "opacity-100" : "opacity-0"}`}
+                            title="회의록 종합 미리보기"
+                            srcDoc={minutesHtml}
+                            onLoad={() => setMinutesReady(true)}
+                            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${previewTab === "minutes" && minutesReady ? "opacity-100 z-10" : "opacity-0 -z-10"}`}
                         />
-                    ) : null}
-                    {(!previewReady || loadingPreview) && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-cur-card">
-                            {!loadingPreview && !previewHtml ? (
-                                <p className="text-[13px] text-cur-muted-soft">미리보기를 불러오지 못했습니다.</p>
-                            ) : (
-                                <>
-                                    <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
-                                    <p className="text-[12px] text-cur-muted-soft">미리보기 불러오는 중…</p>
-                                </>
-                            )}
-                        </div>
                     )}
+                    {eduHtml && (
+                        <iframe
+                            title="교육 종합 미리보기"
+                            srcDoc={eduHtml}
+                            onLoad={() => setEduReady(true)}
+                            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${previewTab === "edu" && eduReady ? "opacity-100 z-10" : "opacity-0 -z-10"}`}
+                        />
+                    )}
+                    {(() => {
+                        const ready = previewTab === "minutes" ? minutesReady : eduReady
+                        const html = previewTab === "minutes" ? minutesHtml : eduHtml
+                        if (ready && html) return null
+                        return (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-cur-card z-20">
+                                {!loadingPreview && !html ? (
+                                    <p className="text-[13px] text-cur-muted-soft">미리보기를 불러오지 못했습니다.</p>
+                                ) : (
+                                    <>
+                                        <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
+                                        <p className="text-[12px] text-cur-muted-soft">미리보기 불러오는 중…</p>
+                                    </>
+                                )}
+                            </div>
+                        )
+                    })()}
                 </div>
                 <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
             </div>

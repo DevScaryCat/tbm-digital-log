@@ -22,20 +22,6 @@ interface RiskItem {
     recurring?: boolean
 }
 
-const LEVEL_STYLE: Record<string, string> = {
-    "매우높음": "bg-red-100 text-red-700",
-    "높음": "bg-orange-100 text-orange-700",
-    "보통": "bg-yellow-100 text-yellow-700",
-    "낮음": "bg-green-100 text-green-700",
-}
-
-function levelFromRisk(risk: number): string {
-    if (risk >= 15) return "매우높음"
-    if (risk >= 9) return "높음"
-    if (risk >= 4) return "보통"
-    return "낮음"
-}
-
 // 기간 프리셋 (달력 대신 버튼 선택) — 위험성평가는 최대 1개월까지만
 const PRESETS: { key: string; label: string; range: () => DateRange }[] = [
     { key: "week", label: "이번 주", range: () => ({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() }) },
@@ -50,18 +36,6 @@ const SAMPLE_ITEMS: RiskItem[] = [
     { hazard: "정리정돈 미흡으로 전도", cause: "자재·공구 적치, 통로 미확보", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "통로 확보, 적치장 분리, 작업 후 정리정돈", recurring: false },
     { hazard: "분진·소음 노출", cause: "절단·천공 작업 반복", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "방진마스크·귀마개 착용, 습식 작업, 작업시간 관리", recurring: false },
 ]
-
-function exportCsv(items: RiskItem[], meta: { period: string; company: string; date: string }) {
-    const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"]
-    const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, it.level, it.measures])
-    const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows]
-    const csv = top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n")
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url; a.download = `위험성평가_${meta.date}.csv`; a.click()
-    URL.revokeObjectURL(url)
-}
 
 function Steps({ step }: { step: number }) {
     const labels = ["기간 선택", "결과 확인", "내보내기"]
@@ -108,6 +82,11 @@ export default function RiskAssessmentPage() {
     // 같은 기간 안전보건교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
     const [eduStats, setEduStats] = useState<{ sessions: number; days: number; headcount: number; avg: string } | null>(null)
     const [eduDownloading, setEduDownloading] = useState<"csv" | "pdf" | null>(null)
+    const [minutesDownloading, setMinutesDownloading] = useState<"csv" | "pdf" | null>(null)
+    // 이메일 형식 미리보기(회의록 종합분석 / 안전보건교육일지 종합분석) HTML
+    const [minutesHtml, setMinutesHtml] = useState("")
+    const [eduHtml, setEduHtml] = useState("")
+    const [loadingPreviews, setLoadingPreviews] = useState(false)
 
 
     useEffect(() => {
@@ -203,10 +182,11 @@ export default function RiskAssessmentPage() {
         try {
             // 베이직: 체험(더미 결과). Pro: 실제 AI 분석
             if (!isPro) {
-                await new Promise((r) => setTimeout(r, 1500))
+                await new Promise((r) => setTimeout(r, 1200))
                 setItems(SAMPLE_ITEMS)
                 setPeriodLabel(label)
                 setSendMsg(null)
+                await loadPreviews(fromS, toS, SAMPLE_ITEMS)
                 setStep(2)
                 return
             }
@@ -226,6 +206,7 @@ export default function RiskAssessmentPage() {
             setPeriodLabel(label)
             setSendMsg(null)
             await loadEduStats(fromS, toS)
+            await loadPreviews(fromS, toS, json.items as RiskItem[])
             setStep(2)
         } catch {
             setMsg({ type: "err", text: "AI 분석 중 오류가 발생했습니다." })
@@ -234,16 +215,47 @@ export default function RiskAssessmentPage() {
         }
     }
 
-    const updateItem = (idx: number, patch: Partial<RiskItem>) => {
-        setItems((prev) => prev.map((it, i) => {
-            if (i !== idx) return it
-            const next = { ...it, ...patch }
-            next.risk = next.frequency * next.severity
-            next.level = levelFromRisk(next.risk)
-            return next
-        }))
+    // 회의록·교육 이메일 형식 미리보기 HTML 로드 (분석 후)
+    const loadPreviews = async (fromS: string, toS: string, riskItems: RiskItem[]) => {
+        setLoadingPreviews(true)
+        setMinutesHtml(""); setEduHtml("")
+        try {
+            const { data: s } = await supabase.auth.getSession()
+            const headers = { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` }
+            const [mRes, eRes] = await Promise.all([
+                fetch("/api/reports/minutes/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, items: riskItems }) }),
+                fetch("/api/reports/education/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS }) }),
+            ])
+            const mj = await mRes.json().catch(() => ({}))
+            const ej = await eRes.json().catch(() => ({}))
+            setMinutesHtml(mRes.ok ? (mj.html || "") : "")
+            setEduHtml(eRes.ok ? (ej.html || "") : "")
+        } finally {
+            setLoadingPreviews(false)
+        }
     }
-    const addRow = () => setItems((prev) => [...prev, { hazard: "", cause: "", frequency: 1, severity: 1, risk: 1, level: "낮음", measures: "", recurring: false }])
+
+    // 회의록 종합분석(+위험성평가표)을 파일로 내려받기 (보고서 형식 PDF / 위험성평가 CSV)
+    const downloadMinutes = async (fmt: "csv" | "pdf") => {
+        if (!range?.from) return
+        const fromS = format(range.from, "yyyy-MM-dd")
+        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
+        setMinutesDownloading(fmt)
+        try {
+            const { data: s } = await supabase.auth.getSession()
+            const res = await fetch("/api/reports/minutes/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` },
+                body: JSON.stringify({ from: fromS, to: toS, items, format: fmt }),
+            })
+            if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement("a")
+            a.href = url; a.download = `회의록_위험성평가_${today}.${fmt}`; a.click()
+            URL.revokeObjectURL(url)
+        } catch { alert("다운로드 중 오류가 발생했습니다.") } finally { setMinutesDownloading(null) }
+    }
 
     // 안전보건교육일지 종합을 파일(엑셀/PDF)로 내려받기 — 서버가 기간 교육일지를 분석해 생성
     const downloadEducation = async (fmt: "csv" | "pdf") => {
@@ -322,31 +334,29 @@ export default function RiskAssessmentPage() {
 
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-    const recurringCount = items.filter((it) => it.recurring).length
-
-    // 같은 기간 교육일지 미리보기 (회의록 위험성평가와 함께 발송) — step 2·3 공용
-    const eduPreview = eduStats && eduStats.sessions > 0 ? (
-        <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
-            <div className="flex items-center justify-between">
-                <h3 className="font-bold text-[16px]">안전보건교육일지 종합</h3>
-                <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/[0.08] px-2 py-1 rounded-full">메일 함께 발송</span>
+    // 이메일 형식 보고서 미리보기(회의록 종합분석 / 안전보건교육일지 종합분석) — 실제 발송 형식과 동일. step 2·3 공용
+    const reportPreviews = (
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <h3 className="font-bold text-[15px] text-cur-ink">TBM 회의록 종합분석 <span className="text-[11px] font-medium text-cur-muted-soft">· 위험성평가 포함</span></h3>
+                <div className="relative h-[440px] border border-cur-hairline rounded-xl overflow-hidden bg-white">
+                    {minutesHtml
+                        ? <iframe title="회의록 종합분석" srcDoc={minutesHtml} className="w-full h-full" />
+                        : <div className="absolute inset-0 flex items-center justify-center text-[13px] text-cur-muted-soft">{loadingPreviews ? <Loader2 className="w-6 h-6 animate-spin text-cur-muted" /> : "이 기간에 회의록이 없습니다."}</div>}
+                </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-                {[
-                    { label: "교육 횟수", value: eduStats.sessions, unit: "회" },
-                    { label: "교육 일수", value: eduStats.days, unit: "일" },
-                    { label: "연인원", value: eduStats.headcount, unit: "명" },
-                    { label: "평균 인원", value: eduStats.avg, unit: "명/회" },
-                ].map((st) => (
-                    <div key={st.label} className="bg-cur-canvas-soft border border-cur-hairline rounded-[8px] p-3 text-center">
-                        <div className="text-[11px] text-cur-muted mb-1">{st.label}</div>
-                        <div className="text-[18px] font-bold text-cur-ink font-mono">{st.value}<span className="text-[11px] text-cur-muted font-medium ml-0.5">{st.unit}</span></div>
+            {(loadingPreviews || eduHtml) && (
+                <div className="space-y-2">
+                    <h3 className="font-bold text-[15px] text-cur-ink">안전보건교육일지 종합분석</h3>
+                    <div className="relative h-[440px] border border-cur-hairline rounded-xl overflow-hidden bg-white">
+                        {eduHtml
+                            ? <iframe title="안전보건교육일지 종합분석" srcDoc={eduHtml} className="w-full h-full" />
+                            : <div className="absolute inset-0 flex items-center justify-center text-[13px] text-cur-muted-soft">{loadingPreviews ? <Loader2 className="w-6 h-6 animate-spin text-cur-muted" /> : "이 기간에 교육일지가 없습니다."}</div>}
                     </div>
-                ))}
-            </div>
-            <p className="text-[12px] text-cur-muted-soft">날짜별 AI 교육 요약·주제 키워드가 담긴 보고서가 메일로 함께 발송됩니다. (결재서류 PDF + 엑셀)</p>
+                </div>
+            )}
         </div>
-    ) : null
+    )
 
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
@@ -445,70 +455,18 @@ export default function RiskAssessmentPage() {
                         </div>
                     )}
 
-                    {/* STEP 2: 결과 확인·수정 (표만) */}
+                    {/* STEP 2: 결과 확인 (실제 발송될 이메일 형식 미리보기) */}
                     {!analyzing && step === 2 && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between gap-2">
                                 <Button variant="ghost" onClick={restart} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 기간 다시</Button>
-                                <span className="text-[13px] text-cur-muted">내용을 확인·수정하세요</span>
+                                <span className="text-[13px] text-cur-muted">발송될 보고서를 확인하세요</span>
                             </div>
 
-                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
-                                <div>
-                                    <h3 className="font-bold text-[16px]">{periodLabel} 종합 위험성평가 ({items.length}건)</h3>
-                                    {recurringCount > 0 && (
-                                        <div className="mt-2 text-[13px] text-cur-primary bg-cur-primary/[0.06] rounded-lg px-3 py-2">
-                                            반복 위험요인 {recurringCount}건 — 여러 TBM에서 반복 등장, 우선 관리 대상
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="overflow-x-auto rounded-xl border border-cur-hairline">
-                                    <table className="border-collapse min-w-[680px] w-full text-[13px]">
-                                        <thead>
-                                            <tr className="bg-cur-elevated/60 text-cur-muted text-[12px]">
-                                                <th className="border border-cur-hairline px-2 py-2 text-center w-8">No</th>
-                                                <th className="border border-cur-hairline px-2 py-2 text-left">유해·위험요인 / 원인</th>
-                                                <th className="border border-cur-hairline px-1 py-2 text-center w-12">가능성</th>
-                                                <th className="border border-cur-hairline px-1 py-2 text-center w-12">중대성</th>
-                                                <th className="border border-cur-hairline px-2 py-2 text-center w-20">위험성</th>
-                                                <th className="border border-cur-hairline px-2 py-2 text-left">감소대책</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {items.map((it, idx) => (
-                                                <tr key={idx} className="align-top">
-                                                    <td className="border border-cur-hairline px-1 py-2 text-center text-cur-muted-soft">{idx + 1}</td>
-                                                    <td className="border border-cur-hairline px-1 py-1">
-                                                        {it.recurring && <span className="inline-block text-[10px] font-bold bg-cur-primary/15 text-cur-primary px-1.5 py-0.5 rounded-[4px] mb-1">반복</span>}
-                                                        <input value={it.hazard} onChange={(e) => updateItem(idx, { hazard: e.target.value })} className="w-full bg-transparent font-medium text-cur-ink px-1 py-0.5 rounded focus:outline-none focus:bg-cur-primary/5" />
-                                                        <textarea value={it.cause} onChange={(e) => updateItem(idx, { cause: e.target.value })} rows={2} className="w-full bg-transparent text-[12px] text-cur-muted-soft px-1 py-0.5 rounded resize-none focus:outline-none focus:bg-cur-primary/5" />
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
-                                                        <input type="number" min={1} max={5} value={it.frequency} onChange={(e) => updateItem(idx, { frequency: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })} className="w-10 bg-transparent text-center px-0.5 py-1 rounded focus:outline-none focus:bg-cur-primary/5" />
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-0.5 py-1 text-center">
-                                                        <input type="number" min={1} max={5} value={it.severity} onChange={(e) => updateItem(idx, { severity: Math.min(5, Math.max(1, Number(e.target.value) || 1)) })} className="w-10 bg-transparent text-center px-0.5 py-1 rounded focus:outline-none focus:bg-cur-primary/5" />
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-1 py-2 text-center">
-                                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${LEVEL_STYLE[it.level] ?? "bg-gray-100 text-gray-600"}`}>{it.risk} · {it.level}</span>
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-1 py-1">
-                                                        <textarea value={it.measures} onChange={(e) => updateItem(idx, { measures: e.target.value })} rows={2} className="w-full bg-transparent text-cur-body px-1 py-0.5 rounded resize-none focus:outline-none focus:bg-cur-primary/5" />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <Button variant="outline" onClick={addRow} className="w-full h-11 rounded-xl border-cur-hairline">항목 추가</Button>
-                            </div>
-
-                            {eduPreview}
+                            {reportPreviews}
 
                             <Button onClick={() => setStep(3)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
-                                완료 — 내보내기
+                                다음 — 내보내기 / 전송
                             </Button>
                         </div>
                     )}
@@ -516,63 +474,33 @@ export default function RiskAssessmentPage() {
                     {/* STEP 3: 내보내기 */}
                     {!analyzing && step === 3 && (
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-2 print:hidden">
-                                <Button variant="ghost" onClick={() => setStep(2)} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 결과 수정</Button>
+                            <div className="flex items-center justify-between gap-2">
+                                <Button variant="ghost" onClick={() => setStep(2)} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 미리보기</Button>
                             </div>
 
-                            {/* 확인용 읽기 전용 표 */}
-                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
-                                <div>
-                                    <h3 className="font-bold text-[16px]">{periodLabel} 종합 위험성평가</h3>
-                                    <p className="text-[13px] text-cur-muted-soft mt-0.5">위험요인 {items.length}건{recurringCount > 0 ? ` · 반복 ${recurringCount}건` : ""}</p>
-                                </div>
-                                <div className="overflow-x-auto rounded-xl border border-cur-hairline">
-                                    <table className="border-collapse min-w-[560px] w-full text-[13px]">
-                                        <thead>
-                                            <tr className="bg-cur-elevated/60 text-cur-muted text-[12px]">
-                                                <th className="border border-cur-hairline px-2 py-2 text-left">유해·위험요인</th>
-                                                <th className="border border-cur-hairline px-1 py-2 text-center w-20">위험성</th>
-                                                <th className="border border-cur-hairline px-2 py-2 text-left">감소대책</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {items.map((it, idx) => (
-                                                <tr key={idx} className="align-top">
-                                                    <td className="border border-cur-hairline px-2 py-2 text-cur-ink font-medium">
-                                                        {it.recurring && <span className="inline-block text-[10px] font-bold bg-cur-primary/15 text-cur-primary px-1.5 py-0.5 rounded-[4px] mr-1">반복</span>}
-                                                        {it.hazard}
-                                                        <div className="text-[11px] text-cur-muted-soft font-normal mt-0.5">{it.cause}</div>
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-1 py-2 text-center">
-                                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${LEVEL_STYLE[it.level] ?? "bg-gray-100 text-gray-600"}`}>{it.risk} · {it.level}</span>
-                                                    </td>
-                                                    <td className="border border-cur-hairline px-2 py-2 text-cur-body">{it.measures}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div className="print:hidden">{eduPreview}</div>
+                            {reportPreviews}
 
                             {/* 내보내기 액션 */}
                             <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4 print:hidden">
                                 <h3 className="font-bold text-[15px]">내보내기 / 제출</h3>
 
-                                {/* 위험성평가표 */}
+                                {/* TBM 회의록 종합분석 (위험성평가 포함) — 보고서 형식 PDF/CSV */}
                                 <div className="space-y-2">
-                                    <p className="text-[13px] font-semibold text-cur-body">위험성평가표</p>
+                                    <p className="text-[13px] font-semibold text-cur-body">TBM 회의록 종합분석 <span className="text-[11px] font-normal text-cur-muted-soft">· 위험성평가 포함</span></p>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" onClick={() => exportCsv(items, { period: periodLabel, company: companyName, date: today })} className="h-11 rounded-xl border-cur-hairline">엑셀</Button>
-                                        <Button variant="outline" onClick={() => window.print()} className="h-11 rounded-xl border-cur-hairline">PDF</Button>
+                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("csv")} className="h-11 rounded-xl border-cur-hairline">
+                                            {minutesDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
+                                        </Button>
+                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("pdf")} className="h-11 rounded-xl border-cur-hairline">
+                                            {minutesDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
+                                        </Button>
                                     </div>
                                 </div>
 
                                 {/* 안전보건교육일지 종합 (기간 내 교육일지가 있을 때) — 회의록과 분리된 별도 파일 */}
                                 {eduStats && eduStats.sessions > 0 && (
                                     <div className="space-y-2">
-                                        <p className="text-[13px] font-semibold text-cur-body">안전보건교육일지 종합</p>
+                                        <p className="text-[13px] font-semibold text-cur-body">안전보건교육일지 종합분석</p>
                                         <div className="grid grid-cols-2 gap-2">
                                             <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("csv")} className="h-11 rounded-xl border-cur-hairline">
                                                 {eduDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
