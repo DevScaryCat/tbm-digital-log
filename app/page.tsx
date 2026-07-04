@@ -170,7 +170,7 @@ export default function MainPage() {
   if (!user) {
     const features = [
       { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
-      { n: "02", t: "위험성평가 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
+      { n: "02", t: "AI 분석 보고서 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
       { n: "03", t: "월간 안전 보고서 자동 발송", d: "한 달 안전활동을 분석한 보고서를 사장·안전관리자에게 매달 자동으로 메일 발송." },
     ]
     return (
@@ -199,7 +199,7 @@ export default function MainPage() {
               현장의 안전을<br className="hidden sm:block" /> 더 쉽고 똑똑하게
             </h1>
             <p className="text-cur-muted text-[16px] sm:text-[19px] leading-relaxed max-w-2xl">
-              TBM 일지부터 위험성평가, 월간 안전 보고서까지 — AI로 한 번에.
+              TBM 일지부터 AI 분석 보고서, 월간 안전 보고서까지 — AI로 한 번에.
               더 많은 대화로 더 안전한 현장을 만드세요.
             </p>
             <div className="flex flex-col items-center gap-3 w-full sm:w-auto pt-2">

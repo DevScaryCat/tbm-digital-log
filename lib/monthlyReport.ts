@@ -419,7 +419,7 @@ export async function buildReportAttachments(
       period: content.periodLabel,
       date,
     });
-    attachments.push({ filename: `위험성평가_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" });
+    attachments.push({ filename: `AI분석보고서_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" });
   }
 
   return attachments;

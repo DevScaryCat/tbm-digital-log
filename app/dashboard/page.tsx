@@ -149,7 +149,7 @@ export default function DashboardPage() {
 
     const handleRiskAssessment = () => {
         if (!dateRange?.from) return alert("기간을 선택해주세요.")
-        if (minutesInRange === 0) return alert("이 기간에 TBM 회의록이 없어 위험성평가를 만들 수 없습니다.")
+        if (minutesInRange === 0) return alert("이 기간에 TBM 회의록이 없어 AI 분석 보고서를 만들 수 없습니다.")
         const from = format(dateRange.from, "yyyy-MM-dd")
         const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
         localStorage.setItem("ra_range", JSON.stringify({ from, to }))
@@ -250,7 +250,7 @@ export default function DashboardPage() {
                                         기간 선택
                                     </Label>
                                     <span className="text-[13px] text-cur-muted-soft">
-                                        일괄 PDF · 위험성평가 생성
+                                        일괄 PDF · AI 분석 보고서 생성
                                     </span>
                                 </div>
                             </div>
@@ -311,11 +311,11 @@ export default function DashboardPage() {
                                 </Button>
                             </div>
                             <Button onClick={handleRiskAssessment} disabled={minutesInRange === 0} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 위험성평가
+                                <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 AI 분석 보고서
                                 <span className="ml-1.5 bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
                             </Button>
                             {minutesInRange === 0 && (
-                                <p className="text-[12px] text-cur-muted-soft text-center -mt-1">이 기간에 TBM 회의록이 없어요. (위험성평가는 회의록만 분석)</p>
+                                <p className="text-[12px] text-cur-muted-soft text-center -mt-1">이 기간에 TBM 회의록이 없어요. (AI 분석 보고서는 회의록만 분석)</p>
                             )}
                         </div>
                     )}

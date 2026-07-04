@@ -252,7 +252,7 @@ export default function RiskAssessmentPage() {
             const blob = await res.blob()
             const url = URL.createObjectURL(blob)
             const a = document.createElement("a")
-            a.href = url; a.download = `회의록_위험성평가_${today}.${fmt}`; a.click()
+            a.href = url; a.download = `회의록_AI분석보고서_${today}.${fmt}`; a.click()
             URL.revokeObjectURL(url)
         } catch { alert("다운로드 중 오류가 발생했습니다.") } finally { setMinutesDownloading(null) }
     }
@@ -321,7 +321,7 @@ export default function RiskAssessmentPage() {
 
             if (!ok1 && !eduSent) { setSendMsg({ type: "err", text: j1.error || "발송 실패" }); return }
             const parts: string[] = []
-            if (ok1) parts.push("회의록 분석·위험성평가")
+            if (ok1) parts.push("회의록 AI 분석 보고서")
             if (eduSent) parts.push("안전보건교육일지 종합")
             setSendMsg({
                 type: "ok",
@@ -338,7 +338,7 @@ export default function RiskAssessmentPage() {
     const reportPreviews = (
         <div className="space-y-4">
             <div className="space-y-2">
-                <h3 className="font-bold text-[15px] text-cur-ink">TBM 회의록 종합분석 <span className="text-[11px] font-medium text-cur-muted-soft">· 위험성평가 포함</span></h3>
+                <h3 className="font-bold text-[15px] text-cur-ink">TBM 회의록 종합분석 <span className="text-[11px] font-medium text-cur-muted-soft">· 위험성평가표 포함</span></h3>
                 <div className="relative h-[440px] border border-cur-hairline rounded-xl overflow-hidden bg-white">
                     {minutesHtml
                         ? <iframe title="회의록 종합분석" srcDoc={minutesHtml} className="w-full h-full" />
@@ -363,7 +363,7 @@ export default function RiskAssessmentPage() {
             <div className="max-w-md mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden flex flex-col">
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10 print:hidden">
                     <TBMHeader
-                        title="위험성평가"
+                        title="AI 분석 보고서"
                         backHref="/dashboard"
                         pageBadge={pro ? undefined : "체험"}
                     />
@@ -378,7 +378,7 @@ export default function RiskAssessmentPage() {
                     {!analyzing && step === 0 && (
                         <div className="space-y-5">
                             <div className="text-center space-y-3 pt-6">
-                                <h2 className="text-[22px] font-bold">TBM 종합 위험성평가</h2>
+                                <h2 className="text-[22px] font-bold">TBM 종합 AI 분석 보고서</h2>
                                 <p className="text-cur-muted text-[14px] leading-relaxed">
                                     기간만 선택하면 그 기간의 TBM을 AI가 분석해<br />
                                     위험성평가표를 자동으로 만들어줍니다.
@@ -405,7 +405,7 @@ export default function RiskAssessmentPage() {
                                 <Button onClick={() => setStep(1)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
                                     체험해보기
                                 </Button>
-                                <p className="text-[12px] text-cur-muted-soft text-center">Pro 4,900원/월 · 첫 달 무료 · 위험성평가 + 월간 보고서</p>
+                                <p className="text-[12px] text-cur-muted-soft text-center">Pro 4,900원/월 · 첫 달 무료 · AI 분석 보고서 + 월간 보고서</p>
                             </div>
                         </div>
                     )}
@@ -416,7 +416,7 @@ export default function RiskAssessmentPage() {
                             <Loader2 className="w-12 h-12 text-cur-primary animate-spin mx-auto" />
                             <div>
                                 <p className="text-[17px] font-bold text-cur-ink">분석 중입니다…</p>
-                                <p className="text-[14px] text-cur-muted mt-1">TBM 내용을 분석해 위험성평가를 만들고 있어요.<br />잠시 기다려 주세요. (10~20초)</p>
+                                <p className="text-[14px] text-cur-muted mt-1">TBM 내용을 분석해 AI 분석 보고서를 만들고 있어요.<br />잠시 기다려 주세요. (10~20초)</p>
                             </div>
                         </div>
                     )}
@@ -486,7 +486,7 @@ export default function RiskAssessmentPage() {
 
                                 {/* TBM 회의록 종합분석 (위험성평가 포함) — 보고서 형식 PDF/CSV */}
                                 <div className="space-y-2">
-                                    <p className="text-[13px] font-semibold text-cur-body">TBM 회의록 종합분석 <span className="text-[11px] font-normal text-cur-muted-soft">· 위험성평가 포함</span></p>
+                                    <p className="text-[13px] font-semibold text-cur-body">TBM 회의록 종합분석 <span className="text-[11px] font-normal text-cur-muted-soft">· 위험성평가표 포함</span></p>
                                     <div className="grid grid-cols-2 gap-2">
                                         <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("csv")} className="h-11 rounded-xl border-cur-hairline">
                                             {minutesDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}

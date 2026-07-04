@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const periodLabel = from === to ? from : `${from} ~ ${to}`;
 
   if (fmt === "csv") {
-    if (items.length === 0) return NextResponse.json({ error: "위험성평가 내용이 없습니다." }, { status: 400 });
+    if (items.length === 0) return NextResponse.json({ error: "AI 분석 보고서 내용이 없습니다." }, { status: 400 });
     const csv = buildRiskCsv(items, { company, period: `${periodLabel} 종합`, date });
     return new NextResponse(csv, {
       headers: {
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   if (items.length > 0) content.riskItems = items;
 
   const { renderApprovalPdf } = await import("@/lib/approvalPdf");
-  const pdf = await renderApprovalPdf(content, `${company ? company + " " : ""}${periodLabel} TBM 회의록 종합분석 · 위험성평가 보고서`);
+  const pdf = await renderApprovalPdf(content, `${company ? company + " " : ""}${periodLabel} TBM 회의록 종합분석 · AI 분석 보고서`);
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",

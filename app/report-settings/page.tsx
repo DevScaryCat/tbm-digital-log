@@ -29,7 +29,7 @@ export default function ReportSettingsPage() {
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
             <div className="w-full max-w-md mx-auto px-4 pt-4">
-                <TBMHeader title="자동 보고서 설정" backHref="/" pageBadge={pro ? "PRO" : "예시"} />
+                <TBMHeader title="보고서 주기 설정" backHref="/" pageBadge={pro ? "PRO" : "예시"} />
             </div>
             <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 pb-16">
                 <ReportSettingsPanel pro={pro} />

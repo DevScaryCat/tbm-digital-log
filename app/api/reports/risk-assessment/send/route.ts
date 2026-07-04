@@ -21,13 +21,13 @@ export async function POST(request: Request) {
     ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean)
     : [];
   const recipients: string[] = [...new Set(rawRecipients)];
-  const period = String(body?.period || "").trim() || "위험성평가";
+  const period = String(body?.period || "").trim() || "AI 분석 보고서";
   const company = String(body?.company || "").trim();
   const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
   const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
   const date = new Date().toISOString().slice(0, 10);
 
-  if (items.length === 0) return NextResponse.json({ error: "보낼 위험성평가 내용이 없습니다." }, { status: 400 });
+  if (items.length === 0) return NextResponse.json({ error: "보낼 AI 분석 보고서 내용이 없습니다." }, { status: 400 });
   if (recipients.length === 0) return NextResponse.json({ error: "받는 사람 이메일을 입력해주세요." }, { status: 400 });
   const invalid = recipients.find((e) => !EMAIL_RE.test(e));
   if (invalid) return NextResponse.json({ error: `이메일 형식 오류: ${invalid}` }, { status: 400 });
@@ -41,12 +41,12 @@ export async function POST(request: Request) {
   content.riskItems = items;
 
   const html = renderReportHtml(content);
-  const docTitle = `${company ? company + " " : ""}TBM 회의록 종합분석 · 위험성평가 결재 보고서`;
+  const docTitle = `${company ? company + " " : ""}TBM 회의록 종합분석 · AI 분석 보고서(결재)`;
   const attachments = await buildReportAttachments(content, docTitle, date);
 
   const sent = await sendMail({
     to: recipients,
-    subject: `[안전톡톡e] ${company ? company + " " : ""}TBM 회의록 분석 · 위험성평가 (${content.periodLabel})`,
+    subject: `[안전톡톡e] ${company ? company + " " : ""}TBM 회의록 분석 · AI 분석 보고서 (${content.periodLabel})`,
     html,
     attachments,
   });

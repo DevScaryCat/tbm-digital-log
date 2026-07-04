@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
     if (!isPro)
       return NextResponse.json(
-        { error: "위험성평가 생성은 Pro 플랜에서 이용할 수 있습니다." },
+        { error: "AI 분석 보고서 생성은 Pro 플랜에서 이용할 수 있습니다." },
         { status: 403 }
       );
 
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       .gte("created_at", startISO);
     if ((count ?? 0) >= RA_MONTHLY_LIMIT)
       return NextResponse.json(
-        { error: `이번 달 위험성평가 생성 한도(월 ${RA_MONTHLY_LIMIT}회)를 초과했습니다.` },
+        { error: `이번 달 AI 분석 보고서 생성 한도(월 ${RA_MONTHLY_LIMIT}회)를 초과했습니다.` },
         { status: 429 }
       );
 
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
     if (items.length === 0) {
       return NextResponse.json(
-        { error: "위험성평가를 생성하지 못했습니다. 작업 내용을 더 구체적으로 입력해주세요." },
+        { error: "AI 분석 보고서를 생성하지 못했습니다. 작업 내용을 더 구체적으로 입력해주세요." },
         { status: 422 }
       );
     }

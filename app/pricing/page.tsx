@@ -27,7 +27,7 @@ const PLAN_LABEL: Record<PlanId, string> = {
 const FEATURES: { label: string; basic?: boolean; pro?: boolean; basicText?: string; proText?: string }[] = [
     { label: "TBM 회의록 작성", basicText: "월 10회", proText: "월 30회" },
     { label: "안전보건교육일지 작성", basicText: "월 80회", proText: "월 200회" },
-    { label: "위험성평가 생성", basic: false, proText: "월 20회" },
+    { label: "AI 분석 보고서 생성", basic: false, proText: "월 20회" },
     { label: "AI 일지·회의록 자동 생성 (녹음·음성)", basic: true, pro: true },
     { label: "무제한 프로젝트 및 인원 등록", basic: true, pro: true },
     { label: "클라우드 보안 저장 (1년 보관)", basic: true, pro: true },
@@ -125,7 +125,7 @@ export default function PricingPage() {
                 return (
                     <div className="space-y-3">
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-[13px] text-cur-ink text-center">
-                            Pro 기능(위험성평가·월간 보고서)을 이용하려면 <b>카드 등록</b> 후 Pro 구독이 필요합니다.
+                            Pro 기능(AI 분석 보고서·월간 보고서)을 이용하려면 <b>카드 등록</b> 후 Pro 구독이 필요합니다.
                         </div>
                         {payOff ? (
                             <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center">

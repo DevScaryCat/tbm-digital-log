@@ -223,7 +223,7 @@ export default function AccountPage() {
 
                             {isGrandfather ? (
                                 <p className="text-[14px] text-cur-muted leading-relaxed">
-                                    기존 가입자 혜택으로 베이직 요금제를 영구 무료로 이용 중입니다. 위험성평가·월간 보고서 등 Pro 기능은 카드 등록 후 Pro로 업그레이드하면 이용하실 수 있어요.
+                                    기존 가입자 혜택으로 베이직 요금제를 영구 무료로 이용 중입니다. AI 분석 보고서·월간 보고서 등 Pro 기능은 카드 등록 후 Pro로 업그레이드하면 이용하실 수 있어요.
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
@@ -386,7 +386,7 @@ export default function AccountPage() {
                                     <h2 className="text-[16px] font-bold text-cur-ink">Pro로 업그레이드</h2>
                                 </div>
                                 <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    위험성평가 자동 생성과 월간 안전 보고서 자동 발송까지. 월 4,900원으로 이용하세요.
+                                    AI 분석 보고서 자동 생성과 월간 안전 보고서 자동 발송까지. 월 4,900원으로 이용하세요.
                                 </p>
                                 <Button
                                     onClick={() => router.push("/pricing")}
