@@ -133,6 +133,11 @@ export default function DashboardPage() {
         })())
         if (target.length === 0) return alert(kind === 'minute' ? "선택된 기간에 회의록이 없습니다." : "선택된 기간에 안전보건교육일지가 없습니다.")
         const ids = target.map(l => l.id)
+        // 배치 페이지에서 뒤로 왔을 때 선택했던 기간을 그대로 복원 (1회용)
+        sessionStorage.setItem("dash_restore", JSON.stringify({
+            from: format(dateRange.from, "yyyy-MM-dd"),
+            to: format(dateRange.to ?? dateRange.from, "yyyy-MM-dd"),
+        }))
         if (kind === 'minute') {
             localStorage.setItem("batch_minute_ids", JSON.stringify(ids))
             router.push("/report/batch/minutes")
