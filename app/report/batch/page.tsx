@@ -30,12 +30,12 @@ export default function BatchReportPage() {
             const { data: logsData } = await supabase.from('tbm_logs').select('*').in('id', ids).order('date', { ascending: true })
 
             if (logsData) {
-                // 2. 각 로그별 참석자 가져오기
+                // 2. 참석자를 한 번에 조회(N+1 제거) 후 log_id별로 그룹핑
+                const logIds = logsData.map((l: any) => l.id)
+                const { data: allParts } = await supabase.from('tbm_participants').select('*').in('log_id', logIds)
                 const pMap: Record<string, any[]> = {}
-                for (const log of logsData) {
-                    const { data: pData } = await supabase.from('tbm_participants').select('*').eq('log_id', log.id)
-                    pMap[log.id] = pData || []
-                }
+                for (const l of logsData) pMap[l.id] = []
+                for (const p of (allParts || [])) (pMap[p.log_id] ||= []).push(p)
 
                 // 3. 서명/사진: 저장된 public URL → signed URL (버킷 private 대응) — 전체를 한 번에 발급
                 const allUrls: (string | null | undefined)[] = []

@@ -62,8 +62,11 @@ export default function MainPage() {
   const fetchUserStats = async (userId: string, currentWorkerType: string) => {
     setStatsLoading(true)
     try {
-      const { data: tbmLogs } = await supabase.from('tbm_logs').select('id, date, start_time, end_time').eq('user_id', userId)
-      const { data: minutesLogs } = await supabase.from('tbm_minutes').select('id, date, start_time, end_time').eq('user_id', userId)
+      // 독립 쿼리 2개를 병렬로(워터폴 제거)
+      const [{ data: tbmLogs }, { data: minutesLogs }] = await Promise.all([
+        supabase.from('tbm_logs').select('id, date, start_time, end_time').eq('user_id', userId),
+        supabase.from('tbm_minutes').select('id, date, start_time, end_time').eq('user_id', userId),
+      ])
 
       setTbmCount(tbmLogs?.length || 0)
       setTbmMinutesCount(minutesLogs?.length || 0)
