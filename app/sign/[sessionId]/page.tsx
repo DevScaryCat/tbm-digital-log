@@ -67,24 +67,11 @@ export default function SignPage() {
         setIsSubmitting(true)
 
         try {
+            // 무계정(anon) 서명: 스토리지에 직접 업로드하지 않고 base64를 그대로 pending에 저장한다.
+            //  - private 버킷 anon 업로드(upsert 존재확인 SELECT) RLS 문제 회피
+            //  - 소유자 실시간 수집 화면에 서명 이미지가 즉시 표시됨(base64)
+            //  - 실제 스토리지 업로드는 소유자가 마감(저장) 시 authenticated로 수행(uploadBase64ToStorage)
             const signatureData = sigCanvas.current.toDataURL("image/png")
-            const response = await fetch(signatureData)
-            const blob = await response.blob()
-            const fileName = `${sessionId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.png`
-            const { error: uploadError } = await supabase.storage
-                .from('signatures')
-                .upload(fileName, blob, {
-                    contentType: 'image/png',
-                    // 무계정(anon) 업로드: upsert=true는 존재확인 SELECT가 필요해 private 버킷에서 RLS 위반.
-                    // 파일명이 랜덤이라 upsert 불필요 → false (순수 INSERT).
-                    upsert: false
-                })
-
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('signatures')
-                .getPublicUrl(fileName)
 
             const { error } = await supabase
                 .from('tbm_pending_signatures')
@@ -92,7 +79,7 @@ export default function SignPage() {
                     session_id: sessionId,
                     name: name.trim(),
                     gender,
-                    signature: publicUrl
+                    signature: signatureData
                 })
 
             if (error) throw error
