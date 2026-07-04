@@ -14,11 +14,15 @@ export default async function MonthlyReportPublicPage({
 
   const { data: report } = await admin
     .from("monthly_reports")
-    .select("id, content, first_opened_at, open_count")
+    .select("id, content, first_opened_at, open_count, created_at")
     .eq("token", token)
     .maybeSingle();
 
-  if (!report) {
+  // 링크 만료(발행 후 180일) — 토큰이 유출돼도 영구 접근되지 않도록 차단
+  const REPORT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+  const isExpired = !!report?.created_at && Date.now() - new Date(report.created_at).getTime() > REPORT_TTL_MS;
+
+  if (!report || isExpired) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Apple SD Gothic Neo, Arial, sans-serif", color: "#888" }}>
         <div style={{ textAlign: "center" }}>

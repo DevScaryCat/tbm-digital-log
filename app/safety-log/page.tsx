@@ -311,12 +311,16 @@ export default function TBMPage() {
                 currentSessionId = uuidv4();
                 setSessionId(currentSessionId);
 
-                supabase.from('tbm_pending_signatures').insert({
-                    session_id: currentSessionId,
-                    name: "OPEN_SESSION",
-                    gender: "M",
-                    signature: "init"
-                }).then(() => console.log("Session opened"));
+                // 세션 소유자(로그인 유저)를 마커에 기록 — RLS 격리(내 세션 서명만 조회/삭제)
+                supabase.auth.getSession().then(({ data }) =>
+                    supabase.from('tbm_pending_signatures').insert({
+                        session_id: currentSessionId,
+                        name: "OPEN_SESSION",
+                        gender: "M",
+                        signature: "init",
+                        user_id: data.session?.user?.id ?? null,
+                    }).then(() => console.log("Session opened"))
+                );
             }
 
             console.log("Listening for signatures on session:", currentSessionId);

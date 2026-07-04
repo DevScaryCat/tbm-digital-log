@@ -44,6 +44,14 @@ export async function POST(request: Request) {
     if (!info.ok) {
       return NextResponse.json({ error: "빌링키 검증 실패", detail: info.body }, { status: 400 });
     }
+
+    // 1-1) 소유권 검증: 발급 시 customerId=user.id로 묶으므로 응답 customer.id가 요청 유저와 일치해야 함.
+    // 남의 빌링키를 제출해 타인 카드로 결제되는 것을 차단. (customer 정보가 없는 예외적 응답은 허용하되 경고)
+    const keyCustomerId = (info.body as { customer?: { id?: string } })?.customer?.id;
+    if (keyCustomerId && keyCustomerId !== user.id) {
+      console.warn("billing-key ownership mismatch", { keyCustomerId, userId: user.id });
+      return NextResponse.json({ error: "본인 명의로 발급된 결제수단이 아닙니다." }, { status: 403 });
+    }
     const cardInfo =
       extractCardInfo(info.body) ||
       (method ? { provider: PROVIDER_LABEL[method] ?? method } : null);
