@@ -92,7 +92,12 @@ export function SubscribeButtons({
             })
 
             if (!issueResponse || issueResponse.code) {
-                setMsg({ type: "err", text: `등록 실패: ${issueResponse?.message ?? "취소되었습니다."}` })
+                // PortOne 일반 메시지("빌링키 발급 과정에서 문제가 발생하였습니다")만으론 원인 파악 불가.
+                // 이니시스 등 PG가 내려주는 실제 사유(pgCode/pgMessage)를 함께 노출해 진단 가능하게.
+                console.error("빌링키 발급 실패:", issueResponse)
+                const pg = [issueResponse?.pgCode, issueResponse?.pgMessage].filter(Boolean).join(" · ")
+                const base = issueResponse?.message ?? "취소되었습니다."
+                setMsg({ type: "err", text: `등록 실패: ${base}${pg ? ` — PG: ${pg}` : ""}` })
                 return
             }
 
