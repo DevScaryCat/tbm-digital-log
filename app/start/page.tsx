@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,11 @@ export default function StartPage() {
     const router = useRouter()
     const [privacyAgreed, setPrivacyAgreed] = useState(false)
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        // 이미 로그인돼 있으면 홈으로 (세션 유지 시 재동의·재로그인 방지)
+        supabase.auth.getSession().then(({ data }) => { if (data.session) router.replace("/") })
+    }, [router])
 
     const handleKakaoLogin = async () => {
         setLoading(true)

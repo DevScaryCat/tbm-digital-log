@@ -20,6 +20,8 @@ export default function LoginPage() {
     const [rememberMe, setRememberMe] = useState(false)
 
     useEffect(() => {
+        // 이미 로그인돼 있으면 홈으로 (세션 유지 시 재로그인 방지)
+        supabase.auth.getSession().then(({ data }) => { if (data.session) router.replace("/") })
         const saved = localStorage.getItem("tbm_saved_login")
         if (saved) {
             try {
@@ -28,7 +30,7 @@ export default function LoginPage() {
                 setRememberMe(true)
             } catch {}
         }
-    }, [])
+    }, [router])
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
