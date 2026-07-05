@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
-import { format, parseISO, isSameDay, addDays, differenceInCalendarDays } from "date-fns"
+import { format, parseISO, isSameDay, addDays, differenceInCalendarDays, subMonths } from "date-fns"
 import { ko } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
@@ -265,17 +265,19 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <div className="border border-cur-hairline rounded-[12px] p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center">
+                    <div className="border border-cur-hairline rounded-[12px] p-2 sm:p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center overflow-x-auto">
                         {isRangeMode ? (
                             <Calendar
                                 mode="range"
+                                numberOfMonths={2}
+                                defaultMonth={dateRange?.from ?? subMonths(new Date(), 1)}
                                 selected={dateRange}
                                 onSelect={handleRangeSelect}
                                 locale={ko}
                                 className="w-full"
                                 modifiers={commonModifiers}
                                 modifiersClassNames={commonModifiersClassNames}
-                                classNames={commonClassNames}
+                                classNames={{ ...commonClassNames, months: "flex flex-col gap-4 relative" }}
                             />
                         ) : (
                             <Calendar
