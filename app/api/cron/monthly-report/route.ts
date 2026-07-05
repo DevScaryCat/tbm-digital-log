@@ -66,7 +66,7 @@ async function run(request: Request) {
     }
 
     const nowMs = Date.now();
-    const results = { processed: 0, minutesSent: 0, eduSent: 0, skipped: 0, failed: 0 };
+    const results = { processed: 0, minutesSent: 0, eduSent: 0, skipped: 0, failed: 0, raCounted: 0 };
 
     for (const sub of (subs || []) as any[]) {
       const freq = sub.report_frequency === "weekly" ? "weekly" : "monthly";
@@ -111,6 +111,18 @@ async function run(request: Request) {
       const e = await generateAndSendEducationReport(admin, sub.user_id, recipients, companyName, from, to);
       if (e.status === "sent") results.eduSent++;
       else if (e.status === "mail_failed") results.failed++;
+
+      // 자동 발송 1건 = AI 분석 보고서 월 한도에서 1회 차감 (실제로 발송된 경우만, 주기당 1회)
+      if (m.status === "sent" || e.status === "sent") {
+        const { error: raErr } = await admin.from("tbm_risk_assessments").insert({
+          user_id: sub.user_id,
+          date: todayKST,
+          work_name: `${freq === "weekly" ? "주간" : "월간"} 보고서 자동발송`,
+          items: [],
+        });
+        if (raErr) console.error("auto-report RA count insert error:", raErr);
+        else results.raCounted++;
+      }
 
       // 오늘 처리 표시(데이터 유무와 무관 — 같은 날 재시도 방지)
       await admin.from("subscriptions").update({ report_last_sent_on: todayKST }).eq("user_id", sub.user_id);
