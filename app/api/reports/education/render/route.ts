@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { formatRangeLabelKo } from "@/lib/utils";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { buildEducationRangeContent, renderEducationReportHtml, EducationReportContent } from "@/lib/educationReport";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   }
 
   const admin = getAdminClient();
-  const periodLabel = from === to ? from : `${from} ~ ${to}`;
+  const periodLabel = formatRangeLabelKo(from, to);
   const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, `${periodLabel} 종합`);
   if (!content) return NextResponse.json({ html: "", empty: true });
   return NextResponse.json({ html: renderEducationReportHtml(content) });

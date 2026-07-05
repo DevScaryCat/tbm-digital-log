@@ -4,6 +4,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
+import { formatRangeLabelKo } from "@/lib/utils";
 
 export interface ReportSubscription {
   id: string;
@@ -131,7 +132,7 @@ export async function buildRangeContent(
   fromDate: string,
   toDate: string
 ): Promise<ReportContent> {
-  const label = fromDate === toDate ? fromDate : `${fromDate} ~ ${toDate}`;
+  const label = formatRangeLabelKo(fromDate, toDate);
   return buildMinutesContent(admin, userId, companyName, fromDate, toDate, label);
 }
 

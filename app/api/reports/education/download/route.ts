@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
+import { formatRangeLabelKo } from "@/lib/utils";
 import { buildEducationRangeContent, buildEducationCsv } from "@/lib/educationReport";
 
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   if (!from) return NextResponse.json({ error: "기간이 올바르지 않습니다." }, { status: 400 });
 
   const admin = getAdminClient();
-  const periodLabel = from === to ? from : `${from} ~ ${to}`;
+  const periodLabel = formatRangeLabelKo(from, to);
   const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, `${periodLabel} 종합`);
   if (!content) return NextResponse.json({ error: "해당 기간에 작성된 교육일지가 없습니다." }, { status: 404 });
 

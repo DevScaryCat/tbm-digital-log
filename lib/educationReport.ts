@@ -3,6 +3,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
+import { formatRangeLabelKo } from "@/lib/utils";
 
 export interface EducationDay {
   date: string;
@@ -334,7 +335,7 @@ export async function generateAndSendEducationReport(
   if (valid.length === 0) return { status: "no_recipients" };
   if (!mailerConfigured()) return { status: "mail_failed", detail: "메일 미설정" };
 
-  const periodLabel = fromDate === toDate ? fromDate : `${fromDate} ~ ${toDate}`;
+  const periodLabel = formatRangeLabelKo(fromDate, toDate);
   const content = await buildEducationRangeContent(admin, userId, companyName, fromDate, toDate, `${periodLabel} 종합`);
   if (!content) return { status: "no_data" };
 

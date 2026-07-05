@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { formatRangeLabelKo } from "@/lib/utils"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
@@ -177,7 +178,7 @@ export default function RiskAssessmentPage() {
         setMsg(null)
         const fromS = format(r.from, "yyyy-MM-dd")
         const toS = format(r.to ?? r.from, "yyyy-MM-dd")
-        const label = fromS === toS ? fromS : `${fromS} ~ ${toS}`
+        const label = formatRangeLabelKo(fromS, toS)
         setAnalyzing(true)
         try {
             // 베이직: 체험(더미 결과). Pro: 실제 AI 분석

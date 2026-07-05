@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { formatRangeLabelKo } from "@/lib/utils";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { buildRangeContent, buildRiskCsv, RiskItem } from "@/lib/monthlyReport";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   if (!from) return NextResponse.json({ error: "기간이 올바르지 않습니다." }, { status: 400 });
 
   const date = new Date().toISOString().slice(0, 10);
-  const periodLabel = from === to ? from : `${from} ~ ${to}`;
+  const periodLabel = formatRangeLabelKo(from, to);
 
   if (fmt === "csv") {
     if (items.length === 0) return NextResponse.json({ error: "AI 분석 보고서 내용이 없습니다." }, { status: 400 });

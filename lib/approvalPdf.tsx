@@ -78,7 +78,7 @@ function Badge({ level }: { level: string }) {
 }
 
 function ApprovalGrid() {
-  const cols = ["작성자", "안전관리자", "대표"];
+  const cols = ["작성자", "안전보건교육자", "대표"];
   return (
     <View style={s.appBox}>
       <View style={s.appLabel}><Text style={s.appLabelTxt}>결</Text><Text style={s.appLabelTxt}>재</Text></View>
