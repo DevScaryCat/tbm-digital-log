@@ -339,7 +339,7 @@ export async function generateAndSendEducationReport(
   if (!mailerConfigured()) return { status: "mail_failed", detail: "메일 미설정" };
 
   const periodLabel = formatRangeLabelKo(fromDate, toDate);
-  const content = await buildEducationRangeContent(admin, userId, companyName, fromDate, toDate, `${periodLabel} 종합`);
+  const content = await buildEducationRangeContent(admin, userId, companyName, fromDate, toDate, periodLabel);
   if (!content) return { status: "no_data" };
 
   const date = new Date().toISOString().slice(0, 10);

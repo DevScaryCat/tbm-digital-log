@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
   const admin = getAdminClient();
   const periodLabel = formatRangeLabelKo(from, to);
-  const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, `${periodLabel} 종합`);
+  const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, periodLabel);
   if (!content) return NextResponse.json({ html: "", empty: true });
   return NextResponse.json({ html: renderEducationReportHtml(content) });
 }

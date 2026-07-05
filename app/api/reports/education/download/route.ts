@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   const admin = getAdminClient();
   const periodLabel = formatRangeLabelKo(from, to);
-  const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, `${periodLabel} 종합`);
+  const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, periodLabel);
   if (!content) return NextResponse.json({ error: "해당 기간에 작성된 교육일지가 없습니다." }, { status: 404 });
 
   const date = new Date().toISOString().slice(0, 10);

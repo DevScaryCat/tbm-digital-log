@@ -134,9 +134,9 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
       <Page size="A4" style={s.page} wrap>
         <View style={s.header}>
           <View style={s.appAbs}><ApprovalGrid /></View>
-          <Text style={s.brand}>안전톡톡e · TBM 회의록 종합분석</Text>
+          <Text style={s.brand}>안전톡톡e</Text>
           <Text style={s.title}>{docTitle}</Text>
-          <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
+          <Text style={s.company}>{content.periodLabel}</Text>
         </View>
 
         {/* 통계 */}
@@ -255,9 +255,9 @@ function EducationDoc({ content, docTitle }: { content: EducationReportContent; 
       <Page size="A4" style={s.page} wrap>
         <View style={s.header}>
           <View style={s.appAbs}><ApprovalGrid /></View>
-          <Text style={s.brand}>안전톡톡e · 안전보건교육일지 종합분석</Text>
+          <Text style={s.brand}>안전톡톡e</Text>
           <Text style={s.title}>{docTitle}</Text>
-          <Text style={s.company}>{(content.companyName ? content.companyName + " · " : "") + content.periodLabel}</Text>
+          <Text style={s.company}>{content.periodLabel}</Text>
         </View>
 
         {/* 통계 */}
