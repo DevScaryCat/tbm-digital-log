@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
-import { format, parseISO, isSameDay, addDays, differenceInCalendarDays, subMonths } from "date-fns"
+import { format, parseISO, isSameDay, addDays, differenceInCalendarDays } from "date-fns"
 import { ko } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
@@ -32,14 +32,25 @@ export default function DashboardPage() {
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
     const [rangeNote, setRangeNote] = useState<string | null>(null)
 
-    // 기간 선택은 최대 1개월까지 — 초과 선택 시 시작일+1개월로 자동 보정
+    // 기간 선택은 최대 1개월까지. 날짜 클릭을 직접 제어한다: 시작 → 끝 → (다시 누르면) 새로 시작.
+    // 이미 완성된 범위에서 다른 날(다른 달 포함)을 누르면 이전 범위를 풀고 그 날부터 새 범위를 시작한다.
     const MAX_RANGE_DAYS = 31
-    const handleRangeSelect = (r: DateRange | undefined) => {
-        if (r?.from && r?.to && differenceInCalendarDays(r.to, r.from) > MAX_RANGE_DAYS) {
-            setDateRange({ from: r.from, to: addDays(r.from, MAX_RANGE_DAYS) })
-            setRangeNote("기간은 최대 1개월까지 선택할 수 있어요. 1개월로 맞췄어요.")
+    const handleRangeDayClick = (day: Date) => {
+        if (dateRange?.from && !dateRange?.to) {
+            // 끝점 선택 → 범위 완성 (앞뒤 순서 보정 + 1개월 초과 시 클램프)
+            let from = dateRange.from
+            let to = day
+            if (to < from) { const t = from; from = to; to = t }
+            if (differenceInCalendarDays(to, from) > MAX_RANGE_DAYS) {
+                to = addDays(from, MAX_RANGE_DAYS)
+                setRangeNote("기간은 최대 1개월까지 선택할 수 있어요. 1개월로 맞췄어요.")
+            } else {
+                setRangeNote(null)
+            }
+            setDateRange({ from, to })
         } else {
-            setDateRange(r)
+            // 비어있거나 이미 완성됨 → 이전 선택 풀고 이 날부터 새로 시작
+            setDateRange({ from: day, to: undefined })
             setRangeNote(null)
         }
     }
@@ -269,15 +280,13 @@ export default function DashboardPage() {
                         {isRangeMode ? (
                             <Calendar
                                 mode="range"
-                                numberOfMonths={2}
-                                defaultMonth={dateRange?.from ?? subMonths(new Date(), 1)}
                                 selected={dateRange}
-                                onSelect={handleRangeSelect}
+                                onDayClick={handleRangeDayClick}
                                 locale={ko}
                                 className="w-full"
                                 modifiers={commonModifiers}
                                 modifiersClassNames={commonModifiersClassNames}
-                                classNames={{ ...commonClassNames, months: "flex flex-col gap-4 relative" }}
+                                classNames={commonClassNames}
                             />
                         ) : (
                             <Calendar
