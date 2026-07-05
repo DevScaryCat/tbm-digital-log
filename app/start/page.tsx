@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { MessageSquareWarning, UserCircle, ArrowLeft } from "lucide-react"
 import { Logo } from "@/components/Logo"
+import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
 
 export default function StartPage() {
     const router = useRouter()
@@ -32,6 +33,7 @@ export default function StartPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col relative overflow-hidden font-sans">
+            <InAppBrowserNotice />
             <div className="absolute top-0 left-0 right-0 h-[50vh] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10" />
 
             <div className="p-4">

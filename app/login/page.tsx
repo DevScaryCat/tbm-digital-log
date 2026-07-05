@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { AlertCircle, Loader2, HardHat } from "lucide-react"
+import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
 
 export default function LoginPage() {
     const router = useRouter()
@@ -64,6 +65,7 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
+            <InAppBrowserNotice />
             <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <CardHeader className="space-y-4 text-center pb-8 pt-10">
                     <div className="mx-auto bg-cur-elevated w-16 h-16 rounded-[12px] flex items-center justify-center mb-2 border border-cur-hairline">
