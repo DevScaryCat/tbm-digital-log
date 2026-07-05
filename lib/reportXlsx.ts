@@ -3,6 +3,7 @@
 // 컬럼 너비·굵은 헤더·테두리·위험등급 색상을 넣은 진짜 엑셀로 만든다.
 // exceljs는 Node 전용·무겁기 때문에 첨부 빌더에서 동적 import로만 로드한다.
 import ExcelJS from "exceljs";
+import { riskGrade } from "@/lib/utils";
 
 const INK = "FF26251E";
 const MUTED = "FF807D72";
@@ -77,7 +78,7 @@ export async function buildRiskXlsx(
   items.forEach((it, i) => {
     const r = ws.addRow([
       i + 1, it.recurring ? "반복" : "", it.hazard, it.cause,
-      it.frequency, it.severity, it.risk, it.level, it.measures,
+      it.frequency, it.severity, it.risk, riskGrade(it.risk), it.measures,
     ]);
     r.eachCell((c) => {
       c.border = BORDER;
@@ -88,7 +89,7 @@ export async function buildRiskXlsx(
       r.getCell(col).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
     const lv = r.getCell(8);
-    lv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: levelFill(it.level) } };
+    lv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: levelFill(riskGrade(it.risk)) } };
     lv.font = { size: 10, bold: true, color: { argb: INK } };
   });
 

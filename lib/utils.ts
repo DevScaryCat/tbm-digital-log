@@ -30,3 +30,10 @@ export function isoToKoreanDate(iso: string): string {
 export function formatRangeLabelKo(from: string, to: string): string {
   return from === to ? isoToKoreanDate(from) : `${isoToKoreanDate(from)} ~ ${isoToKoreanDate(to)}`
 }
+
+/** 위험성(가능성×중대성) 점수 → 법정 등급 상/중/하. (리포트 전체 공용 — HTML·PDF·엑셀 일치용) */
+export function riskGrade(risk: number): "상" | "중" | "하" {
+  if (risk >= 9) return "상"
+  if (risk >= 4) return "중"
+  return "하"
+}

@@ -4,6 +4,7 @@ import path from "node:path";
 import { Document, Page, View, Text, Svg, Rect, Font, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import type { ReportContent } from "@/lib/monthlyReport";
 import type { EducationReportContent } from "@/lib/educationReport";
+import { riskGrade } from "@/lib/utils";
 
 // 폰트는 레포에 번들(lib/fonts)해 외부 CDN 의존 없이 Vercel에서도 안정적으로 임베드.
 const FONT_DIR = path.join(process.cwd(), "lib", "fonts");
@@ -126,7 +127,13 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
   const keywords = content.keywords || [];
   const hazards = content.hazards || [];
   const riskItems = content.riskItems || [];
-  const lowCount = hazards.filter((h) => h.level === "하").length;
+  // 위·아래 등급 통일: 위험성평가(riskItems)가 있으면 위험성 점수(가능성×중대성)로 상/중/하 산정하고 요약표도 파생.
+  const summaryItems = riskItems.length > 0
+    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: riskGrade(it.risk), measure: it.measures }))
+    : hazards;
+  const displayHigh = riskItems.length > 0 ? summaryItems.filter((h) => h.level === "상").length : stats.high;
+  const displayMid = riskItems.length > 0 ? summaryItems.filter((h) => h.level === "중").length : stats.mid;
+  const lowCount = summaryItems.filter((h) => h.level === "하").length;
   const topWords = keywords.slice(0, 2).map((k) => k.word);
 
   return (
@@ -142,14 +149,14 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
         {/* 통계 */}
         <View style={s.statRow}>
           <View style={s.statCell}><Text style={s.statLabel}>총 회의록</Text><Text style={s.statVal}>{stats.total}건</Text></View>
-          <View style={[s.statCell, { backgroundColor: C.highBg, borderColor: "#f6cdd6" }]}><Text style={[s.statLabel, { color: C.high }]}>위험성 (상)</Text><Text style={[s.statVal, { color: C.high }]}>{stats.high}건</Text></View>
-          <View style={[s.statCell, { backgroundColor: C.midBg, borderColor: "#ffd9b3" }]}><Text style={[s.statLabel, { color: C.mid }]}>위험성 (중)</Text><Text style={[s.statVal, { color: C.mid }]}>{stats.mid}건</Text></View>
+          <View style={[s.statCell, { backgroundColor: C.highBg, borderColor: "#f6cdd6" }]}><Text style={[s.statLabel, { color: C.high }]}>위험성 (상)</Text><Text style={[s.statVal, { color: C.high }]}>{displayHigh}건</Text></View>
+          <View style={[s.statCell, { backgroundColor: C.midBg, borderColor: "#ffd9b3" }]}><Text style={[s.statLabel, { color: C.mid }]}>위험성 (중)</Text><Text style={[s.statVal, { color: C.mid }]}>{displayMid}건</Text></View>
         </View>
 
         {/* 등급 분포 그래프 */}
         <View wrap={false}>
           <Text style={s.sectionTitle}>위험등급 분포</Text>
-          <GradeChart high={stats.high} mid={stats.mid} low={lowCount} />
+          <GradeChart high={displayHigh} mid={displayMid} low={lowCount} />
         </View>
 
         {/* AI 총평 */}
@@ -184,9 +191,9 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
             <Text style={[s.cell, s.thTxt, { width: 36, textAlign: "center" }]}>등급</Text>
             <Text style={[s.cell, s.thTxt, { flex: 1 }]}>감소대책</Text>
           </View>
-          {hazards.length === 0 ? (
+          {summaryItems.length === 0 ? (
             <Text style={[s.cell, { color: C.muted, textAlign: "center", paddingVertical: 8 }]}>집계된 위험요인이 없습니다.</Text>
-          ) : hazards.map((h, i) => (
+          ) : summaryItems.map((h, i) => (
             <View key={i} style={s.tr} wrap={false}>
               <Text style={[s.cell, { width: 24, textAlign: "center", color: C.muted }]}>{i + 1}</Text>
               <View style={[s.cell, { flex: 1 }]}>
@@ -219,7 +226,7 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
                     {it.cause ? <Text style={{ fontSize: 7.5, color: C.muted }}>{it.cause}</Text> : null}
                   </View>
                   <Text style={[s.cell, { width: 50, textAlign: "center" }]}>{it.frequency}×{it.severity}</Text>
-                  <Text style={[s.cell, { width: 56, textAlign: "center", fontWeight: "bold", color: gradeColor(it.level) }]}>{it.risk} · {it.level}</Text>
+                  <Text style={[s.cell, { width: 56, textAlign: "center", fontWeight: "bold", color: gradeColor(riskGrade(it.risk)) }]}>{it.risk} · {riskGrade(it.risk)}</Text>
                   <Text style={[s.cell, { flex: 1 }]}>{it.measures || "-"}</Text>
                 </View>
               ))}

@@ -203,13 +203,9 @@ function levelBadge(level: string): string {
   return `<span style="display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:9999px;background:${c.bg};color:${c.fg};white-space:nowrap;">${level}</span>`;
 }
 
-function riskLevelColor(level: string): string {
-  switch (level) {
-    case "매우높음": return "#dc2626";
-    case "높음": return "#ea580c";
-    case "보통": return "#ca8a04";
-    default: return "#16a34a";
-  }
+/** 상/중/하 표시 색 (위험성평가표 등급 텍스트용) */
+function gradeColor(g: string): string {
+  return g === "상" ? "#cf2d56" : g === "중" ? "#d4691a" : "#1f8a65";
 }
 
 /** 위험성평가 엑셀표 섹션 (주요 위험요인 아래) */
@@ -227,7 +223,7 @@ function riskTableHtml(items: RiskItem[]): string {
           ${it.cause ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(it.cause)}</div>` : ""}
         </td>
         <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${it.frequency}×${it.severity}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${riskLevelColor(it.level)};font-size:13px;">${it.risk} · ${escapeHtml(it.level)}</b></td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(gradeOf(it.risk))};font-size:13px;">${it.risk} · ${gradeOf(it.risk)}</b></td>
         <td style="padding:8px 6px;border-bottom:1px solid #eee;font-size:12px;color:#444;">${escapeHtml(it.measures) || "-"}</td>
       </tr>`
     )
@@ -257,6 +253,14 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   const hazards = content.hazards || [];
   const aiSummary = content.aiSummary || "";
   const riskItems = content.riskItems || [];
+  // 위(주요 위험요인)·아래(위험성평가표) 등급 통일: 위험성평가(riskItems)가 있으면 그 위험성 점수(가능성×중대성)로
+  // 상/중/하를 산정하고, 위 요약표도 riskItems에서 파생 → 같은 항목이 두 표에서 같은 등급을 갖는다.
+  const summaryItems = riskItems.length > 0
+    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: gradeOf(it.risk), measure: it.measures }))
+    : hazards;
+  const displayStats = riskItems.length > 0
+    ? { total: stats.total, high: riskItems.filter((it) => gradeOf(it.risk) === "상").length, mid: riskItems.filter((it) => gradeOf(it.risk) === "중").length }
+    : stats;
 
   const topWords = keywords.slice(0, 2).map((k) => escapeHtml(k.word));
   const keywordChips =
@@ -272,8 +276,8 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
       : `<span style="font-size:13px;color:#999;">집계된 위험 키워드가 없습니다.</span>`;
 
   const hazardRows =
-    hazards.length > 0
-      ? hazards
+    summaryItems.length > 0
+      ? summaryItems
           .map(
             (h, i) =>
               `<tr style="vertical-align:top;">
@@ -307,11 +311,11 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
           </td>
           <td style="width:33%;background:#fdecef;border:1px solid #f6cdd6;border-radius:8px;padding:12px 6px;">
             <div style="font-size:12px;color:#cf2d56;margin-bottom:4px;">위험성 (상)</div>
-            <div style="font-size:22px;font-weight:700;color:#cf2d56;">${stats.high}<span style="font-size:13px;margin-left:2px;">건</span></div>
+            <div style="font-size:22px;font-weight:700;color:#cf2d56;">${displayStats.high}<span style="font-size:13px;margin-left:2px;">건</span></div>
           </td>
           <td style="width:33%;background:#fff1e3;border:1px solid #ffd9b3;border-radius:8px;padding:12px 6px;">
             <div style="font-size:12px;color:#d4691a;margin-bottom:4px;">위험성 (중)</div>
-            <div style="font-size:22px;font-weight:700;color:#d4691a;">${stats.mid}<span style="font-size:13px;margin-left:2px;">건</span></div>
+            <div style="font-size:22px;font-weight:700;color:#d4691a;">${displayStats.mid}<span style="font-size:13px;margin-left:2px;">건</span></div>
           </td>
         </tr>
       </table>
@@ -389,7 +393,7 @@ export function buildRiskCsv(
   meta: { company: string; period: string; date: string }
 ): string {
   const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
-  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, it.level, it.measures]);
+  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, gradeOf(it.risk), it.measures]);
   const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
   return "﻿" + top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
 }
