@@ -85,6 +85,7 @@ export default function RiskAssessmentPage() {
     const [minutesHtml, setMinutesHtml] = useState("")
     const [eduHtml, setEduHtml] = useState("")
     const [loadingPreviews, setLoadingPreviews] = useState(false)
+    const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
 
 
     useEffect(() => {
@@ -285,26 +286,30 @@ export default function RiskAssessmentPage() {
 
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-    // 이메일 형식 보고서 미리보기(회의록 종합분석 / 안전보건교육일지 종합분석) — 실제 발송 형식과 동일. step 2·3 공용
+    // 이메일 형식 보고서 미리보기 — 탭으로 하나씩, iframe 없이 인라인으로 전체 펼침(실제 발송 형식과 동일). step 2·3 공용
+    const activePreviewHtml = previewTab === "minutes" ? minutesHtml : eduHtml
+    const emptyPreviewMsg = previewTab === "minutes" ? "이 기간에 회의록이 없습니다." : "이 기간에 교육일지가 없습니다."
     const reportPreviews = (
-        <div className="space-y-4">
-            <div className="space-y-2">
-                <h3 className="font-bold text-[15px] text-cur-ink">TBM 회의록 종합분석 <span className="text-[11px] font-medium text-cur-muted-soft">· 위험성평가표 포함</span></h3>
-                <div className="relative h-[440px] border border-cur-hairline rounded-xl overflow-hidden bg-white">
-                    {minutesHtml
-                        ? <iframe title="회의록 종합분석" srcDoc={minutesHtml} className="w-full h-full" />
-                        : <div className="absolute inset-0 flex items-center justify-center text-[13px] text-cur-muted-soft">{loadingPreviews ? <Loader2 className="w-6 h-6 animate-spin text-cur-muted" /> : "이 기간에 회의록이 없습니다."}</div>}
-                </div>
+        <div className="space-y-3">
+            <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
+                {([["minutes", "회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setPreviewTab(key)}
+                        className={`flex-1 h-9 rounded-md text-[13px] font-semibold transition-colors ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
+                    >
+                        {label}
+                    </button>
+                ))}
             </div>
-            {(loadingPreviews || eduHtml) && (
-                <div className="space-y-2">
-                    <h3 className="font-bold text-[15px] text-cur-ink">안전보건교육일지 종합분석</h3>
-                    <div className="relative h-[440px] border border-cur-hairline rounded-xl overflow-hidden bg-white">
-                        {eduHtml
-                            ? <iframe title="안전보건교육일지 종합분석" srcDoc={eduHtml} className="w-full h-full" />
-                            : <div className="absolute inset-0 flex items-center justify-center text-[13px] text-cur-muted-soft">{loadingPreviews ? <Loader2 className="w-6 h-6 animate-spin text-cur-muted" /> : "이 기간에 교육일지가 없습니다."}</div>}
-                    </div>
+            {loadingPreviews ? (
+                <div className="flex items-center justify-center py-20 border border-cur-hairline rounded-xl bg-white">
+                    <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
                 </div>
+            ) : activePreviewHtml ? (
+                <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: activePreviewHtml }} />
+            ) : (
+                <div className="py-16 text-center text-[13px] text-cur-muted-soft border border-cur-hairline rounded-xl bg-white">{emptyPreviewMsg}</div>
             )}
         </div>
     )
@@ -436,7 +441,7 @@ export default function RiskAssessmentPage() {
                                 <h3 className="font-bold text-[15px]">이메일로 보고서 전송</h3>
                                 <p className="text-[12px] text-cur-muted-soft">여러 명은 쉼표(,)로 구분해 최대 5명까지 보낼 수 있어요.</p>
                                 <div className="flex gap-2">
-                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="1safetalk@safe.com, 2safetalk@safe.com" className="h-11" />
+                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (쉼표로 여러 명)" className="h-11" />
                                     <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
                                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
                                     </Button>
