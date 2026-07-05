@@ -32,10 +32,12 @@ export default function DashboardPage() {
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
     const [rangeNote, setRangeNote] = useState<string | null>(null)
 
-    // 기간 선택은 최대 1개월까지. 날짜 클릭을 직접 제어한다: 시작 → 끝 → (다시 누르면) 새로 시작.
+    // 기간 선택은 최대 1개월까지. rdp 표준 onSelect(단일 소스 제어)로 이중 하이라이트를 막고,
+    // 클릭한 날(day) 기준으로 직접 판단: 시작 → 끝 → (다시 누르면) 새로 시작.
     // 이미 완성된 범위에서 다른 날(다른 달 포함)을 누르면 이전 범위를 풀고 그 날부터 새 범위를 시작한다.
     const MAX_RANGE_DAYS = 31
-    const handleRangeDayClick = (day: Date) => {
+    const handleRangeSelect = (_range: DateRange | undefined, day: Date | undefined) => {
+        if (!day) return
         if (dateRange?.from && !dateRange?.to) {
             // 끝점 선택 → 범위 완성 (앞뒤 순서 보정 + 1개월 초과 시 클램프)
             let from = dateRange.from
@@ -281,10 +283,7 @@ export default function DashboardPage() {
                             <Calendar
                                 mode="range"
                                 selected={dateRange}
-                                onDayClick={handleRangeDayClick}
-                                disabled={dateRange?.from && !dateRange?.to
-                                    ? [{ before: addDays(dateRange.from, -MAX_RANGE_DAYS) }, { after: addDays(dateRange.from, MAX_RANGE_DAYS) }]
-                                    : undefined}
+                                onSelect={handleRangeSelect}
                                 locale={ko}
                                 className="w-full"
                                 modifiers={commonModifiers}
