@@ -27,7 +27,7 @@ export default function DashboardPage() {
 
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
     const [dateRange, setDateRange] = useState<DateRange | undefined>()
-    const [isRangeMode, setIsRangeMode] = useState(false)
+    const [isRangeMode, setIsRangeMode] = useState(true)
     const [isDrawerOpen, setIsDrawerOpen] = useState(false)
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
     const [rangeNote, setRangeNote] = useState<string | null>(null)
@@ -213,38 +213,7 @@ export default function DashboardPage() {
                 <div className="p-6 space-y-6 flex-1 bg-cur-canvas-soft">
 
                     <div className="space-y-3">
-                        <div 
-                            className={cn("flex items-center justify-between bg-cur-card p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", !isRangeMode ? "border-cur-primary ring-1 ring-cur-primary" : "border-cur-hairline")}
-                            onClick={() => {
-                                setIsRangeMode(false);
-                                setDateRange(undefined);
-                                setSelectedDate(new Date());
-                            }}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={cn("p-2 rounded-[8px] transition-colors", !isRangeMode ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-ink")}>
-                                    <CalendarIcon className="w-5 h-5" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <Label className="font-semibold text-cur-ink text-[15px] cursor-pointer pointer-events-none">
-                                        일별 보기
-                                    </Label>
-                                    <span className="text-[13px] text-cur-muted-soft">
-                                        날짜를 눌러 내용을 확인하세요
-                                    </span>
-                                </div>
-                            </div>
-                            <Switch
-                                checked={!isRangeMode}
-                                onCheckedChange={() => {
-                                    setIsRangeMode(false);
-                                    setDateRange(undefined);
-                                    setSelectedDate(new Date());
-                                }}
-                            />
-                        </div>
-
-                        <div 
+                        <div
                             className={cn("flex items-center justify-between bg-cur-card p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", isRangeMode ? "border-cur-primary ring-1 ring-cur-primary" : "border-cur-hairline")}
                             onClick={() => {
                                 setIsRangeMode(true);
@@ -274,6 +243,37 @@ export default function DashboardPage() {
                                 }}
                             />
                         </div>
+
+                        <div
+                            className={cn("flex items-center justify-between bg-cur-card p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", !isRangeMode ? "border-cur-primary ring-1 ring-cur-primary" : "border-cur-hairline")}
+                            onClick={() => {
+                                setIsRangeMode(false);
+                                setDateRange(undefined);
+                                setSelectedDate(new Date());
+                            }}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={cn("p-2 rounded-[8px] transition-colors", !isRangeMode ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-ink")}>
+                                    <CalendarIcon className="w-5 h-5" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <Label className="font-semibold text-cur-ink text-[15px] cursor-pointer pointer-events-none">
+                                        일별 보기
+                                    </Label>
+                                    <span className="text-[13px] text-cur-muted-soft">
+                                        날짜를 눌러 내용을 확인하세요
+                                    </span>
+                                </div>
+                            </div>
+                            <Switch
+                                checked={!isRangeMode}
+                                onCheckedChange={() => {
+                                    setIsRangeMode(false);
+                                    setDateRange(undefined);
+                                    setSelectedDate(new Date());
+                                }}
+                            />
+                        </div>
                     </div>
 
                     <div className="border border-cur-hairline rounded-[12px] p-2 sm:p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center overflow-x-auto">
@@ -282,6 +282,9 @@ export default function DashboardPage() {
                                 mode="range"
                                 selected={dateRange}
                                 onDayClick={handleRangeDayClick}
+                                disabled={dateRange?.from && !dateRange?.to
+                                    ? [{ before: addDays(dateRange.from, -MAX_RANGE_DAYS) }, { after: addDays(dateRange.from, MAX_RANGE_DAYS) }]
+                                    : undefined}
                                 locale={ko}
                                 className="w-full"
                                 modifiers={commonModifiers}
