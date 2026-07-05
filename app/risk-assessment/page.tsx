@@ -488,10 +488,10 @@ export default function RiskAssessmentPage() {
                                 <div className="space-y-2">
                                     <p className="text-[13px] font-semibold text-cur-body">TBM 회의록 종합분석 <span className="text-[11px] font-normal text-cur-muted-soft">· 위험성평가표 포함</span></p>
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("csv")} className="h-11 rounded-xl border-cur-hairline">
+                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("csv")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${minutesDownloading === "csv" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
                                             {minutesDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
                                         </Button>
-                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("pdf")} className="h-11 rounded-xl border-cur-hairline">
+                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("pdf")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${minutesDownloading === "pdf" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
                                             {minutesDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
                                         </Button>
                                     </div>
@@ -502,10 +502,10 @@ export default function RiskAssessmentPage() {
                                     <div className="space-y-2">
                                         <p className="text-[13px] font-semibold text-cur-body">안전보건교육일지 종합분석</p>
                                         <div className="grid grid-cols-2 gap-2">
-                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("csv")} className="h-11 rounded-xl border-cur-hairline">
+                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("csv")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${eduDownloading === "csv" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
                                                 {eduDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
                                             </Button>
-                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("pdf")} className="h-11 rounded-xl border-cur-hairline">
+                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("pdf")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${eduDownloading === "pdf" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
                                                 {eduDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
                                             </Button>
                                         </div>
