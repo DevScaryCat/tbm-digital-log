@@ -28,8 +28,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [minutesHtml, setMinutesHtml] = useState("")
     const [eduHtml, setEduHtml] = useState("")
     const [loadingPreview, setLoadingPreview] = useState(false)
-    const [minutesReady, setMinutesReady] = useState(false)
-    const [eduReady, setEduReady] = useState(false)
 
     const authToken = async () => {
         const { data } = await supabase.auth.getSession()
@@ -190,11 +188,11 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 </>
             )}
 
-            {/* 미리보기 — 회의록 종합 / 안전보건교육일지 종합 2개 탭 (실제 발송 형식) */}
+            {/* 미리보기 — TBM 회의록 종합 / 안전보건교육일지 종합 2개 탭, iframe 없이 인라인 전체 펼침 */}
             <div className="space-y-2">
                 <Label className="text-[13px]">보고서 미리보기</Label>
                 <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                    {([["minutes", "회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
+                    {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
                         <button
                             key={key}
                             onClick={() => setPreviewTab(key)}
@@ -204,41 +202,19 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                         </button>
                     ))}
                 </div>
-                <div className="relative h-[360px] border border-cur-hairline rounded-lg overflow-hidden bg-white">
-                    {minutesHtml && (
-                        <iframe
-                            title="회의록 종합 미리보기"
-                            srcDoc={minutesHtml}
-                            onLoad={() => setMinutesReady(true)}
-                            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${previewTab === "minutes" && minutesReady ? "opacity-100 z-10" : "opacity-0 -z-10"}`}
-                        />
-                    )}
-                    {eduHtml && (
-                        <iframe
-                            title="교육 종합 미리보기"
-                            srcDoc={eduHtml}
-                            onLoad={() => setEduReady(true)}
-                            className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${previewTab === "edu" && eduReady ? "opacity-100 z-10" : "opacity-0 -z-10"}`}
-                        />
-                    )}
-                    {(() => {
-                        const ready = previewTab === "minutes" ? minutesReady : eduReady
-                        const html = previewTab === "minutes" ? minutesHtml : eduHtml
-                        if (ready && html) return null
+                {(() => {
+                    const html = previewTab === "minutes" ? minutesHtml : eduHtml
+                    if (loadingPreview) {
                         return (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-cur-card z-20">
-                                {!loadingPreview && !html ? (
-                                    <p className="text-[13px] text-cur-muted-soft">미리보기를 불러오지 못했습니다.</p>
-                                ) : (
-                                    <>
-                                        <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
-                                        <p className="text-[12px] text-cur-muted-soft">미리보기 불러오는 중…</p>
-                                    </>
-                                )}
+                            <div className="flex flex-col items-center justify-center gap-2 py-20 border border-cur-hairline rounded-lg bg-white">
+                                <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
+                                <p className="text-[12px] text-cur-muted-soft">미리보기 불러오는 중…</p>
                             </div>
                         )
-                    })()}
-                </div>
+                    }
+                    if (html) return <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: html }} />
+                    return <div className="py-16 text-center text-[13px] text-cur-muted-soft border border-cur-hairline rounded-lg bg-white">미리보기를 불러오지 못했습니다.</div>
+                })()}
                 <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
             </div>
         </div>

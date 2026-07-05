@@ -292,7 +292,7 @@ export default function RiskAssessmentPage() {
     const reportPreviews = (
         <div className="space-y-3">
             <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                {([["minutes", "회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
+                {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
                     <button
                         key={key}
                         onClick={() => setPreviewTab(key)}
