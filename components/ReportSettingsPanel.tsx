@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Sparkles } from "lucide-react"
+import { SAMPLE_MINUTES_HTML, SAMPLE_EDU_HTML } from "@/components/reportSampleHtml"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -25,9 +26,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
-    const [minutesHtml, setMinutesHtml] = useState("")
-    const [eduHtml, setEduHtml] = useState("")
-    const [loadingPreview, setLoadingPreview] = useState(false)
 
     const authToken = async () => {
         const { data } = await supabase.auth.getSession()
@@ -46,18 +44,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 setFrequency(j.frequency === "weekly" ? "weekly" : "monthly")
                 setWeekday(j.weekday ?? 1)
             }
-            setLoadingPreview(true)
-            try {
-                const h = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-                const [m, e] = await Promise.all([
-                    fetch("/api/reports/minutes/render", { method: "POST", headers: h, body: "{}" }),
-                    fetch("/api/reports/education/render", { method: "POST", headers: h, body: "{}" }),
-                ])
-                if (!cancelled) {
-                    if (m.ok) { const j = await m.json(); setMinutesHtml(j.html || "") }
-                    if (e.ok) { const j = await e.json(); setEduHtml(j.html || "") }
-                }
-            } finally { if (!cancelled) setLoadingPreview(false) }
         })()
         return () => { cancelled = true }
     }, [])
@@ -202,19 +188,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                         </button>
                     ))}
                 </div>
-                {(() => {
-                    const html = previewTab === "minutes" ? minutesHtml : eduHtml
-                    if (loadingPreview) {
-                        return (
-                            <div className="flex flex-col items-center justify-center gap-2 py-20 border border-cur-hairline rounded-lg bg-white">
-                                <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
-                                <p className="text-[12px] text-cur-muted-soft">미리보기 불러오는 중…</p>
-                            </div>
-                        )
-                    }
-                    if (html) return <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: html }} />
-                    return <div className="py-16 text-center text-[13px] text-cur-muted-soft border border-cur-hairline rounded-lg bg-white">미리보기를 불러오지 못했습니다.</div>
-                })()}
+                <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: previewTab === "minutes" ? SAMPLE_MINUTES_HTML : SAMPLE_EDU_HTML }} />
                 <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
             </div>
         </div>
