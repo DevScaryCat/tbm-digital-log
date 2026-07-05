@@ -65,7 +65,6 @@ export default function RiskAssessmentPage() {
     const [checking, setChecking] = useState(true)
     const [pro, setPro] = useState(false)
     const [companyName, setCompanyName] = useState("")
-    const today = format(new Date(), "yyyy-MM-dd")
 
     const [step, setStep] = useState<0 | 1 | 2 | 3>(1)
     const [analyzing, setAnalyzing] = useState(false)
@@ -82,8 +81,6 @@ export default function RiskAssessmentPage() {
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 같은 기간 안전보건교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
     const [eduStats, setEduStats] = useState<{ sessions: number; days: number; headcount: number; avg: string } | null>(null)
-    const [eduDownloading, setEduDownloading] = useState<"csv" | "pdf" | null>(null)
-    const [minutesDownloading, setMinutesDownloading] = useState<"csv" | "pdf" | null>(null)
     // 이메일 형식 미리보기(회의록 종합분석 / 안전보건교육일지 종합분석) HTML
     const [minutesHtml, setMinutesHtml] = useState("")
     const [eduHtml, setEduHtml] = useState("")
@@ -236,70 +233,10 @@ export default function RiskAssessmentPage() {
         }
     }
 
-    // 파일 다운로드: 모바일은 같은 탭이 파일 뷰어로 덮여 앱으로 못 돌아오므로 새 탭에서 연다.
-    // (fetch 이후 window.open은 iOS에서 팝업 차단되므로, 클릭 제스처 내에서 미리 빈 탭을 연다.)
-    const openBlankTabOnMobile = (): Window | null =>
-        (typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent))
-            ? window.open("", "_blank")
-            : null
-    const presentFile = (blob: Blob, filename: string, newTab: Window | null) => {
-        const url = URL.createObjectURL(blob)
-        if (newTab) {
-            newTab.location.href = url // 미리 연 탭에 파일 로드 → 앱 탭은 그대로 유지
-        } else {
-            const a = document.createElement("a")
-            a.href = url; a.download = filename
-            document.body.appendChild(a); a.click(); a.remove()
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000) // 모바일이 blob을 읽을 시간 확보
-    }
-
-    // 회의록 종합분석(+위험성평가표)을 파일로 내려받기 (보고서 형식 PDF / 위험성평가 CSV)
-    const downloadMinutes = async (fmt: "csv" | "pdf") => {
-        if (!range?.from) return
-        const fromS = format(range.from, "yyyy-MM-dd")
-        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
-        setMinutesDownloading(fmt)
-        const newTab = openBlankTabOnMobile()
-        try {
-            const { data: s } = await supabase.auth.getSession()
-            const res = await fetch("/api/reports/minutes/download", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` },
-                body: JSON.stringify({ from: fromS, to: toS, items, format: fmt }),
-            })
-            if (!res.ok) { newTab?.close(); const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
-            const blob = await res.blob()
-            presentFile(blob, `회의록_AI분석보고서_${today}.${fmt}`, newTab)
-        } catch { newTab?.close(); alert("다운로드 중 오류가 발생했습니다.") } finally { setMinutesDownloading(null) }
-    }
-
-    // 안전보건교육일지 종합을 파일(엑셀/PDF)로 내려받기 — 서버가 기간 교육일지를 분석해 생성
-    const downloadEducation = async (fmt: "csv" | "pdf") => {
-        if (!range?.from) return
-        const fromS = format(range.from, "yyyy-MM-dd")
-        const toS = format(range.to ?? range.from, "yyyy-MM-dd")
-        setEduDownloading(fmt)
-        const newTab = openBlankTabOnMobile()
-        try {
-            const { data: s } = await supabase.auth.getSession()
-            const res = await fetch(`/api/reports/education/download?from=${fromS}&to=${toS}&format=${fmt}`, {
-                headers: { Authorization: `Bearer ${s?.session?.access_token}` },
-            })
-            if (!res.ok) { newTab?.close(); const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
-            const blob = await res.blob()
-            presentFile(blob, `안전보건교육일지_종합_${today}.${fmt}`, newTab)
-        } catch {
-            newTab?.close()
-            alert("다운로드 중 오류가 발생했습니다.")
-        } finally {
-            setEduDownloading(null)
-        }
-    }
-
     const sendReport = async () => {
         const recipients = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
         if (recipients.length === 0) { setSendMsg({ type: "err", text: "받는 사람 이메일을 입력해주세요." }); return }
+        if (recipients.length > 5) { setSendMsg({ type: "err", text: "최대 5명까지 보낼 수 있어요." }); return }
         setSending(true); setSendMsg(null)
         try {
             // 베이직 체험: 실제 발송하지 않음
@@ -494,49 +431,17 @@ export default function RiskAssessmentPage() {
 
                             {reportPreviews}
 
-                            {/* 내보내기 액션 */}
-                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4 print:hidden">
-                                <h3 className="font-bold text-[15px]">내보내기 / 제출</h3>
-
-                                {/* TBM 회의록 종합분석 (위험성평가 포함) — 보고서 형식 PDF/CSV */}
-                                <div className="space-y-2">
-                                    <p className="text-[13px] font-semibold text-cur-body">TBM 회의록 종합분석 <span className="text-[11px] font-normal text-cur-muted-soft">· 위험성평가표 포함</span></p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("csv")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${minutesDownloading === "csv" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
-                                            {minutesDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
-                                        </Button>
-                                        <Button variant="outline" disabled={!!minutesDownloading} onClick={() => downloadMinutes("pdf")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${minutesDownloading === "pdf" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
-                                            {minutesDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
-                                        </Button>
-                                    </div>
+                            {/* 이메일로 보고서 전송 (회의록 종합 + 안전보건교육일지 종합, 메일 2개) */}
+                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-2 print:hidden">
+                                <h3 className="font-bold text-[15px]">이메일로 보고서 전송</h3>
+                                <p className="text-[12px] text-cur-muted-soft">여러 명은 쉼표(,)로 구분해 최대 5명까지 보낼 수 있어요.</p>
+                                <div className="flex gap-2">
+                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="1safetalk@safe.com, 2safetalk@safe.com" className="h-11" />
+                                    <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
+                                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
+                                    </Button>
                                 </div>
-
-                                {/* 안전보건교육일지 종합 (기간 내 교육일지가 있을 때) — 회의록과 분리된 별도 파일 */}
-                                {eduStats && eduStats.sessions > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-[13px] font-semibold text-cur-body">안전보건교육일지 종합분석</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("csv")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${eduDownloading === "csv" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
-                                                {eduDownloading === "csv" ? <Loader2 className="w-4 h-4 animate-spin" /> : "엑셀"}
-                                            </Button>
-                                            <Button variant="outline" disabled={!!eduDownloading} onClick={() => downloadEducation("pdf")} className={`h-11 rounded-xl border font-medium transition-all active:scale-[0.97] ${eduDownloading === "pdf" ? "bg-cur-primary text-white border-cur-primary hover:bg-cur-primary" : "border-cur-hairline text-cur-ink active:bg-cur-primary/10"}`}>
-                                                {eduDownloading === "pdf" ? <Loader2 className="w-4 h-4 animate-spin" /> : "PDF"}
-                                            </Button>
-                                        </div>
-                                        <p className="text-[11px] text-cur-muted-soft">교육일지가 분리된 별도 파일로 저장됩니다. (PDF는 생성에 잠시 걸려요)</p>
-                                    </div>
-                                )}
-
-                                <div className="border-t border-cur-hairline pt-4 space-y-2">
-                                    <h4 className="font-bold text-[14px]">이메일로 보고서 전송</h4>
-                                    <div className="flex gap-2">
-                                        <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (여러 명은 쉼표로 구분)" className="h-11" />
-                                        <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
-                                            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
-                                        </Button>
-                                    </div>
-                                    {sendMsg && <p className={`text-[13px] ${sendMsg.type === "ok" ? "text-cur-primary" : "text-cur-error"}`}>{sendMsg.text}</p>}
-                                </div>
+                                {sendMsg && <p className={`text-[13px] ${sendMsg.type === "ok" ? "text-cur-primary" : "text-cur-error"}`}>{sendMsg.text}</p>}
                             </div>
                         </div>
                     )}

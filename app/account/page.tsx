@@ -323,8 +323,7 @@ export default function AccountPage() {
                                     <h2 className="text-[16px] font-bold text-cur-ink">월간 보고서 자동 발송</h2>
                                 </div>
                                 <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    매월 1일, 지난 달 안전활동을 AI가 분석한 보고서를 아래 이메일로 자동 발송합니다.
-                                    받는 분은 별도 가입·로그인이 필요 없습니다. (최대 5개)
+                                    매월 1일, 지난 달 안전활동을 AI가 분석한 보고서를 아래 이메일로 자동 발송합니다. 최대 5명까지 발송 가능합니다.
                                 </p>
 
                                 <div className="space-y-2">
@@ -354,7 +353,7 @@ export default function AccountPage() {
                                         value={newEmail}
                                         onChange={(e) => setNewEmail(e.target.value)}
                                         onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }}
-                                        placeholder="사장님/안전관리자 이메일"
+                                        placeholder="대표자 이메일, 담당자 이메일 등"
                                         className="h-11"
                                     />
                                     <Button

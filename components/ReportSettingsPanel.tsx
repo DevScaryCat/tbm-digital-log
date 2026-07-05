@@ -113,7 +113,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
             )}
             <p className="text-[13px] text-cur-muted leading-relaxed">
                 지정한 주기(매주·매달)에 안전활동을 분석한 보고서를 사장·안전보건 담당자에게 자동 발송합니다.
-                <span className="text-cur-body font-medium"> 회의록 종합·안전보건교육일지 종합 메일 2개</span>로 발송되며, 받는 분은 가입·로그인 불필요.
             </p>
 
             {msg && (
@@ -182,7 +181,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                             ))
                         )}
                         <div className="flex gap-2">
-                            <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="사장님/안전관리자 이메일" className="h-11" />
+                            <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="대표자 이메일, 담당자 이메일 등" className="h-11" />
                             <Button onClick={addRecipient} disabled={saving || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
                                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
                             </Button>
