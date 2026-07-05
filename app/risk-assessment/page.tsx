@@ -235,12 +235,31 @@ export default function RiskAssessmentPage() {
         }
     }
 
+    // 파일 다운로드: 모바일은 같은 탭이 파일 뷰어로 덮여 앱으로 못 돌아오므로 새 탭에서 연다.
+    // (fetch 이후 window.open은 iOS에서 팝업 차단되므로, 클릭 제스처 내에서 미리 빈 탭을 연다.)
+    const openBlankTabOnMobile = (): Window | null =>
+        (typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent))
+            ? window.open("", "_blank")
+            : null
+    const presentFile = (blob: Blob, filename: string, newTab: Window | null) => {
+        const url = URL.createObjectURL(blob)
+        if (newTab) {
+            newTab.location.href = url // 미리 연 탭에 파일 로드 → 앱 탭은 그대로 유지
+        } else {
+            const a = document.createElement("a")
+            a.href = url; a.download = filename
+            document.body.appendChild(a); a.click(); a.remove()
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000) // 모바일이 blob을 읽을 시간 확보
+    }
+
     // 회의록 종합분석(+위험성평가표)을 파일로 내려받기 (보고서 형식 PDF / 위험성평가 CSV)
     const downloadMinutes = async (fmt: "csv" | "pdf") => {
         if (!range?.from) return
         const fromS = format(range.from, "yyyy-MM-dd")
         const toS = format(range.to ?? range.from, "yyyy-MM-dd")
         setMinutesDownloading(fmt)
+        const newTab = openBlankTabOnMobile()
         try {
             const { data: s } = await supabase.auth.getSession()
             const res = await fetch("/api/reports/minutes/download", {
@@ -248,13 +267,10 @@ export default function RiskAssessmentPage() {
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` },
                 body: JSON.stringify({ from: fromS, to: toS, items, format: fmt }),
             })
-            if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
+            if (!res.ok) { newTab?.close(); const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
             const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement("a")
-            a.href = url; a.download = `회의록_AI분석보고서_${today}.${fmt}`; a.click()
-            URL.revokeObjectURL(url)
-        } catch { alert("다운로드 중 오류가 발생했습니다.") } finally { setMinutesDownloading(null) }
+            presentFile(blob, `회의록_AI분석보고서_${today}.${fmt}`, newTab)
+        } catch { newTab?.close(); alert("다운로드 중 오류가 발생했습니다.") } finally { setMinutesDownloading(null) }
     }
 
     // 안전보건교육일지 종합을 파일(엑셀/PDF)로 내려받기 — 서버가 기간 교육일지를 분석해 생성
@@ -263,20 +279,17 @@ export default function RiskAssessmentPage() {
         const fromS = format(range.from, "yyyy-MM-dd")
         const toS = format(range.to ?? range.from, "yyyy-MM-dd")
         setEduDownloading(fmt)
+        const newTab = openBlankTabOnMobile()
         try {
             const { data: s } = await supabase.auth.getSession()
             const res = await fetch(`/api/reports/education/download?from=${fromS}&to=${toS}&format=${fmt}`, {
                 headers: { Authorization: `Bearer ${s?.session?.access_token}` },
             })
-            if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
+            if (!res.ok) { newTab?.close(); const j = await res.json().catch(() => ({})); alert(j.error || "다운로드 실패"); return }
             const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement("a")
-            a.href = url
-            a.download = `안전보건교육일지_종합_${today}.${fmt}`
-            a.click()
-            URL.revokeObjectURL(url)
+            presentFile(blob, `안전보건교육일지_종합_${today}.${fmt}`, newTab)
         } catch {
+            newTab?.close()
             alert("다운로드 중 오류가 발생했습니다.")
         } finally {
             setEduDownloading(null)
