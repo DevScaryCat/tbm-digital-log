@@ -308,11 +308,14 @@ export async function buildEducationAttachments(
     console.error("교육 결재서류 PDF 생성 실패:", e);
   }
 
-  attachments.push({
-    filename: `안전보건교육일지_종합_${date}.csv`,
-    content: buildEducationCsv(content),
-    contentType: "text/csv;charset=utf-8",
-  });
+  try {
+    const { buildEducationXlsx } = await import("@/lib/reportXlsx");
+    const xlsx = await buildEducationXlsx(content);
+    attachments.push({ filename: `안전보건교육일지_종합_${date}.xlsx`, content: xlsx, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  } catch (e) {
+    console.error("교육 종합 엑셀 생성 실패, CSV로 대체:", e);
+    attachments.push({ filename: `안전보건교육일지_종합_${date}.csv`, content: buildEducationCsv(content), contentType: "text/csv;charset=utf-8" });
+  }
 
   return attachments;
 }

@@ -415,12 +415,15 @@ export async function buildReportAttachments(
   }
 
   if (content.riskItems && content.riskItems.length > 0) {
-    const csv = buildRiskCsv(content.riskItems, {
-      company: content.companyName || "",
-      period: content.periodLabel,
-      date,
-    });
-    attachments.push({ filename: `AI분석보고서_${date}.csv`, content: csv, contentType: "text/csv;charset=utf-8" });
+    const meta = { company: content.companyName || "", period: content.periodLabel, date };
+    try {
+      const { buildRiskXlsx } = await import("@/lib/reportXlsx");
+      const xlsx = await buildRiskXlsx(content.riskItems, meta);
+      attachments.push({ filename: `위험성평가표_${date}.xlsx`, content: xlsx, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    } catch (e) {
+      console.error("위험성평가표 엑셀 생성 실패, CSV로 대체:", e);
+      attachments.push({ filename: `위험성평가표_${date}.csv`, content: buildRiskCsv(content.riskItems, meta), contentType: "text/csv;charset=utf-8" });
+    }
   }
 
   return attachments;
