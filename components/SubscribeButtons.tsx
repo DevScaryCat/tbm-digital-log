@@ -83,6 +83,9 @@ export function SubscribeButtons({
                 billingKeyMethod: method.billingKeyMethod,
                 issueId: crypto.randomUUID().replace(/-/g, ""),
                 issueName: plan === "monthly_pro" ? "안전톡톡e Pro 월간구독" : "안전톡톡e 월간구독",
+                // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
+                displayAmount: plan === "monthly_pro" ? 4900 : 1900,
+                currency: "KRW",
                 customer: {
                     customerId: user.id,
                     fullName,
