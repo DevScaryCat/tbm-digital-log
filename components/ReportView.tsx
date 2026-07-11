@@ -11,6 +11,8 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
     const maleCount = participants.filter(p => p.gender === 'M').length;
     const femaleCount = participants.filter(p => p.gender === 'F').length;
     const totalCount = participants.length;
+    // 참석자 명단은 30명/페이지. 31명 이상이면 페이지를 추가 발행해 유실 없이 인쇄한다.
+    const pageCount = Math.max(1, Math.ceil(participants.length / 30));
 
     return (
         <div className="report-container bg-cur-card text-black">
@@ -122,55 +124,60 @@ export const ReportView: React.FC<ReportViewProps> = ({ log, participants }) => 
                 <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            {/* --- PAGE 2: 참석자 명단 --- */}
-            <div className="w-[210mm] min-h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">
-                <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>교 육 참 석 자 명 단</h1>
-                <div className="flex justify-between mb-4 text-sm font-bold">
-                    <div>일시: {log.date}</div>
-                    <div>업체명: {log.company_name}</div>
-                </div>
-                <table className="w-full border-collapse border border-black text-sm text-center" style={{ tableLayout: "fixed" }}>
-                    <colgroup>
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "25%" }} />
-                        <col style={{ width: "15%" }} />
-                        <col style={{ width: "10%" }} />
-                        <col style={{ width: "25%" }} />
-                        <col style={{ width: "15%" }} />
-                    </colgroup>
-                    <thead>
-                        <tr className="h-10 bg-gray-100">
-                            <th className="border border-black">순번</th>
-                            <th className="border border-black">이 름</th>
-                            <th className="border border-black">서 명</th>
-                            <th className="border border-black">순번</th>
-                            <th className="border border-black">이 름</th>
-                            <th className="border border-black">서 명</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Array.from({ length: 15 }).map((_, i) => {
-                            const p1 = participants[i];
-                            const p2 = participants[i + 15];
-                            return (
-                                <tr key={i} className="h-14">
-                                    <td className="border border-black">{i + 1}</td>
-                                    <td className="border border-black font-bold text-lg">{p1?.name || ''}</td>
-                                    <td className="border border-black p-1">
-                                        {p1?.signature && <img src={p1.signature} className="h-full max-h-12 mx-auto object-contain" alt="서명" />}
-                                    </td>
-                                    <td className="border border-black">{i + 16}</td>
-                                    <td className="border border-black font-bold text-lg">{p2?.name || ''}</td>
-                                    <td className="border border-black p-1">
-                                        {p2?.signature && <img src={p2.signature} className="h-full max-h-12 mx-auto object-contain" alt="서명" />}
-                                    </td>
+            {/* --- PAGE 2+: 참석자 명단 (30명/페이지 — 31명 이상도 유실 없이 인쇄) --- */}
+            {Array.from({ length: pageCount }).map((_, pageIdx) => {
+                const base = pageIdx * 30;
+                return (
+                    <div key={pageIdx} className="w-[210mm] min-h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">
+                        <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>교 육 참 석 자 명 단{pageCount > 1 ? ` (${pageIdx + 1}/${pageCount})` : ''}</h1>
+                        <div className="flex justify-between mb-4 text-sm font-bold">
+                            <div>일시: {log.date}</div>
+                            <div>업체명: {log.company_name}</div>
+                        </div>
+                        <table className="w-full border-collapse border border-black text-sm text-center" style={{ tableLayout: "fixed" }}>
+                            <colgroup>
+                                <col style={{ width: "10%" }} />
+                                <col style={{ width: "25%" }} />
+                                <col style={{ width: "15%" }} />
+                                <col style={{ width: "10%" }} />
+                                <col style={{ width: "25%" }} />
+                                <col style={{ width: "15%" }} />
+                            </colgroup>
+                            <thead>
+                                <tr className="h-10 bg-gray-100">
+                                    <th className="border border-black">순번</th>
+                                    <th className="border border-black">이 름</th>
+                                    <th className="border border-black">서 명</th>
+                                    <th className="border border-black">순번</th>
+                                    <th className="border border-black">이 름</th>
+                                    <th className="border border-black">서 명</th>
                                 </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
-                <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
-            </div>
+                            </thead>
+                            <tbody>
+                                {Array.from({ length: 15 }).map((_, i) => {
+                                    const p1 = participants[base + i];
+                                    const p2 = participants[base + i + 15];
+                                    return (
+                                        <tr key={i} className="h-14">
+                                            <td className="border border-black">{base + i + 1}</td>
+                                            <td className="border border-black font-bold text-lg">{p1?.name || ''}</td>
+                                            <td className="border border-black p-1">
+                                                {p1?.signature && <img src={p1.signature} className="h-full max-h-12 mx-auto object-contain" alt="서명" />}
+                                            </td>
+                                            <td className="border border-black">{base + i + 16}</td>
+                                            <td className="border border-black font-bold text-lg">{p2?.name || ''}</td>
+                                            <td className="border border-black p-1">
+                                                {p2?.signature && <img src={p2.signature} className="h-full max-h-12 mx-auto object-contain" alt="서명" />}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                        <div className="absolute bottom-10 left-0 w-full text-center text-sm border-t border-black pt-2 font-bold">{log.company_name || "현장명"}</div>
+                    </div>
+                );
+            })}
 
             {/* --- PAGE 3: 사진 (레이아웃 고정) --- */}
             <div className="w-[210mm] h-[297mm] print:h-[297mm] p-[15mm] relative box-border mx-auto bg-cur-card print:shadow-none print:break-after-page flex flex-col overflow-hidden">

@@ -244,9 +244,12 @@ export default function MinutesReportPage() {
                             </td>
                         </tr>
                         
-                        {Array.from({ length: 15 }).map((_, i) => {
+                        {(() => {
+                        // 참석자 전원 표시(2열). 31명 이상도 유실 없이 — 열 분할점을 인원수에 맞춰 동적 산정(최소 15행).
+                        const rows = Math.max(15, Math.ceil(participants.length / 2));
+                        return Array.from({ length: rows }).map((_, i) => {
                             const p1 = participants[i];
-                            const p2 = participants[i + 15];
+                            const p2 = participants[i + rows];
                             return (
                                 <tr key={i} className="h-10 text-center">
                                     <td colSpan={2} className="border border-black p-0">
@@ -271,7 +274,8 @@ export default function MinutesReportPage() {
                                     </td>
                                 </tr>
                             );
-                        })}
+                        });
+                        })()}
                     </tbody>
                 </table>
             </div>

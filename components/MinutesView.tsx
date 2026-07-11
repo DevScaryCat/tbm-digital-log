@@ -120,30 +120,34 @@ export function MinutesView({ minutes, participants }: { minutes: any; participa
                         </td>
                     </tr>
 
-                    {Array.from({ length: 15 }).map((_, i) => {
-                        const p1 = participants[i];
-                        const p2 = participants[i + 15];
-                        return (
-                            <tr key={i} className="h-10 text-center">
-                                <td colSpan={2} className="border border-black p-0">
-                                    <div className="flex w-full h-full items-center">
-                                        <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">{p1?.name || ''}</div>
-                                        <div className="flex-1 h-full relative">
-                                            {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
+                    {(() => {
+                        // 참석자 전원 표시(2열). 31명 이상도 유실 없이 — 좌/우 열 분할점을 인원수에 맞춰 동적 산정(최소 15행).
+                        const rows = Math.max(15, Math.ceil(participants.length / 2));
+                        return Array.from({ length: rows }).map((_, i) => {
+                            const p1 = participants[i];
+                            const p2 = participants[i + rows];
+                            return (
+                                <tr key={i} className="h-10 text-center">
+                                    <td colSpan={2} className="border border-black p-0">
+                                        <div className="flex w-full h-full items-center">
+                                            <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">{p1?.name || ''}</div>
+                                            <div className="flex-1 h-full relative">
+                                                {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
+                                            </div>
                                         </div>
-                                    </div>
-                                </td>
-                                <td colSpan={2} className="border border-black p-0">
-                                    <div className="flex w-full h-full items-center">
-                                        <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">{p2?.name || ''}</div>
-                                        <div className="flex-1 h-full relative">
-                                            {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
+                                    </td>
+                                    <td colSpan={2} className="border border-black p-0">
+                                        <div className="flex w-full h-full items-center">
+                                            <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">{p2?.name || ''}</div>
+                                            <div className="flex-1 h-full relative">
+                                                {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1" alt="서명" />}
+                                            </div>
                                         </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        );
-                    })}
+                                    </td>
+                                </tr>
+                            );
+                        });
+                    })()}
                 </tbody>
             </table>
         </div>

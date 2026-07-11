@@ -212,49 +212,55 @@ export default function ReportPage() {
                 <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
             </div>
 
-            <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
-                <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 참 석 자 명 단</h1>
+            {Array.from({ length: Math.max(1, Math.ceil(participants.length / 30)) }).map((_, pageIdx) => {
+                const base = pageIdx * 30;
+                const total = Math.max(1, Math.ceil(participants.length / 30));
+                return (
+                <div key={pageIdx} className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
+                    <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 참 석 자 명 단{total > 1 ? ` (${pageIdx + 1}/${total})` : ''}</h1>
 
-                <div className="flex justify-between mb-4 text-sm font-bold">
-                    <div>일시: {log.date}</div>
-                    <div>업체명: {log.company_name}</div>
-                    <div>근무조: 주간/야간</div>
+                    <div className="flex justify-between mb-4 text-sm font-bold">
+                        <div>일시: {log.date}</div>
+                        <div>업체명: {log.company_name}</div>
+                        <div>근무조: 주간/야간</div>
+                    </div>
+
+                    <table className="w-full border-collapse border border-black text-sm text-center">
+                        <thead>
+                            <tr className="h-10 bg-gray-100">
+                                <th className="border border-black w-12 font-bold">순번</th>
+                                <th className="border border-black w-32 font-bold">이 름</th>
+                                <th className="border border-black font-bold">서 명</th>
+                                <th className="border border-black w-12 font-bold">순번</th>
+                                <th className="border border-black w-32 font-bold">이 름</th>
+                                <th className="border border-black font-bold">서 명</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Array.from({ length: 15 }).map((_, i) => {
+                                const p1 = participants[base + i]
+                                const p2 = participants[base + i + 15]
+                                return (
+                                    <tr key={i} className="h-14">
+                                        <td className="border border-black">{base + i + 1}</td>
+                                        <td className="border border-black font-bold text-lg">{p1?.name || ''}</td>
+                                        <td className="border border-black relative">
+                                            {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1" />}
+                                        </td>
+                                        <td className="border border-black">{base + i + 16}</td>
+                                        <td className="border border-black font-bold text-lg">{p2?.name || ''}</td>
+                                        <td className="border border-black relative">
+                                            {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1" />}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                    <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
                 </div>
-
-                <table className="w-full border-collapse border border-black text-sm text-center">
-                    <thead>
-                        <tr className="h-10 bg-gray-100">
-                            <th className="border border-black w-12 font-bold">순번</th>
-                            <th className="border border-black w-32 font-bold">이 름</th>
-                            <th className="border border-black font-bold">서 명</th>
-                            <th className="border border-black w-12 font-bold">순번</th>
-                            <th className="border border-black w-32 font-bold">이 름</th>
-                            <th className="border border-black font-bold">서 명</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Array.from({ length: 15 }).map((_, i) => {
-                            const p1 = participants[i]
-                            const p2 = participants[i + 15]
-                            return (
-                                <tr key={i} className="h-14">
-                                    <td className="border border-black">{i + 1}</td>
-                                    <td className="border border-black font-bold text-lg">{p1?.name || ''}</td>
-                                    <td className="border border-black relative">
-                                        {p1?.signature && <img src={p1.signature} className="absolute inset-0 w-full h-full object-contain p-1" />}
-                                    </td>
-                                    <td className="border border-black">{i + 16}</td>
-                                    <td className="border border-black font-bold text-lg">{p2?.name || ''}</td>
-                                    <td className="border border-black relative">
-                                        {p2?.signature && <img src={p2.signature} className="absolute inset-0 w-full h-full object-contain p-1" />}
-                                    </td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
-                <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
-            </div>
+                );
+            })}
 
             <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full mb-8 print:mb-0 print:break-after-page min-h-[297mm] print:h-[297mm] relative box-border flex flex-col overflow-hidden">
                 <h1 className="text-3xl font-bold text-center mb-8 tracking-[0.3em]">교 육 사 진</h1>
