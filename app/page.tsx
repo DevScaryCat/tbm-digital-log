@@ -268,7 +268,10 @@ export default function MainPage() {
 
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
-          <div className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline">
+          <div
+            onClick={() => router.push('/education-progress')}
+            className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline cursor-pointer hover:border-cur-primary/40 active:bg-cur-elevated/40 transition-all group"
+          >
             <div className="flex items-center justify-between gap-3 mb-8">
               <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 flex-wrap tracking-[-0.11px] min-w-0">
                 법정 의무 교육 진행도
@@ -276,8 +279,11 @@ export default function MainPage() {
                   {user?.user_metadata?.worker_type || '현장 근로자 (비사무직)'}
                 </span>
               </h3>
-              <span className="text-[14px] font-bold text-cur-primary font-mono whitespace-nowrap shrink-0">
-                {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
+              <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
+                <span className="text-[14px] font-bold text-cur-primary font-mono">
+                  {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
+                </span>
+                <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors" />
               </span>
             </div>
 
@@ -353,19 +359,22 @@ export default function MainPage() {
             </div>
 
             <div className="rounded-[12px] flex text-center divide-x divide-cur-hairline border border-cur-hairline bg-cur-card overflow-hidden">
-              <div onClick={() => router.push('/analytics')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+              <div onClick={() => router.push('/analytics')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
                 <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
                 <div className="text-[28px] font-bold text-cur-ink font-mono">
                   {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownMinutes}
                 </div>
               </div>
-              <div onClick={() => router.push('/analytics/education')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors">
+              <div onClick={() => router.push('/analytics/education')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
                 <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전보건교육일지</div>
                 <div className="text-[28px] font-bold text-cur-ink font-mono">
                   {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
                 </div>
               </div>
-              <div onClick={() => router.push('/dashboard')} className="flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
+              <div onClick={() => router.push('/dashboard')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
                 <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전문서 달력</div>
                 <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
                   <CalendarDays className="w-5 h-5" />
