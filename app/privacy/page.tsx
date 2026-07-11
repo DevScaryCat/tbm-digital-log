@@ -19,7 +19,7 @@ export default function PrivacyPolicyPage() {
 
                 <div className="p-6 space-y-8 text-sm text-cur-body leading-relaxed">
                     <section>
-                        <p className="text-cur-muted mb-4">시행일: 2026년 3월 6일</p>
+                        <p className="text-cur-muted mb-4">시행일: 2026년 7월 11일 (이전 시행일: 2026년 3월 6일)</p>
                         <p>
                             TBM 일지 서비스(이하 &quot;서비스&quot;)는 「개인정보 보호법」 제30조에 따라 정보주체의 개인정보를 보호하고
                             이와 관련한 고충을 신속하고 원활하게 처리할 수 있도록 하기 위하여 다음과 같이 개인정보 처리방침을 수립·공개합니다.
@@ -34,6 +34,7 @@ export default function PrivacyPolicyPage() {
                             <li>TBM(작업 전 안전점검) 일지 작성 및 관리</li>
                             <li>현장 제안 접수 및 처리</li>
                             <li>AI 컨설팅 서비스 제공</li>
+                            <li>음성 인식 텍스트를 이용한 AI 요약·회의록 생성 및 서비스 품질 개선·통계 분석(비식별 처리)</li>
                             <li>서비스 이용 기록 분석 및 통계</li>
                         </ul>
                     </section>
@@ -56,7 +57,7 @@ export default function PrivacyPolicyPage() {
                                     <li>참석자 이름, 성별, 서명(전자서명 이미지)</li>
                                     <li>교육실시자 이름 및 서명</li>
                                     <li>교육 현장 사진</li>
-                                    <li>음성 녹음 데이터(AI 요약 처리 후 삭제)</li>
+                                    <li>음성 인식 텍스트: 마이크 음성을 브라우저(Chrome/Safari) 내장 음성인식 기능으로 실시간 변환한 발화 내용(회의·교육 내용). 오디오 파일 자체는 서버에 저장하지 않으며, 변환된 텍스트를 일지와 함께 저장합니다. (이 과정에서 음성이 브라우저 제공사(구글/애플)로 전송될 수 있습니다)</li>
                                     <li>위치 정보(날씨 자동 조회 목적, 저장하지 않음)</li>
                                 </ul>
                             </div>
@@ -74,7 +75,8 @@ export default function PrivacyPolicyPage() {
                         <ul className="list-disc pl-5 space-y-1">
                             <li>회원 정보: 회원 탈퇴 시까지 보유 후 즉시 파기</li>
                             <li>TBM 일지 기록: 「산업안전보건법」에 따라 교육일지 보존 기간(3년) 동안 보관</li>
-                            <li>음성 녹음 데이터: AI 요약 처리 완료 즉시 서버에서 삭제</li>
+                            <li>음성 오디오 파일: 서버에 저장하지 않음(브라우저에서 텍스트로 변환 후 폐기)</li>
+                            <li>음성 인식 텍스트: 작성된 일지 기록과 함께 보관(「산업안전보건법」 교육일지 보존기간 3년), 회원 탈퇴 시 관련 기록과 함께 파기</li>
                             <li>서비스 이용 기록: 「통신비밀보호법」에 따라 3개월 보관</li>
                         </ul>
                     </section>
@@ -86,6 +88,7 @@ export default function PrivacyPolicyPage() {
                             <li>이용자가 사전에 동의한 경우</li>
                             <li>법령의 규정에 의거하거나, 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우</li>
                         </ul>
+                        <p className="mt-2 text-cur-muted">음성 인식 텍스트 등 개인정보를 제3자에게 제공하거나 판매·외부 재가공하려는 경우, 서비스는 사전에 제공받는 자·제공 목적·제공 항목·보유 기간을 고지하고 「개인정보 보호법」에 따라 별도의 명시적 동의를 받습니다. 동의하지 않아도 서비스 이용에는 제한이 없습니다.</p>
                     </section>
 
                     <section>
@@ -146,7 +149,7 @@ export default function PrivacyPolicyPage() {
 
                     <section>
                         <h2 className="text-base font-bold text-cur-ink mb-3">제10조 (개인정보 처리방침 변경)</h2>
-                        <p>이 개인정보처리방침은 2026년 3월 6일부터 적용됩니다. 변경 사항이 있을 경우 서비스 공지사항을 통해 고지합니다.</p>
+                        <p>이 개인정보처리방침은 2026년 7월 11일부터 적용됩니다. (이전 시행일: 2026년 3월 6일 — 음성 데이터 처리 방식을 &apos;오디오 삭제&apos;에서 &apos;음성 인식 텍스트 저장&apos;으로 변경) 변경 사항이 있을 경우 서비스 공지사항을 통해 고지합니다.</p>
                     </section>
 
                     <div className="pt-8 border-t text-center text-xs text-cur-muted-soft">

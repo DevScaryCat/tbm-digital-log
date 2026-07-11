@@ -404,7 +404,9 @@ export default function TBMMinutesPage() {
                     ppe_check: formData.ppeCheck,
                     safety_phrase: formData.safetyPhrase,
                     instructions: formData.instructions,
-                    hazards: formData.hazards
+                    hazards: formData.hazards,
+                    // 음성 인식 원문 보관(재가공용). 없으면 null. 개인정보 포함 가능 → 판매 전 별도 동의 필요.
+                    raw_transcript: accumulatedTranscript.trim() || null
                 })
                 .select()
                 .single()
@@ -534,10 +536,18 @@ export default function TBMMinutesPage() {
 
             recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
                 console.error("Speech recognition error:", event.error);
-                if (event.error === 'network' || event.error === 'not-allowed') {
+                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    // 마이크 권한을 실수로 거부/차단한 경우 — 브라우저별 허용 방법 안내
                     stopRecording();
-                    alert("Chrome, Safari 브라우저에서만 사용 가능합니다.");
+                    alert("마이크 권한이 꺼져 있어 음성 인식을 시작할 수 없습니다.\n\n[마이크 허용 방법]\n· 아이폰(Safari): 주소창의 'AA' 버튼 → 웹사이트 설정 → 마이크 → 허용 (또는 설정 > Safari > 마이크)\n· PC·안드로이드(Chrome): 주소창 왼쪽 자물쇠 아이콘 → 마이크 → 허용\n\n허용으로 바꾼 뒤 다시 '회의 시작'을 눌러주세요.");
+                } else if (event.error === 'audio-capture') {
+                    stopRecording();
+                    alert("마이크를 찾을 수 없습니다. 마이크가 연결·활성화돼 있는지 확인한 뒤 다시 시도해주세요.");
+                } else if (event.error === 'network') {
+                    stopRecording();
+                    alert("네트워크 문제로 음성 인식이 중단되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.");
                 }
+                // 'no-speech','aborted' 등 일시적 오류는 무시(onend에서 자동 재시작)
             };
 
             recognition.onend = () => {
@@ -561,7 +571,7 @@ export default function TBMMinutesPage() {
             setFormData(prev => ({ ...prev, startTime: recordingCount === 0 ? getCurrentTime() : prev.startTime }));
         } catch (err) {
             console.error(err);
-            alert("마이크/음성인식 권한이 필요합니다.");
+            alert("마이크 권한을 확인해주세요.\n브라우저에서 마이크 사용을 '허용'으로 바꾼 뒤 다시 시도해주세요.");
         }
     }
 
@@ -806,12 +816,6 @@ export default function TBMMinutesPage() {
                                 {isRecording ? (
                                     <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
                                         {tbmGuideBox}
-                                        <div className="w-full text-left border border-cur-info/30 rounded-[12px] bg-cur-info/5 p-4 max-h-[200px] overflow-y-auto shadow-inner">
-                                            <p className="text-[13px] font-bold text-cur-info mb-2 flex items-center gap-2"><span className="w-2 h-2 bg-cur-info rounded-full animate-pulse"></span>실시간 음성 인식 중...</p>
-                                            <p className="text-[14px] text-cur-ink leading-relaxed break-keep font-medium">
-                                                {accumulatedTranscript || <span className="text-cur-muted">음성을 듣고 있습니다. 마이크에 대고 회의를 진행해 주세요...</span>}
-                                            </p>
-                                        </div>
                                         <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
                                             회의 녹음 중 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
@@ -824,12 +828,6 @@ export default function TBMMinutesPage() {
                                     </div>
                                 ) : recordingCount > 0 ? (
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
-                                        <div className="w-full text-left border border-cur-hairline rounded-[12px] bg-cur-canvas p-4 max-h-[200px] overflow-y-auto opacity-80">
-                                            <p className="text-[13px] font-bold text-cur-muted mb-2">현재까지 인식된 내용</p>
-                                            <p className="text-[14px] text-cur-ink leading-relaxed break-keep font-medium">
-                                                {accumulatedTranscript || <span className="text-cur-muted">인식된 음성이 없습니다.</span>}
-                                            </p>
-                                        </div>
                                         <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" /> 녹음 일시정지 · {recordingCount}회
                                             <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
@@ -874,6 +872,7 @@ export default function TBMMinutesPage() {
                             <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed bg-cur-canvas p-3.5 rounded-[12px] border border-cur-hairline text-center">
                                 💡 참석자와 함께 위험요인, 대책, 안전구호를 협의해주세요. AI가 자동으로 회의록 양식에 맞게 요약해 줍니다.<br/>
                                 <span className="text-[12px] text-cur-error block mt-1.5 font-bold tracking-tight">※ Chrome, Safari 브라우저 권장. 스마트폰 화면이 꺼지면 녹음이 중단될 수 있으니 화면을 켜두세요.</span>
+                                <span className="text-[11px] text-cur-muted-soft block mt-2 font-normal leading-relaxed">🔒 녹음된 음성은 텍스트로 변환·저장되어 일지 작성 및 서비스 개선에 이용됩니다. 자세한 내용은 <a href="/privacy" target="_blank" className="underline hover:text-cur-primary">개인정보처리방침</a>을 확인하세요.</span>
                             </p>
                         </div>
                     )}

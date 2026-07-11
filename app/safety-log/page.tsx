@@ -463,7 +463,9 @@ export default function TBMPage() {
                     education_content: formData.educationContent,
                     remarks: formData.remarks,
                     photo_url: photoUrl,
-                    confirmation_signature: confirmationSignatureUrl
+                    confirmation_signature: confirmationSignatureUrl,
+                    // 음성 인식 원문 보관(재가공용). 없으면 null. 개인정보 포함 가능 → 판매 전 별도 동의 필요.
+                    raw_transcript: accumulatedTranscript.trim() || null
                 })
                 .select()
                 .single()
@@ -618,10 +620,18 @@ export default function TBMPage() {
 
             recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
                 console.error("Speech recognition error:", event.error);
-                if (event.error === 'network' || event.error === 'not-allowed') {
+                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    // 마이크 권한을 실수로 거부/차단한 경우 — 브라우저별 허용 방법 안내
                     stopRecording();
-                    alert("Chrome, Safari 브라우저에서만 사용 가능합니다.");
+                    alert("마이크 권한이 꺼져 있어 음성 인식을 시작할 수 없습니다.\n\n[마이크 허용 방법]\n· 아이폰(Safari): 주소창의 'AA' 버튼 → 웹사이트 설정 → 마이크 → 허용 (또는 설정 > Safari > 마이크)\n· PC·안드로이드(Chrome): 주소창 왼쪽 자물쇠 아이콘 → 마이크 → 허용\n\n허용으로 바꾼 뒤 다시 '녹음 시작'을 눌러주세요.");
+                } else if (event.error === 'audio-capture') {
+                    stopRecording();
+                    alert("마이크를 찾을 수 없습니다. 마이크가 연결·활성화돼 있는지 확인한 뒤 다시 시도해주세요.");
+                } else if (event.error === 'network') {
+                    stopRecording();
+                    alert("네트워크 문제로 음성 인식이 중단되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.");
                 }
+                // 'no-speech','aborted' 등 일시적 오류는 무시(onend에서 자동 재시작)
             };
 
             recognition.onend = () => {
@@ -645,7 +655,7 @@ export default function TBMPage() {
             setFormData(prev => ({ ...prev, startTime: recordingCount === 0 ? getCurrentTime() : prev.startTime }));
         } catch (err) {
             console.error(err);
-            alert("마이크/음성인식 권한이 필요합니다.");
+            alert("마이크 권한을 확인해주세요.\n브라우저에서 마이크 사용을 '허용'으로 바꾼 뒤 다시 시도해주세요.");
         }
     }
 
@@ -950,6 +960,9 @@ export default function TBMPage() {
                                     </div>
                                 )}
                             </div>
+                            <p className="text-[11px] text-cur-muted-soft font-normal leading-relaxed bg-cur-canvas p-3 rounded-[12px] border border-cur-hairline text-center">
+                                🔒 녹음된 음성은 텍스트로 변환·저장되어 일지 작성 및 서비스 개선에 이용됩니다. 자세한 내용은 <a href="/privacy" target="_blank" className="underline hover:text-cur-primary">개인정보처리방침</a>을 확인하세요.
+                            </p>
                         </div>
                     )}
 
