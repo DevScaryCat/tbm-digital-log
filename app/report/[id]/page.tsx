@@ -46,8 +46,11 @@ export default function ReportPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const { data: logData, error: logError } = await supabase.from('tbm_logs').select('*').eq('id', id).maybeSingle()
-                const { data: partData } = await supabase.from('tbm_participants').select('*').eq('log_id', id).order('id', { ascending: true })
+                // 서로 독립적인 두 조회를 병렬로 (직렬 대기 왕복 1회 제거)
+                const [{ data: logData, error: logError }, { data: partData }] = await Promise.all([
+                    supabase.from('tbm_logs').select('*').eq('id', id).maybeSingle(),
+                    supabase.from('tbm_participants').select('*').eq('log_id', id).order('id', { ascending: true }),
+                ])
 
                 if (logError) throw logError
 

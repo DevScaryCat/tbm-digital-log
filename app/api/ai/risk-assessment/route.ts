@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription, getAdminClient } from "@/lib/portone";
-import { startOfMonth } from "date-fns";
 
 export const runtime = "nodejs";
 
@@ -25,8 +24,13 @@ export async function POST(request: Request) {
       );
 
     // 이번 달 위험성평가 생성 횟수 확인 (월 20회 한도)
+    // 월 경계는 사용자 기준(KST)으로 계산한다. 서버(UTC) startOfMonth를 쓰면 매월 말/초 ~9시간
+    // 동안 전월 사용량이 섞이거나 한도가 조기 초기화되는 오차가 생긴다.
     const admin = getAdminClient();
-    const startISO = startOfMonth(new Date()).toISOString();
+    const kstYmd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date()); // "YYYY-MM-DD"
+    const startISO = new Date(`${kstYmd.slice(0, 7)}-01T00:00:00+09:00`).toISOString();
     const { count } = await admin
       .from("tbm_risk_assessments")
       .select("id", { count: "exact", head: true })

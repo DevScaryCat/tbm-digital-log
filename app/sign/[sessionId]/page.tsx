@@ -27,26 +27,12 @@ export default function SignPage() {
 
     useEffect(() => {
         const checkSession = async () => {
-            const { data, error } = await supabase
-                .from('tbm_pending_signatures')
-                .select('name, created_at')
-                .eq('session_id', sessionId)
-                .in('name', ['OPEN_SESSION', 'CLOSED_SESSION'])
-                .order('created_at', { ascending: false })
-                .limit(1)
-
-            if (!data || data.length === 0) {
+            // 마커 테이블을 직접 조회하지 않고(=session_id 열거 방지) 단건 상태만 RPC로 확인.
+            // 서버가 OPEN(30분 이내)만 'OPEN'으로, 그 외/없음은 만료로 판정한다.
+            const { data, error } = await supabase.rpc('session_status', { p: sessionId })
+            if (error) console.error('session_status error:', error)
+            if (data !== 'OPEN') {
                 setIsExpired(true)
-            } else if (data[0].name === 'CLOSED_SESSION') {
-                setIsExpired(true)
-            } else if (data[0].name === 'OPEN_SESSION') {
-                const createdAt = new Date(data[0].created_at).getTime()
-                const now = Date.now()
-                const diffMinutes = (now - createdAt) / (1000 * 60)
-
-                if (diffMinutes >= 30) {
-                    setIsExpired(true)
-                }
             }
             setIsLoading(false)
         }

@@ -112,20 +112,36 @@ async function run(request: Request) {
       if (e.status === "sent") results.eduSent++;
       else if (e.status === "mail_failed") results.failed++;
 
-      // 자동 발송 1건 = AI 분석 보고서 월 한도에서 1회 차감 (실제로 발송된 경우만, 주기당 1회)
-      if (m.status === "sent" || e.status === "sent") {
-        const { error: raErr } = await admin.from("tbm_risk_assessments").insert({
-          user_id: sub.user_id,
-          date: todayKST,
-          work_name: `${freq === "weekly" ? "주간" : "월간"} 보고서 자동발송`,
-          items: [],
-        });
-        if (raErr) console.error("auto-report RA count insert error:", raErr);
-        else results.raCounted++;
-      }
+      const anySent = m.status === "sent" || e.status === "sent";
+      const anyFailed = m.status === "mail_failed" || e.status === "mail_failed";
 
-      // 오늘 처리 표시(데이터 유무와 무관 — 같은 날 재시도 방지)
-      await admin.from("subscriptions").update({ report_last_sent_on: todayKST }).eq("user_id", sub.user_id);
+      // 메일 실패(SMTP 장애 등)가 있으면 이 주기를 '완료'로 확정하지 않는다.
+      // report_last_sent_on을 찍지 않아야 재시도가 가능하고(회의록은 monthly_reports.sent_at
+      // 멱등으로 중복발송 방지), 실패일에 억지로 마킹해 그 달 통째로 누락되는 사고를 막는다.
+      if (!anyFailed) {
+        // 자동 발송 1건 = AI 분석 보고서 월 한도에서 1회 차감 (실제로 발송된 경우만, 주기당 1회)
+        if (anySent) {
+          const { error: raErr } = await admin.from("tbm_risk_assessments").insert({
+            user_id: sub.user_id,
+            date: todayKST,
+            work_name: `${freq === "weekly" ? "주간" : "월간"} 보고서 자동발송`,
+            items: [],
+          });
+          if (raErr) console.error("auto-report RA count insert error:", raErr);
+          else results.raCounted++;
+        }
+
+        // 오늘 처리 표시(같은 날 재시도 방지). 실패는 위에서 걸러졌으므로 여기선 성공/무데이터만 마킹.
+        const { error: markErr } = await admin
+          .from("subscriptions")
+          .update({ report_last_sent_on: todayKST })
+          .eq("user_id", sub.user_id);
+        if (markErr) console.error("report_last_sent_on update error:", markErr);
+      } else {
+        console.error(
+          `monthly-report: mail_failed user=${sub.user_id} minutes=${m.status} edu=${e.status} — report_last_sent_on 미기록(재시도 대상)`
+        );
+      }
     }
 
     return NextResponse.json({

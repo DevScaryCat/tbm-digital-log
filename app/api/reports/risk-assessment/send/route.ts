@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
-import { buildRangeContent, renderReportHtml, buildReportAttachments, RiskItem, ReportContent } from "@/lib/monthlyReport";
+import { buildRangeContent, renderReportHtml, buildReportAttachments, RiskItem, ReportContent, sanitizeRiskItems } from "@/lib/monthlyReport";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!mailerConfigured()) return NextResponse.json({ error: "메일 설정이 없습니다." }, { status: 500 });
 
   const body = await request.json().catch(() => ({}));
-  const items: RiskItem[] = Array.isArray(body?.items) ? body.items : [];
+  const items: RiskItem[] = sanitizeRiskItems(body?.items);
   const rawRecipients: string[] = Array.isArray(body?.recipients)
     ? body.recipients.map((e: any) => String(e).trim()).filter(Boolean)
     : [];

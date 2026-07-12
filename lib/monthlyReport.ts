@@ -39,6 +39,26 @@ export interface RiskItem {
   recurring?: boolean;
 }
 
+/**
+ * 클라이언트가 보낸 items를 신뢰하지 않고 타입을 강제한다.
+ * frequency/severity/risk는 number 타입이지만 요청 body는 임의 문자열일 수 있어,
+ * 그대로 HTML/메일에 삽입되면 마크업 주입이 가능하다(D-11). 숫자는 Number로,
+ * 문자열은 String으로 정규화해 API 경계에서 차단한다.
+ */
+export function sanitizeRiskItems(input: unknown): RiskItem[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((x: any) => ({
+    hazard: String(x?.hazard ?? ""),
+    cause: String(x?.cause ?? ""),
+    frequency: Number(x?.frequency) || 0,
+    severity: Number(x?.severity) || 0,
+    risk: Number(x?.risk) || 0,
+    level: String(x?.level ?? ""),
+    measures: String(x?.measures ?? ""),
+    recurring: x?.recurring === true,
+  }));
+}
+
 export interface ReportContent {
   companyName: string | null;
   periodLabel: string;
@@ -222,8 +242,8 @@ function riskTableHtml(items: RiskItem[]): string {
           <span style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(it.hazard)}</span>
           ${it.cause ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(it.cause)}</div>` : ""}
         </td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${it.frequency}×${it.severity}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(gradeOf(it.risk))};font-size:13px;">${it.risk} · ${gradeOf(it.risk)}</b></td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${Number(it.frequency) || 0}×${Number(it.severity) || 0}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(gradeOf(it.risk))};font-size:13px;">${Number(it.risk) || 0} · ${gradeOf(it.risk)}</b></td>
         <td style="padding:8px 6px;border-bottom:1px solid #eee;font-size:12px;color:#444;">${escapeHtml(it.measures) || "-"}</td>
       </tr>`
     )

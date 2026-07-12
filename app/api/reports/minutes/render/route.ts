@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
-import { buildRangeContent, renderReportHtml, ReportContent, RiskItem } from "@/lib/monthlyReport";
+import { buildRangeContent, renderReportHtml, ReportContent, RiskItem, sanitizeRiskItems } from "@/lib/monthlyReport";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
   const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
-  const items: RiskItem[] = Array.isArray(body?.items) ? body.items : [];
+  const items: RiskItem[] = sanitizeRiskItems(body?.items);
   const company = (user.user_metadata as { company_name?: string })?.company_name || "";
 
   if (!isPro || !from) {

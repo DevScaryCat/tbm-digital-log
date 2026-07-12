@@ -53,8 +53,11 @@ export default function MinutesReportPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const { data: minutesData, error: minutesError } = await supabase.from('tbm_minutes').select('*').eq('id', id).maybeSingle()
-                const { data: partData } = await supabase.from('tbm_minutes_participants').select('*').eq('minutes_id', id).order('id', { ascending: true })
+                // 서로 독립적인 두 조회를 병렬로 (직렬 대기 왕복 1회 제거)
+                const [{ data: minutesData, error: minutesError }, { data: partData }] = await Promise.all([
+                    supabase.from('tbm_minutes').select('*').eq('id', id).maybeSingle(),
+                    supabase.from('tbm_minutes_participants').select('*').eq('minutes_id', id).order('id', { ascending: true }),
+                ])
 
                 if (minutesError) throw minutesError
 

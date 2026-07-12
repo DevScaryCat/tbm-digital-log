@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { formatRangeLabelKo } from "@/lib/utils";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
-import { buildRangeContent, buildRiskCsv, RiskItem } from "@/lib/monthlyReport";
+import { buildRangeContent, buildRiskCsv, RiskItem, sanitizeRiskItems } from "@/lib/monthlyReport";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
   const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
   const fmt = body?.format === "csv" ? "csv" : "pdf";
-  const items: RiskItem[] = Array.isArray(body?.items) ? body.items : [];
+  const items: RiskItem[] = sanitizeRiskItems(body?.items);
   const company = (user.user_metadata as { company_name?: string })?.company_name || "";
   if (!from) return NextResponse.json({ error: "기간이 올바르지 않습니다." }, { status: 400 });
 

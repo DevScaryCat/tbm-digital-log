@@ -437,10 +437,9 @@ export default function TBMMinutesPage() {
             }
 
             if (sessionId) {
+                // 저장 완료 → pending 정리. OPEN 마커가 사라지면 서명 페이지는 자동으로 만료 처리되므로
+                // 별도 CLOSED 마커 삽입은 불필요(삭제 후엔 소유권 근거가 없어 RLS상 삽입도 거부됨).
                 await supabase.from('tbm_pending_signatures').delete().eq('session_id', sessionId);
-                await supabase.from('tbm_pending_signatures').insert({
-                    session_id: sessionId, name: "CLOSED_SESSION", gender: "M", signature: "expired"
-                })
             }
 
             setSavedLogId(logData.id)

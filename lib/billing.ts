@@ -2,6 +2,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   chargeWithBillingKey,
+  getPayment,
   addOneMonth,
   PLAN,
   getPlan,
@@ -79,7 +80,23 @@ export async function chargeSubscription(
   // 성공 판정: HTTP 2xx 뿐 아니라 PG 상태가 PAID인지까지 확인 (거절이 2xx로 오는 경우 방지)
   const body: any = res.body || {};
   const pgStatus = String(body?.payment?.status ?? body?.status ?? "").toUpperCase();
-  const paid = res.ok && (pgStatus === "" || pgStatus === "PAID");
+  let paid = res.ok && (pgStatus === "" || pgStatus === "PAID");
+  let recordBody: any = body;
+
+  // 재조정: 직전 실행에서 결제는 성공했으나 payments 기록이 실패해 재청구를 시도하면,
+  // PortOne이 동일 paymentId를 "이미 결제됨"(ALREADY_PAID/409)으로 거절한다. 이때 실제 상태를
+  // 조회해 PAID면 성공으로 간주한다. (그렇지 않으면 실제로 청구된 고객이 실패로 기록→3회 후 강제 해지됨)
+  if (!paid) {
+    const errCode = String(body?.type ?? body?.code ?? body?.pgCode ?? "").toUpperCase();
+    if (res.status === 409 || errCode.includes("ALREADY_PAID")) {
+      const chk = await getPayment(paymentId);
+      const chkStatus = String(chk.body?.status ?? chk.body?.payment?.status ?? "").toUpperCase();
+      if (chk.ok && chkStatus === "PAID") {
+        paid = true;
+        recordBody = chk.body;
+      }
+    }
+  }
 
   // 결제 내역 기록 (paymentId 충돌 시 갱신)
   const { error: payErr } = await admin.from("payments").upsert(
@@ -89,7 +106,7 @@ export async function chargeSubscription(
       payment_id: paymentId,
       amount,
       status: paid ? "paid" : "failed",
-      pg_raw: body,
+      pg_raw: recordBody,
       paid_at: paid ? now.toISOString() : null,
     },
     { onConflict: "payment_id" }
