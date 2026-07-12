@@ -252,8 +252,8 @@ export default function MinutesReportPage() {
                             const p2 = participants[i + rows];
                             return (
                                 <tr key={i} className="h-10 text-center">
-                                    <td colSpan={2} className="border border-black p-0">
-                                        <div className="flex w-full h-full items-center">
+                                    <td colSpan={2} className="border border-black p-0 h-10">
+                                        <div className="flex w-full h-10 items-center">
                                             <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">
                                                 {p1?.name || ''}
                                             </div>
@@ -262,8 +262,8 @@ export default function MinutesReportPage() {
                                             </div>
                                         </div>
                                     </td>
-                                    <td colSpan={2} className="border border-black p-0">
-                                        <div className="flex w-full h-full items-center">
+                                    <td colSpan={2} className="border border-black p-0 h-10">
+                                        <div className="flex w-full h-10 items-center">
                                             <div className="flex-1 border-r border-black h-full flex items-center justify-center font-bold text-sm truncate px-1">
                                                 {p2?.name || ''}
                                             </div>
