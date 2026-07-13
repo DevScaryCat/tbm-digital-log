@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription } from "@/lib/portone";
+import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,10 @@ export async function POST(request: Request) {
     const { user, allowed } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
+    // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
+    if (!(await checkAndRecordAiUsage(user.id, "minutes"))) {
+      return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
+    }
 
     const { text } = await request.json();
 

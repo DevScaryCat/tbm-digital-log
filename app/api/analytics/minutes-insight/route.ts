@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
+import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,11 @@ export async function POST(request: Request) {
 
   if (existing && existing.signature === signature && existing.content) {
     return NextResponse.json({ summary: existing.content, cached: true });
+  }
+
+  // 남용 방어: 캐시 미스(실제 AI 호출)일 때만 일일 한도 소모
+  if (!(await checkAndRecordAiUsage(user.id, "minutes-insight"))) {
+    return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const company = (user.user_metadata as any)?.company_name || "미상";

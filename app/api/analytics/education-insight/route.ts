@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
+import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
 import { generateEducationInsight } from "@/lib/educationReport";
 
 export const runtime = "nodejs";
@@ -88,6 +89,11 @@ export async function POST(request: Request) {
     } catch {
       /* 캐시 파싱 실패 시 재생성 */
     }
+  }
+
+  // 남용 방어: 캐시 미스(실제 AI 호출)일 때만 일일 한도 소모
+  if (!(await checkAndRecordAiUsage(user.id, "education-insight"))) {
+    return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const insight = await generateEducationInsight(dayBlocks);
