@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, CheckCircle2, ClipboardList } from "lucide-react"
@@ -59,23 +60,19 @@ export default function EducationProgressPage() {
         if (cancelled) return
         setWorkerType(wt)
 
-        const [{ data: tbmLogs }, { data: minutesLogs }] = await Promise.all([
-          supabase.from("tbm_logs").select("date, start_time, end_time, education_type").eq("user_id", session.user.id),
-          supabase.from("tbm_minutes").select("date, start_time, end_time").eq("user_id", session.user.id),
-        ])
-
-        // 현재 반기 필터 (홈과 동일: 올해 & 상/하반기)
+        // 현재 반기(홈과 동일: 올해 & 상/하반기)만 서버에서 필터 —
+        // 전체 이력 조회는 PostgREST 1000행 캡에 걸려 법정 이수시간이 조용히 과소집계될 수 있다.
         const now = new Date()
         const year = now.getFullYear()
         const isFirstHalf = now.getMonth() < 6
-        const inHalf = (d: string | null) => {
-          if (!d) return false
-          const month = parseInt(d.split("-")[1], 10)
-          return d.startsWith(`${year}`) && (isFirstHalf ? month <= 6 : month > 6)
-        }
+        const halfStart = `${year}-${isFirstHalf ? "01" : "07"}-01`
+        const halfEnd = `${year}-${isFirstHalf ? "06-30" : "12-31"}`
 
-        const logsHalf = ((tbmLogs as Row[]) || []).filter((l) => inHalf(l.date))
-        const minsHalf = ((minutesLogs as Row[]) || []).filter((m) => inHalf(m.date))
+        // fetchAllRows = 반기 내에서도 Pro(월 200건)면 1000행을 넘을 수 있어 페이지 순회
+        const [logsHalf, minsHalf] = await Promise.all([
+          fetchAllRows<Row>((f, t) => supabase.from("tbm_logs").select("date, start_time, end_time, education_type").eq("user_id", session.user.id).gte("date", halfStart).lte("date", halfEnd).order("id").range(f, t)),
+          fetchAllRows<Row>((f, t) => supabase.from("tbm_minutes").select("date, start_time, end_time").eq("user_id", session.user.id).gte("date", halfStart).lte("date", halfEnd).order("id").range(f, t)),
+        ])
 
         const logsByType = (type: string) => logsHalf.filter((l) => (l.education_type || "") === type)
 

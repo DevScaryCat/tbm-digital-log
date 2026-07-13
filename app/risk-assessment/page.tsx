@@ -204,8 +204,8 @@ export default function RiskAssessmentPage() {
             setItems(json.items as RiskItem[])
             setPeriodLabel(label)
             setSendMsg(null)
-            await loadEduStats(fromS, toS)
-            await loadPreviews(fromS, toS, json.items as RiskItem[])
+            // 서로 독립인 로더 2개는 병렬로 (교육통계 ↔ 미리보기)
+            await Promise.all([loadEduStats(fromS, toS), loadPreviews(fromS, toS, json.items as RiskItem[])])
             setStep(2)
         } catch {
             setMsg({ type: "err", text: "AI 분석 중 오류가 발생했습니다." })

@@ -433,20 +433,13 @@ export default function TBMPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) throw new Error("로그인 필요")
 
-            let instructorSignatureUrl = null;
-            if (formData.educationType !== "TBM" && instructorSignature) {
-                instructorSignatureUrl = await uploadBase64ToStorage(instructorSignature, 'signatures', 'instructor');
-            }
-
-            let photoUrl = null;
-            if (formData.photo) {
-                photoUrl = await uploadBase64ToStorage(formData.photo, 'photos', 'photo');
-            }
-
-            let confirmationSignatureUrl = null;
-            if (confirmationSigBase64) {
-                confirmationSignatureUrl = await uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'confirmation');
-            }
+            // 서로 독립인 업로드 3개는 병렬로 (현장 LTE에서 직렬 대기 제거)
+            const [instructorSignatureUrl, photoUrl, confirmationSignatureUrl] = await Promise.all([
+                formData.educationType !== "TBM" && instructorSignature
+                    ? uploadBase64ToStorage(instructorSignature, 'signatures', 'instructor') : Promise.resolve(null),
+                formData.photo ? uploadBase64ToStorage(formData.photo, 'photos', 'photo') : Promise.resolve(null),
+                confirmationSigBase64 ? uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'confirmation') : Promise.resolve(null),
+            ])
 
             const { data: logData, error: logError } = await supabase
                 .from('tbm_logs')
@@ -474,20 +467,17 @@ export default function TBMPage() {
 
             const validParticipantsForDB = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
 
-            const participantsData = [];
-            for (const p of validParticipantsForDB) {
-                let sigUrl = p.signature;
-                if (p.signature && p.signature.startsWith('data:')) {
-                    sigUrl = await uploadBase64ToStorage(p.signature, 'signatures', 'participant');
-                }
-                participantsData.push({
-                    log_id: logData.id,
-                    name: p.name,
-                    gender: p.gender,
-                    signature: sigUrl,
-                    status: p.status
-                });
-            }
+            // 참석자 서명 업로드 병렬화 — 직렬이면 저장이 인원수에 비례해 길어짐(31명 = 수십 초).
+            // Promise.all은 순서를 보존하므로 insert 순서도 기존과 동일.
+            const participantsData = await Promise.all(validParticipantsForDB.map(async (p) => ({
+                log_id: logData.id,
+                name: p.name,
+                gender: p.gender,
+                signature: p.signature && p.signature.startsWith('data:')
+                    ? await uploadBase64ToStorage(p.signature, 'signatures', 'participant')
+                    : p.signature,
+                status: p.status
+            })));
 
             if (participantsData.length > 0) {
                 const { error: partError } = await supabase.from('tbm_participants').insert(participantsData)

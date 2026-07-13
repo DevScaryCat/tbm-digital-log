@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -62,39 +63,30 @@ export default function MainPage() {
   const fetchUserStats = async (userId: string, currentWorkerType: string) => {
     setStatsLoading(true)
     try {
-      // 독립 쿼리 2개를 병렬로(워터폴 제거)
-      const [{ data: tbmLogs }, { data: minutesLogs }] = await Promise.all([
-        supabase.from('tbm_logs').select('id, date, start_time, end_time').eq('user_id', userId),
-        supabase.from('tbm_minutes').select('id, date, start_time, end_time').eq('user_id', userId),
-      ])
-
-      setTbmCount(tbmLogs?.length || 0)
-      setTbmMinutesCount(minutesLogs?.length || 0)
-      setLogDates((tbmLogs || []).map(l => l.date).filter(Boolean))
-      setMinuteDates((minutesLogs || []).map(l => l.date).filter(Boolean))
-
       const now = new Date()
       const currentYear = now.getFullYear()
       const isFirstHalf = now.getMonth() < 6
+      // 이수시간은 당해 반기 문서만 계산 대상 → 시간 컬럼은 반기 창으로 한정 조회.
+      // 전체 이력은 날짜만(카운트·월 옵션용) — 이력이 몇 년치 쌓여도 페이로드 상한 유지.
+      const halfStart = `${currentYear}-${isFirstHalf ? '01' : '07'}-01`
+      const halfEnd = `${currentYear}-${isFirstHalf ? '06-30' : '12-31'}`
 
-      let validLogs = []
-      if (currentWorkerType === '사무직 / 판매직') {
-        validLogs = [...(tbmLogs || []), ...(minutesLogs || [])].filter(log => {
-          if (!log.date) return false
-          const month = parseInt(log.date.split('-')[1], 10)
-          return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
-        })
-        setRequiredHours(6)
-      } else {
-        // 기본값: 현장 근로자
-        validLogs = [...(tbmLogs || []), ...(minutesLogs || [])].filter(log => {
-          if (!log.date) return false
-          const month = parseInt(log.date.split('-')[1], 10)
-          return log.date.startsWith(`${currentYear}`) && (isFirstHalf ? month <= 6 : month > 6)
-        })
-        setRequiredHours(12)
-      }
+      // fetchAllRows = PostgREST 1000행 침묵 절단 방지 (장기 사용자도 카운트·월 옵션 정확)
+      const [logDateRows, minuteDateRows, logTimeRows, minuteTimeRows] = await Promise.all([
+        fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_logs').select('date').eq('user_id', userId).order('id').range(f, t)),
+        fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_minutes').select('date').eq('user_id', userId).order('id').range(f, t)),
+        fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_logs').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
+        fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_minutes').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
+      ])
 
+      setTbmCount(logDateRows.length)
+      setTbmMinutesCount(minuteDateRows.length)
+      setLogDates(logDateRows.map(l => l.date).filter(Boolean) as string[])
+      setMinuteDates(minuteDateRows.map(l => l.date).filter(Boolean) as string[])
+
+      setRequiredHours(currentWorkerType === '사무직 / 판매직' ? 6 : 12)
+
+      const validLogs = [...(logTimeRows || []), ...(minuteTimeRows || [])]
       let totalMins = 0
       validLogs.forEach(log => {
         if (log.start_time && log.end_time) {

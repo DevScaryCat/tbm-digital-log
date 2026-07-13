@@ -97,18 +97,23 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 const sub = await fetchSubscription()
                 setBadge(planBadge(sub))
                 setPlan(sub?.plan ?? null)
-                // 이번 달(KST 근사) 사용량 집계
-                const startISO = startOfMonth(new Date()).toISOString()
-                const [logs, mins, ras] = await Promise.all([
-                    supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
-                    supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),
-                    supabase.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).gte("created_at", startISO),
-                ])
-                setUsage({ log: logs.count ?? 0, minutes: mins.count ?? 0, ra: ras.count ?? 0 })
             }
         }
         getUser()
     }, [])
+
+    // 사용량 3종은 닫힌 드롭다운 안에서만 보이므로, 매 페이지 마운트마다 미리 조회하지 않고
+    // 메뉴를 처음 열 때 1회 조회한다(페이지당 불필요한 count 쿼리 3개 제거).
+    const loadUsage = async () => {
+        if (usage) return
+        const startISO = startOfMonth(new Date()).toISOString()
+        const [logs, mins, ras] = await Promise.all([
+            supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+            supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+            supabase.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).gte("created_at", startISO),
+        ])
+        setUsage({ log: logs.count ?? 0, minutes: mins.count ?? 0, ra: ras.count ?? 0 })
+    }
 
     const handleLogout = async () => {
         if (onLogout) {
@@ -158,7 +163,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     {badge.label}
                 </button>
             )}
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={(open) => { if (open) loadUsage() }}>
             <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body">
                     <span className="text-[14px] font-medium text-cur-body">{userName}</span>

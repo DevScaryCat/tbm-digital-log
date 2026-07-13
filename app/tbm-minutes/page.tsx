@@ -414,18 +414,15 @@ export default function TBMMinutesPage() {
             if (logError) throw logError
 
             const validParticipantsForDB = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
-            const participantsData = [];
-            for (const p of validParticipantsForDB) {
-                let sigUrl = p.signature;
-                if (p.signature && p.signature.startsWith('data:')) {
-                    sigUrl = await uploadBase64ToStorage(p.signature, 'signatures', 'minute-participant');
-                }
-                participantsData.push({
-                    minutes_id: logData.id,
-                    name: p.name,
-                    signature: sigUrl
-                });
-            }
+            // 참석자 서명 업로드 병렬화 — 직렬이면 저장이 인원수에 비례해 길어짐(31명 = 수십 초).
+            // Promise.all은 순서를 보존하므로 insert 순서도 기존과 동일.
+            const participantsData = await Promise.all(validParticipantsForDB.map(async (p) => ({
+                minutes_id: logData.id,
+                name: p.name,
+                signature: p.signature && p.signature.startsWith('data:')
+                    ? await uploadBase64ToStorage(p.signature, 'signatures', 'minute-participant')
+                    : p.signature
+            })));
 
             if(participantsData.length > 0) {
                 const { error: partError } = await supabase.from('tbm_minutes_participants').insert(participantsData)

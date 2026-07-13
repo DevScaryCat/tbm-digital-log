@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -61,12 +62,12 @@ export default function EducationAnalyticsPage() {
             const p = isProActive(await fetchSubscription())
             setPro(p)
             if (p && user) {
-                const { data } = await supabase
-                    .from("tbm_logs")
-                    .select("id, date, education_type")
-                    .eq("user_id", user.id)
-                    .order("date", { ascending: false })
-                setLogs((data as LogRow[]) || [])
+                // fetchAllRows = PostgREST 1000행 침묵 절단 방지 (월 옵션·월별 집계가 오래된 달을 잃지 않게)
+                const rows = await fetchAllRows<LogRow>((f, t) =>
+                    supabase.from("tbm_logs").select("id, date, education_type").eq("user_id", user.id).order("id").range(f, t)
+                )
+                rows.sort((a, b) => String(b.date).localeCompare(String(a.date)))
+                setLogs(rows)
             }
             setChecking(false)
         })()

@@ -24,7 +24,12 @@ export default function BatchMinutesReportPage() {
             } catch { ids = [] }
             if (ids.length === 0) return setLoading(false)
 
-            const { data: minutesData } = await supabase.from('tbm_minutes').select('*').in('id', ids).order('date', { ascending: true })
+            // raw_transcript(최대 20분 분량 STT 원문) 제외 — 일괄 인쇄는 수백 건 × 수십 KB가 될 수 있음
+            const { data: minutesData } = await supabase
+                .from('tbm_minutes')
+                .select('id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, created_at')
+                .in('id', ids)
+                .order('date', { ascending: true })
 
             if (minutesData) {
                 // 참석자 한 번에 조회 후 minutes_id별 그룹핑

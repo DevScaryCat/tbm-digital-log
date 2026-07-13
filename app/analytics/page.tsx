@@ -1,9 +1,10 @@
 // app/analytics/page.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -67,10 +68,31 @@ export default function AnalyticsDashboardPage() {
 
     const [checking, setChecking] = useState(true)
     const [pro, setPro] = useState(false)
-    const [minutes, setMinutes] = useState<any[]>([])
+    const [uid, setUid] = useState<string | null>(null)
+    // 월 옵션용 전체 날짜(경량) + 선택 월 상세(hazards 포함)만 별도 보관 —
+    // 전체 이력을 hazards째 내려받으면 장기 사용자에서 수 MB + PostgREST 1000행 캡 절단 위험.
+    const [minuteDates, setMinuteDates] = useState<string[]>([])
+    const [monthRows, setMonthRows] = useState<any[]>([])
+    const monthCacheRef = useRef<Map<string, any[]>>(new Map())
     const [selectedKey, setSelectedKey] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` })
     const [aiSummary, setAiSummary] = useState("")
     const [loadingAI, setLoadingAI] = useState(false)
+
+    const loadMonth = useCallback(async (userId: string, key: string) => {
+        const cached = monthCacheRef.current.get(key)
+        if (cached) { setMonthRows(cached); return }
+        const [y, m] = key.split("-").map(Number)
+        const nextMonth = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`
+        const { data } = await supabase
+            .from("tbm_minutes")
+            .select("id, date, hazards, work_name, process_name")
+            .eq("user_id", userId)
+            .gte("date", `${key}-01`)
+            .lt("date", nextMonth)
+        const rows = data || []
+        monthCacheRef.current.set(key, rows)
+        setMonthRows(rows)
+    }, [])
 
     useEffect(() => {
         ;(async () => {
@@ -78,18 +100,24 @@ export default function AnalyticsDashboardPage() {
             const p = isProActive(await fetchSubscription())
             setPro(p)
             if (p && user) {
-                const { data } = await supabase
-                    .from("tbm_minutes")
-                    .select("id, date, hazards, work_name, process_name")
-                    .eq("user_id", user.id)
-                setMinutes(data || [])
+                setUid(user.id)
+                // fetchAllRows = PostgREST 1000행 침묵 절단 방지 (월 옵션이 오래된 달을 잃지 않게)
+                const rows = await fetchAllRows<{ date: string | null }>((f, t) =>
+                    supabase.from("tbm_minutes").select("date").eq("user_id", user.id).order("id").range(f, t)
+                )
+                setMinuteDates(rows.map(r => r.date || "").filter(Boolean))
             }
             setChecking(false)
         })()
     }, [])
 
+    // 선택 월 변경 시 그 달 상세만 조회(월별 캐시)
+    useEffect(() => {
+        if (pro && uid) loadMonth(uid, selectedKey)
+    }, [pro, uid, selectedKey, loadMonth])
+
     // 선택 월 집계 (Pro=실데이터 / 베이직=샘플)
-    const computed = pro ? computeMonth(minutes, selectedKey) : SAMPLE
+    const computed = useMemo(() => (pro ? computeMonth(monthRows, selectedKey) : SAMPLE), [pro, monthRows, selectedKey])
     const { stats, keywords, cards } = computed
 
     // AI 총평 — 집계 시그니처가 캐시와 다를 때만 재호출
@@ -118,13 +146,13 @@ export default function AnalyticsDashboardPage() {
         })()
         return () => { cancelled = true }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [checking, pro, selectedKey, minutes])
+    }, [checking, pro, selectedKey, monthRows])
 
     // 월 옵션 (데이터가 있는 달 + 이번 달, 최신순)
     const monthOptions = (() => {
         const cur = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` })()
         const set = new Set<string>([cur])
-        for (const m of minutes) { const k = String(m.date || "").slice(0, 7); if (k) set.add(k) }
+        for (const d of minuteDates) { const k = d.slice(0, 7); if (k) set.add(k) }
         return [...set].sort().reverse()
     })()
 

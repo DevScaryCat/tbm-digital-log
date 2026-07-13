@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { format, parseISO, isSameDay, addDays, differenceInCalendarDays } from "date-fns"
@@ -30,6 +31,7 @@ export default function DashboardPage() {
     const [isRangeMode, setIsRangeMode] = useState(true)
     const [isDrawerOpen, setIsDrawerOpen] = useState(false)
     const [selectedLogs, setSelectedLogs] = useState<any[]>([])
+    const [drawerLoading, setDrawerLoading] = useState(false)
     const [rangeNote, setRangeNote] = useState<string | null>(null)
 
     // 기간 선택은 최대 1개월까지. rdp 표준 onSelect(단일 소스 제어)로 이중 하이라이트를 막고,
@@ -72,58 +74,70 @@ export default function DashboardPage() {
         } catch { /* 무시 */ }
     }, [])
 
+    // 드로어용: 해당 날짜의 문서 상세만 온디맨드 조회
+    const fetchDayDetails = async (date: Date) => {
+        const key = format(date, 'yyyy-MM-dd')
+        const [{ data: logsData }, { data: minutesData }] = await Promise.all([
+            supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').eq('date', key),
+            supabase.from('tbm_minutes').select('id, date, start_time, end_time, location, leader_name').eq('date', key)
+        ])
+        const day: any[] = []
+        if (logsData) day.push(...logsData.map(log => ({ ...log, type: 'log' })))
+        if (minutesData) day.push(...minutesData.map(min => ({
+            id: min.id,
+            date: min.date,
+            education_type: 'TBM 회의록',
+            start_time: min.start_time,
+            end_time: min.end_time,
+            location: min.location,
+            instructor_name: min.leader_name,
+            type: 'minute'
+        })))
+        return day
+    }
+
     useEffect(() => {
         const loadData = async () => {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) { router.push("/login"); return }
 
-            const [{ data: logsData }, { data: minutesData }] = await Promise.all([
-                supabase.from('tbm_logs').select('id, date, education_type, start_time, end_time, location, instructor_name').order('date', { ascending: false }),
-                supabase.from('tbm_minutes').select('id, date, process_name, start_time, end_time, location, leader_name').order('date', { ascending: false })
+            // 달력 점·기간 카운트·일괄 PDF는 id/date만 필요 — 상세 컬럼은 드로어 오픈 시 그 날짜만 조회.
+            // fetchAllRows = PostgREST 1000행 침묵 절단 방지(이력이 몇 년치 쌓여도 달력 점이 정확).
+            const [logsData, minutesData] = await Promise.all([
+                fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_logs').select('id, date').order('id').range(f, t)),
+                fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_minutes').select('id, date').order('id').range(f, t))
             ])
 
             const combinedLogs: any[] = []
-            
-            if (logsData) {
-                combinedLogs.push(...logsData.map(log => ({
-                    ...log,
-                    type: 'log',
-                    display_type: log.education_type || 'TBM'
-                })))
-            }
-
-            if (minutesData) {
-                combinedLogs.push(...minutesData.map(min => ({
-                    id: min.id,
-                    date: min.date,
-                    education_type: 'TBM 회의록',
-                    display_type: min.process_name || 'TBM 회의록',
-                    start_time: min.start_time,
-                    end_time: min.end_time,
-                    location: min.location,
-                    instructor_name: min.leader_name,
-                    type: 'minute'
-                })))
-            }
-
+            combinedLogs.push(...logsData.map(log => ({ id: log.id, date: log.date, type: 'log' })))
+            combinedLogs.push(...minutesData.map(min => ({ id: min.id, date: min.date, type: 'minute' })))
             combinedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
             setLogs(combinedLogs)
-            const todayLogs = combinedLogs.filter(log => isSameDay(parseISO(log.date), new Date()))
-            if (todayLogs.length > 0) setSelectedLogs(todayLogs)
             setLoading(false)
+            // 오늘 문서가 있으면 드로어 첫 오픈에 대비해 상세 미리 로드
+            if (combinedLogs.some(log => isSameDay(parseISO(log.date), new Date()))) {
+                try { setSelectedLogs(await fetchDayDetails(new Date())) } catch { /* 무시: 드로어 오픈 시 재조회됨 */ }
+            }
         }
         loadData()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router])
 
-    const handleDayClick = (date: Date) => {
+    const handleDayClick = async (date: Date) => {
         if (isRangeMode) return;
 
         setSelectedDate(date)
-        const logsOnDay = logs.filter(log => isSameDay(parseISO(log.date), date))
-
-        setSelectedLogs(logsOnDay)
         setIsDrawerOpen(true)
+        // 점 없는 날은 조회 생략(빈 상태 즉시 표시)
+        if (!logs.some(log => isSameDay(parseISO(log.date), date))) {
+            setSelectedLogs([])
+            return
+        }
+        setDrawerLoading(true)
+        try { setSelectedLogs(await fetchDayDetails(date)) }
+        catch { setSelectedLogs([]) }
+        finally { setDrawerLoading(false) }
     }
 
     const handleDelete = async (log: any) => {
@@ -346,12 +360,16 @@ export default function DashboardPage() {
                     <DrawerHeader className="border-b border-cur-hairline pb-4">
                         <DrawerTitle className="text-center text-[18px] font-semibold flex items-center justify-center gap-2 text-cur-ink">
                             {selectedDate && format(selectedDate, "yyyy년 MM월 dd일")}
-                            <Badge variant="outline" className="ml-1 border-cur-hairline text-cur-muted-soft px-2 py-0.5 text-[11px] font-semibold tracking-wide rounded-[4px]">{selectedLogs.length}건</Badge>
+                            <Badge variant="outline" className="ml-1 border-cur-hairline text-cur-muted-soft px-2 py-0.5 text-[11px] font-semibold tracking-wide rounded-[4px]">{drawerLoading ? '…' : `${selectedLogs.length}건`}</Badge>
                         </DrawerTitle>
                     </DrawerHeader>
 
                     <div className="p-6 space-y-4 bg-cur-canvas-soft min-h-[300px] max-h-[60vh] overflow-y-auto">
-                        {selectedLogs.length === 0 ? (
+                        {drawerLoading ? (
+                            <div className="h-full flex items-center justify-center py-10">
+                                <Loader2 className="animate-spin w-6 h-6 text-cur-muted" />
+                            </div>
+                        ) : selectedLogs.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-cur-muted py-10">
                                 <FileText className="w-12 h-12 mb-3 opacity-20" />
                                 <p className="text-[14px]">작성된 일지가 없습니다.</p>

@@ -27,7 +27,12 @@ export default function BatchReportPage() {
             if (ids.length === 0) return setLoading(false)
 
             // 1. 로그 데이터 가져오기 (in 필터 사용)
-            const { data: logsData } = await supabase.from('tbm_logs').select('*').in('id', ids).order('date', { ascending: true })
+            // raw_transcript(최대 20분 분량 STT 원문) 제외 — 일괄 인쇄는 수백 건 × 수십 KB가 될 수 있음
+            const { data: logsData } = await supabase
+                .from('tbm_logs')
+                .select('id, user_id, date, start_time, end_time, location, company_name, education_type, instructor_name, instructor_signature, education_content, remarks, photo_url, confirmation_signature, created_at')
+                .in('id', ids)
+                .order('date', { ascending: true })
 
             if (logsData) {
                 // 2. 참석자를 한 번에 조회(N+1 제거) 후 log_id별로 그룹핑
