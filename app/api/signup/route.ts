@@ -12,11 +12,15 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    const { id, password, siteName } = await request.json();
+    const { id, password, siteName, industry, workCategory } = await request.json();
 
     if (!id || !password || !siteName) {
       return NextResponse.json({ error: "모든 필드를 입력해주세요." }, { status: 400 });
     }
+
+    // 업종/공종: 데이터 분석용 프로필(선택 목록 외 임의 값 방지, 최대 30자)
+    const industryStr = typeof industry === "string" ? industry.trim().slice(0, 30) : "";
+    const workCategoryStr = typeof workCategory === "string" ? workCategory.trim().slice(0, 30) : "";
 
     if (!/^[a-z0-9_]{3,20}$/.test(id)) {
       return NextResponse.json({ error: "아이디는 영문 소문자·숫자·밑줄 3~20자로 입력해주세요." }, { status: 400 });
@@ -37,6 +41,9 @@ export async function POST(request: Request) {
         full_name: siteName,
         company_name: siteName,
         role: "user", // 기본 권한
+        // 데이터 가공/통계용 프로필 (2026-07 가입 위저드부터 수집 — 기존 유저는 없음)
+        industry: industryStr || null,
+        work_category: workCategoryStr || null,
       },
     });
 

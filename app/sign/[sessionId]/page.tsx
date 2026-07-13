@@ -9,7 +9,71 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Loader2 } from "lucide-react"
+import { CheckCircle2, Loader2, MessageSquarePlus } from "lucide-react"
+
+// 근로자 익명 제안 박스 — 서명 화면·완료 화면 양쪽에서 사용.
+// submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로
+// 익명(anon) 그대로 호출한다. 이름 등 식별 정보는 일절 보내지 않는다.
+function SuggestionBox({ sessionId }: { sessionId: string }) {
+    const [content, setContent] = useState("")
+    const [sending, setSending] = useState(false)
+    const [sentCount, setSentCount] = useState(0)
+
+    const submit = async () => {
+        const text = content.trim()
+        if (text.length < 5) {
+            alert("제안 내용을 5자 이상 입력해주세요.")
+            return
+        }
+        setSending(true)
+        try {
+            const { error } = await supabase.rpc("submit_worker_suggestion", { p_session: sessionId, p_content: text })
+            if (error) {
+                const msg = error.message.includes("SESSION_CLOSED")
+                    ? "세션이 종료되어 제안을 보낼 수 없습니다."
+                    : error.message.includes("TOO_MANY")
+                        ? "이 세션의 제안 접수가 마감되었습니다."
+                        : "전송에 실패했습니다. 잠시 후 다시 시도해주세요."
+                alert(msg)
+                return
+            }
+            setContent("")
+            setSentCount((n) => n + 1)
+        } finally {
+            setSending(false)
+        }
+    }
+
+    return (
+        <div className="rounded-2xl border border-cur-hairline bg-cur-elevated/50 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+                <MessageSquarePlus className="w-5 h-5 text-cur-primary shrink-0" />
+                <div>
+                    <p className="text-[15px] font-bold text-cur-ink">근로자 의견·제안 (익명)</p>
+                    <p className="text-[12px] text-cur-muted">현장 위험요인, 개선 아이디어 등을 자유롭게 남겨주세요. <b>누가 보냈는지 기록되지 않습니다.</b></p>
+                </div>
+            </div>
+            <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="예: 2층 개구부 덮개가 파손되어 있습니다 / 휴게 공간에 식수가 부족합니다"
+                className="w-full rounded-xl border border-cur-hairline bg-white p-3 text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary resize-none"
+            />
+            <div className="flex items-center justify-between gap-3">
+                {sentCount > 0 ? (
+                    <span className="text-[13px] font-medium text-cur-success flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> 익명으로 접수되었습니다{sentCount > 1 ? ` (${sentCount}건)` : ""}
+                    </span>
+                ) : <span />}
+                <Button onClick={submit} disabled={sending || content.trim().length === 0} variant="outline" className="h-10 px-4 border-cur-hairline-strong text-cur-ink font-semibold rounded-[8px]">
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "익명으로 보내기"}
+                </Button>
+            </div>
+        </div>
+    )
+}
 
 export default function SignPage() {
     const router = useRouter()
@@ -113,7 +177,10 @@ export default function SignPage() {
             <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-cur-canvas">
                 <CheckCircle2 className="w-24 h-24 text-green-500 mb-6 animate-in zoom-in" />
                 <h1 className="text-2xl font-bold text-cur-ink mb-2">서명 제출 완료</h1>
-                <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.<br />이 창을 닫아주세요.</p>
+                <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.</p>
+                <div className="w-full max-w-sm mb-6">
+                    <SuggestionBox sessionId={sessionId} />
+                </div>
                 <Button
                     onClick={() => {
                         window.close()
@@ -202,6 +269,10 @@ export default function SignPage() {
                             "서명 완료 및 제출"
                         )}
                     </Button>
+                </div>
+
+                <div className="pt-2 pb-6">
+                    <SuggestionBox sessionId={sessionId} />
                 </div>
             </div>
         </div>
