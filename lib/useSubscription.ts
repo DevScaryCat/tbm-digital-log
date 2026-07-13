@@ -33,6 +33,15 @@ export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: 
 /** 구독이 앱 사용을 허용하는 상태인지 */
 export function isAllowed(sub: SubscriptionRow | null): boolean {
     if (!sub) return false
+    // 카드 없는 무료체험(휴대폰인증 가입, card_info 없음): 기간 만료 시 결제 등록 전까지 불허
+    if (
+        sub.status === "trialing" &&
+        !sub.card_info &&
+        sub.current_period_end &&
+        new Date(sub.current_period_end) <= new Date()
+    ) {
+        return false
+    }
     if (sub.status === "active" || sub.status === "trialing") return true
     // 해지했지만 남은 기간이 있으면 그 기간까지는 허용
     if (

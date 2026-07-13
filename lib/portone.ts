@@ -72,8 +72,20 @@ export async function getUserFromRequest(request: Request) {
 }
 
 /** 구독 상태가 앱/유료기능 사용을 허용하는지 (서버 측 판정) */
-export function subscriptionAllows(sub: { status?: string; current_period_end?: string | null } | null): boolean {
+export function subscriptionAllows(
+  sub: { status?: string; current_period_end?: string | null; billing_key?: string | null } | null,
+): boolean {
   if (!sub) return false;
+  // 카드 없는 무료체험(휴대폰인증 가입): 체험 기간이 끝나면 결제 등록 전까지 불허.
+  // billing_key가 있는 trialing(기존 카드등록 체험)은 cron이 과금하므로 기존과 동일하게 허용.
+  if (
+    sub.status === "trialing" &&
+    !sub.billing_key &&
+    sub.current_period_end &&
+    new Date(sub.current_period_end) <= new Date()
+  ) {
+    return false;
+  }
   if (sub.status === "active" || sub.status === "trialing" || sub.status === "past_due") return true;
   if (
     sub.status === "canceled" &&
@@ -92,7 +104,7 @@ export async function getUserAndSubscription(request: Request) {
   const admin = getAdminClient();
   const { data } = await admin
     .from("subscriptions")
-    .select("status, plan, current_period_end")
+    .select("status, plan, current_period_end, billing_key")
     .eq("user_id", user.id)
     .maybeSingle();
   const allowed = subscriptionAllows(data);

@@ -72,13 +72,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, updated: true });
     }
 
-    // 기존 구독 조회 (체험 사용 여부)
+    // 기존 구독 조회 (체험 사용 여부 + 카드 없는 체험 진행 여부)
     const { data: existing } = await admin
       .from("subscriptions")
-      .select("trial_used")
+      .select("trial_used, status, billing_key, plan, current_period_end")
       .eq("user_id", user.id)
       .maybeSingle();
     const trialUsed = existing?.trial_used === true;
+
+    // --- 카드 없는 체험(휴대폰인증 가입) 진행 중에 결제수단 등록 ---
+    // 즉시 결제하지 않는다: 체험 종료일에 cron이 첫 과금. 플랜을 바꿔 선택했으면
+    // pending_plan으로 예약해 첫 과금부터 새 플랜 금액이 적용된다(chargeSubscription 로직).
+    if (
+      existing &&
+      existing.status === "trialing" &&
+      !existing.billing_key &&
+      existing.current_period_end &&
+      new Date(existing.current_period_end) > now
+    ) {
+      const { error } = await admin
+        .from("subscriptions")
+        .update({
+          billing_key: billingKey,
+          card_info: cardInfo,
+          pending_plan: selectedPlan.id !== existing.plan ? selectedPlan.id : null,
+          failed_attempts: 0,
+          updated_at: now.toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (error) {
+        console.error("trial attach billing-key error:", error);
+        return NextResponse.json({ error: "결제수단 등록 실패" }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, attachedToTrial: true });
+    }
 
     if (!trialUsed) {
       // --- 최초 구독: 첫 달 무료 체험 ---
