@@ -43,9 +43,11 @@ export async function sendOtpSms(phone: string, code: string): Promise<void> {
     return
   }
   const service = new SolapiMessageService(process.env.SOLAPI_API_KEY!, process.env.SOLAPI_API_SECRET!)
+  // 발신번호는 하이픈이 섞여 있어도(예: 010-6352-2968) 숫자만 사용 — env 실수 방지
+  const from = (process.env.SOLAPI_SENDER || "").replace(/\D/g, "")
   await service.send({
     to: phone,
-    from: process.env.SOLAPI_SENDER!,
+    from,
     text: `[안전톡톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`,
   })
 }
