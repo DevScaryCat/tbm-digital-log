@@ -19,7 +19,7 @@ export default function PrivacyPolicyPage() {
 
                 <div className="p-6 space-y-8 text-sm text-cur-body leading-relaxed">
                     <section>
-                        <p className="text-cur-muted mb-4">시행일: 2026년 7월 11일 (이전 시행일: 2026년 3월 6일)</p>
+                        <p className="text-cur-muted mb-4">시행일: 2026년 7월 13일 (이전 시행일: 2026년 7월 11일, 2026년 3월 6일)</p>
                         <p>
                             TBM 일지 서비스(이하 &quot;서비스&quot;)는 「개인정보 보호법」 제30조에 따라 정보주체의 개인정보를 보호하고
                             이와 관련한 고충을 신속하고 원활하게 처리할 수 있도록 하기 위하여 다음과 같이 개인정보 처리방침을 수립·공개합니다.
@@ -31,6 +31,7 @@ export default function PrivacyPolicyPage() {
                         <p className="mb-2">서비스는 다음의 목적을 위하여 개인정보를 처리합니다. 처리하고 있는 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 「개인정보 보호법」 제18조에 따라 별도의 동의를 받는 등 필요한 조치를 이행할 예정입니다.</p>
                         <ul className="list-disc pl-5 space-y-1">
                             <li>회원 가입 및 관리: 회원제 서비스 이용에 따른 본인확인, 개인식별, 가입의사 확인</li>
+                            <li>휴대폰 본인확인 및 무료체험(1개월) 중복·부정 가입 방지</li>
                             <li>TBM(작업 전 안전점검) 일지 작성 및 관리</li>
                             <li>현장 제안 접수 및 처리</li>
                             <li>AI 컨설팅 서비스 제공</li>
@@ -48,7 +49,8 @@ export default function PrivacyPolicyPage() {
                                 <ul className="list-disc pl-5 mt-1 space-y-0.5">
                                     <li>카카오 로그인: 카카오 계정 식별자, 이메일(선택 제공 시), 닉네임</li>
                                     <li>일반 로그인: 이메일 주소, 비밀번호(암호화 저장)</li>
-                                    <li>서비스 이용: 소속 현장명(업체명)</li>
+                                    <li>휴대폰 본인인증(무료체험 가입 시): 휴대전화번호</li>
+                                    <li>서비스 이용: 소속 현장명(업체명), 업종·공종</li>
                                 </ul>
                             </div>
                             <div>
@@ -74,6 +76,8 @@ export default function PrivacyPolicyPage() {
                         <h2 className="text-base font-bold text-cur-ink mb-3">제3조 (개인정보의 처리 및 보유 기간)</h2>
                         <ul className="list-disc pl-5 space-y-1">
                             <li>회원 정보: 회원 탈퇴 시까지 보유 후 즉시 파기</li>
+                            <li>휴대전화번호(본인인증): 회원 탈퇴 시 파기. 단, 무료체험 중복·부정 가입 방지를 위해 체험 이용 이력(휴대전화번호)은 탈퇴 후에도 부정이용 방지 목적 달성에 필요한 기간 동안 별도 분리 보관합니다.</li>
+                            <li>휴대폰 인증번호(OTP): 인증 완료 또는 유효시간(5분) 경과 시 즉시 폐기</li>
                             <li>TBM 일지 기록: 「산업안전보건법」에 따라 교육일지 보존 기간(3년) 동안 보관</li>
                             <li>음성 오디오 파일: 서버에 저장하지 않음(브라우저에서 텍스트로 변환 후 폐기)</li>
                             <li>음성 인식 텍스트: 작성된 일지 기록과 함께 보관(「산업안전보건법」 교육일지 보존기간 3년), 회원 탈퇴 시 관련 기록과 함께 파기</li>
@@ -103,6 +107,8 @@ export default function PrivacyPolicyPage() {
                                 <div>AI 기반 음성 요약 및 텍스트 분석</div>
                                 <div>카카오</div>
                                 <div>소셜 로그인(카카오 계정 인증)</div>
+                                <div>솔라피(Solapi)</div>
+                                <div>휴대폰 문자(SMS) 본인인증번호 발송</div>
                             </div>
                         </div>
                     </section>
@@ -149,7 +155,7 @@ export default function PrivacyPolicyPage() {
 
                     <section>
                         <h2 className="text-base font-bold text-cur-ink mb-3">제10조 (개인정보 처리방침 변경)</h2>
-                        <p>이 개인정보처리방침은 2026년 7월 11일부터 적용됩니다. (이전 시행일: 2026년 3월 6일 — 음성 데이터 처리 방식을 &apos;오디오 삭제&apos;에서 &apos;음성 인식 텍스트 저장&apos;으로 변경) 변경 사항이 있을 경우 서비스 공지사항을 통해 고지합니다.</p>
+                        <p>이 개인정보처리방침은 2026년 7월 13일부터 적용됩니다. (2026년 7월 13일 — 휴대폰 본인인증 도입에 따라 휴대전화번호 수집·보유 및 수탁업체(솔라피) 추가 / 2026년 7월 11일 — 음성 데이터 처리 방식을 &apos;오디오 삭제&apos;에서 &apos;음성 인식 텍스트 저장&apos;으로 변경) 변경 사항이 있을 경우 서비스 공지사항을 통해 고지합니다.</p>
                     </section>
 
                     <div className="pt-8 border-t text-center text-xs text-cur-muted-soft">

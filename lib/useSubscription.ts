@@ -11,6 +11,7 @@ export interface SubscriptionRow {
     card_info?: { issuer?: string | null; last4?: string | null; provider?: string | null } | null
     current_period_end?: string | null
     trial_end?: string | null
+    trial_used?: boolean | null
 }
 
 /** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather는 영구 무료 베이직이라 Pro 아님) */
@@ -57,7 +58,7 @@ export function isAllowed(sub: SubscriptionRow | null): boolean {
 export async function fetchSubscription(): Promise<SubscriptionRow | null> {
     const { data } = await supabase
         .from("subscriptions")
-        .select("status, plan, pending_plan, card_info, current_period_end, trial_end")
+        .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used")
         .maybeSingle()
     return (data as SubscriptionRow) || null
 }

@@ -268,11 +268,13 @@ export default function PricingPage() {
                     </span>
                     <span className="text-[13px] text-cur-muted mb-1">원/월</span>
                 </div>
-                <div className="pl-6 mt-1">
-                    <span className="inline-block bg-cur-primary/10 text-cur-primary text-[11px] font-bold px-2 py-0.5 rounded-full">
-                        첫 달 무료
-                    </span>
-                </div>
+                {!sub?.trial_used && (
+                    <div className="pl-6 mt-1">
+                        <span className="inline-block bg-cur-primary/10 text-cur-primary text-[11px] font-bold px-2 py-0.5 rounded-full">
+                            첫 달 무료
+                        </span>
+                    </div>
+                )}
             </button>
         )
     }
