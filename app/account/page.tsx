@@ -38,6 +38,7 @@ export default function AccountPage() {
     const [payments, setPayments] = useState<Payment[]>([])
     const [busy, setBusy] = useState(false)
     const [changingMethod, setChangingMethod] = useState(false)
+    const [showRegister, setShowRegister] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
     // Pro: 월간 보고서 수신처
@@ -174,6 +175,11 @@ export default function AccountPage() {
     const isGrandfather = sub?.plan === "grandfather"
     const active = isAllowed(sub)
     const pro = isProActive(sub)
+    // 카드 없는 무료체험(휴대폰인증 가입): card_info 없음 + 상태 trialing.
+    // active면 체험 진행 중, 아니면(기간 만료) 체험 종료 상태.
+    const cardlessTrial = sub?.status === "trialing" && !sub?.card_info
+    const cardlessTrialActive = cardlessTrial && active
+    const cardlessTrialExpired = cardlessTrial && !active
     const planLabel =
         sub?.plan === "monthly_pro" ? "Pro 플랜 (4,900원/월)" : "베이직 플랜 (1,900원/월)"
     const nextDate = sub?.current_period_end
@@ -217,7 +223,11 @@ export default function AccountPage() {
                                     <XCircle className="w-5 h-5 text-cur-muted" />
                                 )}
                                 <h2 className="text-[18px] font-bold text-cur-ink">
-                                    {isGrandfather ? "베이직 · 영구 무료" : STATUS_LABEL[sub?.status ?? ""] ?? "구독 없음"}
+                                    {isGrandfather
+                                        ? "베이직 · 영구 무료"
+                                        : cardlessTrialExpired
+                                        ? "무료체험 종료"
+                                        : STATUS_LABEL[sub?.status ?? ""] ?? "구독 없음"}
                                 </h2>
                             </div>
 
@@ -240,7 +250,7 @@ export default function AccountPage() {
                                     {nextDate && (
                                         <div className="flex justify-between">
                                             <span className="text-cur-muted">
-                                                {sub?.status === "canceled" ? "이용 종료일" : "다음 결제일"}
+                                                {sub?.status === "canceled" ? "이용 종료일" : cardlessTrial ? "체험 종료일" : "다음 결제일"}
                                             </span>
                                             <span className="text-cur-ink font-medium">{nextDate}</span>
                                         </div>
@@ -254,8 +264,73 @@ export default function AccountPage() {
                             )}
                         </div>
 
-                        {/* 액션: 평생무료가 아니면 결제수단 변경/해지/재구독 */}
-                        {!isGrandfather && (
+                        {/* 액션: 카드 없는 무료체험(진행/종료) → 등록 안내 / 그 외 → 변경·해지·재구독 */}
+                        {!isGrandfather && cardlessTrialActive && (
+                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
+                                <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-1.5">
+                                    <p className="text-[14px] font-bold text-cur-ink flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-cur-primary" /> Pro 1개월 무료체험 중
+                                    </p>
+                                    <p className="text-[13px] text-cur-muted leading-relaxed">
+                                        {nextDate ? `${nextDate}까지 ` : ""}카드 등록 없이 모든 기능을 무료로 이용하세요.
+                                        체험이 끝난 뒤에도 계속 이용하려면 아래에서 결제수단을 등록해 주세요.
+                                        <b className="text-cur-ink"> 등록 전에는 자동으로 결제되지 않습니다.</b>
+                                    </p>
+                                </div>
+                                {showRegister ? (
+                                    <div className="space-y-3">
+                                        <SubscribeButtons
+                                            plan={sub?.plan === "monthly_basic" ? "monthly_basic" : "monthly_pro"}
+                                            onSuccess={async () => {
+                                                setShowRegister(false)
+                                                await load()
+                                            }}
+                                            ctaSuffix="로 계속 이용"
+                                            successText="결제수단이 등록되었습니다. 체험 종료 후 자동으로 결제됩니다."
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => setShowRegister(false)}
+                                            className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                        >
+                                            나중에 하기
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button
+                                        onClick={() => setShowRegister(true)}
+                                        className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                                    >
+                                        결제수단 등록하고 계속 이용
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
+                        {!isGrandfather && cardlessTrialExpired && (
+                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
+                                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4">
+                                    <p className="text-[14px] text-cur-ink leading-relaxed">
+                                        무료체험이 종료되었습니다. 계속 이용하시려면 결제수단을 등록해 주세요. 등록 즉시 결제되어 바로 이어서 사용할 수 있습니다.
+                                    </p>
+                                </div>
+                                <SubscribeButtons
+                                    plan={sub?.plan === "monthly_basic" ? "monthly_basic" : "monthly_pro"}
+                                    onSuccess={load}
+                                    ctaSuffix="로 이어서 이용"
+                                    successText="결제가 완료되어 이어서 이용하실 수 있습니다."
+                                />
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => router.push("/pricing")}
+                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                >
+                                    플랜(베이직/Pro) 다시 선택하기
+                                </Button>
+                            </div>
+                        )}
+
+                        {!isGrandfather && !cardlessTrial && (
                             <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
                                 {active && sub?.status !== "canceled" ? (
                                     <>

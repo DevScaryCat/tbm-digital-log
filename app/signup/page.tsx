@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft, Smartphone } from "lucide-react"
+import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 
@@ -43,6 +43,7 @@ export default function SignupPage() {
     const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
     const [loading, setLoading] = useState(false)
+    const [checkingId, setCheckingId] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [trialStarted, setTrialStarted] = useState(false)
@@ -129,10 +130,27 @@ export default function SignupPage() {
         return null
     }
 
-    const goNext = () => {
+    const goNext = async () => {
         const err = validateStep(stepKey)
         if (err) { setError(err); return }
         setError(null)
+        // 계정 단계: 아이디 중복을 여기서 즉시 확인(최종 제출까지 미루지 않음)
+        if (stepKey === "account") {
+            setCheckingId(true)
+            try {
+                const res = await fetch("/api/auth/check-id", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id }),
+                })
+                const j = await res.json()
+                if (!res.ok) { setError(j.error || "아이디 확인에 실패했습니다."); return }
+                if (!j.available) { setError("이미 사용 중인 아이디입니다. 다른 아이디를 입력해주세요."); return }
+            } catch {
+                setError("아이디 확인에 실패했습니다. 잠시 후 다시 시도해주세요."); return
+            } finally {
+                setCheckingId(false)
+            }
+        }
         setStepIdx((s) => Math.min(stepKeys.length - 1, s + 1))
     }
     const goBack = () => { setError(null); setStepIdx((s) => Math.max(0, s - 1)) }
@@ -286,13 +304,6 @@ export default function SignupPage() {
 
                         {stepKey === "phone" && (
                             <>
-                                <div className="rounded-[12px] bg-cur-primary/5 border border-cur-primary/20 p-4 flex items-start gap-3">
-                                    <Smartphone className="w-5 h-5 text-cur-primary shrink-0 mt-0.5" />
-                                    <p className="text-[13px] leading-5 text-cur-body">
-                                        휴대폰 인증만 하면 <b>카드 등록 없이 Pro 요금제 1개월 무료체험</b>이 바로 시작됩니다.
-                                        번호는 본인 확인과 무료체험 부정 이용 방지에만 사용돼요.
-                                    </p>
-                                </div>
                                 <div className="space-y-2.5">
                                     <Label htmlFor="phone" className="text-[15px] font-semibold text-cur-ink">휴대폰 번호</Label>
                                     <div className="flex gap-2">
@@ -364,8 +375,8 @@ export default function SignupPage() {
                                 </Button>
                             )}
                             {stepKey !== "confirm" ? (
-                                <Button type="button" onClick={goNext} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]">
-                                    다음
+                                <Button type="button" onClick={goNext} disabled={checkingId} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]">
+                                    {checkingId ? <Loader2 className="h-5 w-5 animate-spin" /> : "다음"}
                                 </Button>
                             ) : (
                                 <Button type="button" onClick={handleSignup} disabled={loading} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]">
