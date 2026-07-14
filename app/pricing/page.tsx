@@ -75,6 +75,8 @@ export default function PricingPage() {
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
+    // 카드 없는 무료체험(휴대폰인증 가입): 결제/변경이 아니라 '결제수단 등록'으로 유도해야 한다.
+    const cardlessTrial = sub?.status === "trialing" && !sub?.card_info
 
     const changePlan = async (plan: PlanId) => {
         setChangeMsg(null)
@@ -169,6 +171,31 @@ export default function PricingPage() {
                 <p className="text-center text-[14px] text-cur-muted py-2">
                     위에서 플랜을 선택해주세요.
                 </p>
+            )
+        }
+        // 카드 없는 무료체험: '플랜 변경'/'다음 결제일'이 아니라 선택한 플랜으로 결제수단 등록을 유도.
+        // 등록하면 체험 종료일부터 선택한 플랜으로 자동 결제가 시작된다(billing-key가 pending_plan 예약).
+        if (cardlessTrial) {
+            const sameAsCurrent = selected === currentPlan
+            return (
+                <div className="space-y-3">
+                    <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-[13px] leading-relaxed">
+                        <p className="font-bold text-cur-ink flex items-center gap-1.5">
+                            <Sparkles className="w-4 h-4 text-cur-primary" /> 무료체험 중{nextDate ? ` · 체험 종료일 ${nextDate}` : ""}
+                        </p>
+                        <p className="mt-1 text-cur-muted">
+                            지금은 카드 없이 무료로 이용 중입니다. 체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.
+                            등록하면 <b className="text-cur-ink">체험 종료일부터 {PLAN_LABEL[selected]} 요금({selected === "monthly_pro" ? "4,900원" : "1,900원"}/월)이 자동으로 결제</b>됩니다. 등록 전에는 결제되지 않습니다.
+                            {!sameAsCurrent && <span className="block mt-1">체험 기간에는 현재 Pro 혜택이 그대로 유지됩니다.</span>}
+                        </p>
+                    </div>
+                    <SubscribeButtons
+                        plan={selected}
+                        onSuccess={loadSubscription}
+                        ctaSuffix="로 등록"
+                        successText="결제수단이 등록되었습니다. 체험 종료 후 자동으로 결제됩니다."
+                    />
+                </div>
             )
         }
         // 이미 이 플랜 구독 중
