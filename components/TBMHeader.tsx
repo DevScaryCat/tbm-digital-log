@@ -188,7 +188,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                             </div>
                             {badge?.trial && (
                                 <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-2.5 py-1.5 text-[11px] font-medium text-cur-primary">
-                                    무료체험 중 · 카드 등록 없이 이용 중
+                                    무료체험 중
                                 </div>
                             )}
                             <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />

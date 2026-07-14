@@ -192,7 +192,7 @@ export default function SignupPage() {
                         {trialStarted ? (
                             <p className="text-[15px] text-cur-muted font-medium">
                                 <b className="text-cur-primary">Pro 1개월 무료체험</b>이 시작되었습니다. 🎉<br />
-                                카드 등록 없이 모든 기능을 써보세요.<br />잠시 후 로그인 페이지로 이동합니다.
+                                모든 기능을 자유롭게 써보세요.<br />잠시 후 로그인 페이지로 이동합니다.
                             </p>
                         ) : (
                             <p className="text-[15px] text-cur-muted font-medium">성공적으로 계정이 생성되었습니다.<br/>잠시 후 로그인 페이지로 이동합니다.</p>
@@ -227,7 +227,7 @@ export default function SignupPage() {
                     <CardDescription className="text-[15px] text-cur-muted font-medium">
                         {stepKey === "account" && "로그인에 사용할 계정을 만들어주세요."}
                         {stepKey === "site" && "현장 정보를 알려주세요. 맞춤 통계에 활용됩니다."}
-                        {stepKey === "phone" && "본인 확인 후 카드 없이 1개월 무료체험이 시작됩니다."}
+                        {stepKey === "phone" && "본인 확인 후 1개월 무료체험이 시작됩니다."}
                         {stepKey === "confirm" && "입력하신 내용을 확인해주세요."}
                     </CardDescription>
 

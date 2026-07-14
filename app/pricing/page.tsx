@@ -184,7 +184,7 @@ export default function PricingPage() {
                             <Sparkles className="w-4 h-4 text-cur-primary" /> 무료체험 중{nextDate ? ` · 체험 종료일 ${nextDate}` : ""}
                         </p>
                         <p className="mt-1 text-cur-muted">
-                            지금은 카드 없이 무료로 이용 중입니다. 체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.
+                            지금은 무료로 이용 중입니다. 체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.
                             등록하면 <b className="text-cur-ink">체험 종료일부터 {PLAN_LABEL[selected]} 요금({selected === "monthly_pro" ? "4,900원" : "1,900원"}/월)이 자동으로 결제</b>됩니다. 등록 전에는 결제되지 않습니다.
                             {!sameAsCurrent && <span className="block mt-1">체험 기간에는 현재 Pro 혜택이 그대로 유지됩니다.</span>}
                         </p>

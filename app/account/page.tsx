@@ -272,7 +272,7 @@ export default function AccountPage() {
                                         <Sparkles className="w-4 h-4 text-cur-primary" /> Pro 1개월 무료체험 중
                                     </p>
                                     <p className="text-[13px] text-cur-muted leading-relaxed">
-                                        {nextDate ? `${nextDate}까지 ` : ""}카드 등록 없이 모든 기능을 무료로 이용하세요.
+                                        {nextDate ? `${nextDate}까지 ` : ""}모든 기능을 무료로 이용하세요.
                                         체험이 끝난 뒤에도 계속 이용하려면 아래에서 결제수단을 등록해 주세요.
                                         <b className="text-cur-ink"> 등록 전에는 자동으로 결제되지 않습니다.</b>
                                     </p>
