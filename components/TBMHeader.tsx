@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { LogOut, User, Home, ChevronLeft, Loader2, CreditCard, Mail, MessageSquareText } from "lucide-react"
 import { Logo } from "@/components/Logo"
-import { startOfMonth, addMonths, format } from "date-fns"
+import { startOfMonth } from "date-fns"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -76,7 +76,7 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
 export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleAction, backHref }: TBMHeaderProps) {
     const router = useRouter()
     const [userName, setUserName] = useState("사용자")
-    const [badge, setBadge] = useState<{ label: string; isPro: boolean } | null>(null)
+    const [badge, setBadge] = useState<{ label: string; isPro: boolean; trial: boolean } | null>(null)
     const [plan, setPlan] = useState<string | null>(null)
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [unreadSuggestions, setUnreadSuggestions] = useState(0)
@@ -178,8 +178,13 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                         <div className="px-3 py-2.5 space-y-2.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-[11px] text-cur-muted-soft font-semibold">이번 달 사용량</span>
-                                <span className="text-[11px] text-cur-muted-soft">{format(startOfMonth(addMonths(new Date(), 1)), "M월 d일")} 초기화</span>
+                                <span className="text-[11px] text-cur-muted-soft">매월 1일 초기화</span>
                             </div>
+                            {badge?.trial && (
+                                <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-2.5 py-1.5 text-[11px] font-medium text-cur-primary">
+                                    무료체험 중 · 카드 등록 없이 이용 중
+                                </div>
+                            )}
                             <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
                             <UsageBar label="안전보건교육일지" used={usage.log} limit={limitFor(plan, "log")} />
                             <UsageBar label="AI 분석 보고서" used={usage.ra} limit={limitFor(plan, "ra")} />
