@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { LogOut, User, Home, ChevronLeft, Loader2, CreditCard, Mail, MessageSquareText } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth } from "date-fns"
-import { fetchSubscription, planBadge } from "@/lib/useSubscription"
+import { fetchSubscription, planBadge, usageWindow } from "@/lib/useSubscription"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -79,6 +79,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     const [badge, setBadge] = useState<{ label: string; isPro: boolean; trial: boolean } | null>(null)
     const [plan, setPlan] = useState<string | null>(null)
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
+    const [usageStartISO, setUsageStartISO] = useState<string | null>(null)
+    const [resetLabel, setResetLabel] = useState("매월 1일 초기화")
     const [unreadSuggestions, setUnreadSuggestions] = useState(0)
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
     const [fullName, setFullName] = useState("")
@@ -98,6 +100,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 const sub = await fetchSubscription()
                 setBadge(planBadge(sub))
                 setPlan(sub?.plan ?? null)
+                const w = usageWindow(sub)
+                setUsageStartISO(w.startISO)
+                setResetLabel(w.resetLabel)
             }
         }
         getUser()
@@ -107,7 +112,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     // 미리 조회하지 않고 메뉴를 처음 열 때 1회 조회한다(페이지당 불필요한 count 쿼리 제거).
     const loadUsage = async () => {
         if (usage) return
-        const startISO = startOfMonth(new Date()).toISOString()
+        // 결제/체험 기준 창 시작(없으면 달력 월). DB 트리거와 동일 규칙(usageWindow).
+        const startISO = usageStartISO ?? startOfMonth(new Date()).toISOString()
         const [logs, mins, ras, sugg] = await Promise.all([
             supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
             supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),
@@ -177,8 +183,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     <>
                         <div className="px-3 py-2.5 space-y-2.5">
                             <div className="flex items-center justify-between">
-                                <span className="text-[11px] text-cur-muted-soft font-semibold">이번 달 사용량</span>
-                                <span className="text-[11px] text-cur-muted-soft">매월 1일 초기화</span>
+                                <span className="text-[11px] text-cur-muted-soft font-semibold">사용량</span>
+                                <span className="text-[11px] text-cur-muted-soft">{resetLabel}</span>
                             </div>
                             {badge?.trial && (
                                 <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-2.5 py-1.5 text-[11px] font-medium text-cur-primary">

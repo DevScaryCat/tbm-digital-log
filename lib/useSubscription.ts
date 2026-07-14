@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { startOfMonth, addMonths, format } from "date-fns"
 
 export interface SubscriptionRow {
     status: string
@@ -56,6 +57,23 @@ export function isAllowed(sub: SubscriptionRow | null): boolean {
         return true
     }
     return false
+}
+
+/**
+ * 사용량 한도 창(count 기준 시작 + 리셋 표시). DB 트리거 enforce_tbm_monthly_limit와 동일 규칙:
+ * - current_period_end(결제/체험 경계)가 있으면 그 날짜 앵커의 현재 이용기간 [start, reset)
+ * - 없으면(영구무료 등) 달력 월(매월 1일)
+ */
+export function usageWindow(sub: SubscriptionRow | null): { startISO: string; resetLabel: string } {
+    const cpe = sub?.current_period_end
+    if (!cpe) {
+        return { startISO: startOfMonth(new Date()).toISOString(), resetLabel: "매월 1일 초기화" }
+    }
+    const now = new Date()
+    let pend = new Date(cpe)
+    while (pend <= now) pend = addMonths(pend, 1) // 과거로 밀려있으면 현재 이용기간까지 굴림
+    const pstart = addMonths(pend, -1)
+    return { startISO: pstart.toISOString(), resetLabel: `${format(pend, "M월 d일")} 초기화` }
 }
 
 export async function fetchSubscription(): Promise<SubscriptionRow | null> {
