@@ -51,6 +51,9 @@ export async function POST(request: Request) {
       await new Promise((r) => setTimeout(r, retryDelays[i]));
       info = await getBillingKeyInfo(billingKey);
     }
+    // 낙관수용(발급직후 UNAUTHORIZED)한 키는 소유권 미확인 상태 → billing_key_verified=false로 저장하고
+    // 첫 과금 직전 cron(chargeSubscription)이 소유권을 재검증한다. (즉시결제 경로는 아래에서 차단)
+    let acceptedUnverified = false;
     if (!info.ok) {
       const b = info.body as { message?: string; type?: string; pgCode?: string; pgMessage?: string } | null;
       if (b?.type === "UNAUTHORIZED") {
@@ -58,6 +61,7 @@ export async function POST(request: Request) {
         // 재시도로도 안 넘어가면 낙관적으로 진행한다: UNAUTHORIZED는 '키는 존재하나 지금은 조회 권한 없음'이라
         // 조회 불가한 남의/타스토어 키는 실제 결제 시점에 어차피 실패(타인 과금 위험 없음)하고,
         // 정상 키는 곧 조회 가능해져 다음 결제일에 정상 청구된다. (info.body가 없으므로 소유권·카드정보는 스킵/폴백)
+        acceptedUnverified = true;
         console.warn("billing-key verify UNAUTHORIZED after retries — accepting optimistically", { billingKey, method });
       } else {
         // NOT_FOUND 등 그 외 사유는 진짜 실패 → PortOne 사유를 화면에 노출
@@ -89,7 +93,12 @@ export async function POST(request: Request) {
     if (mode === "update") {
       const { error } = await admin
         .from("subscriptions")
-        .update({ billing_key: billingKey, card_info: cardInfo, updated_at: now.toISOString() })
+        .update({
+          billing_key: billingKey,
+          card_info: cardInfo,
+          billing_key_verified: !acceptedUnverified,
+          updated_at: now.toISOString(),
+        })
         .eq("user_id", user.id);
       if (error) {
         console.error("billing-key update error:", error);
@@ -121,6 +130,7 @@ export async function POST(request: Request) {
         .update({
           billing_key: billingKey,
           card_info: cardInfo,
+          billing_key_verified: !acceptedUnverified,
           pending_plan: selectedPlan.id !== existing.plan ? selectedPlan.id : null,
           failed_attempts: 0,
           updated_at: now.toISOString(),
@@ -145,6 +155,7 @@ export async function POST(request: Request) {
             status: "trialing",
             billing_key: billingKey,
             card_info: cardInfo,
+            billing_key_verified: !acceptedUnverified,
             amount: selectedPlan.amount,
             currency: selectedPlan.currency,
             trial_end: nextChargeAt.toISOString(),
@@ -173,6 +184,14 @@ export async function POST(request: Request) {
     }
 
     // --- 재구독(체험 이미 사용): 즉시 결제 후 활성화 (새 무료달 부여 안 함) ---
+    // 즉시 결제 경로는 cron 재검증 안전망이 없으므로 미검증(낙관수용) 키로는 결제하지 않는다.
+    // 카카오페이 전파는 보통 수십 초 내 끝나므로 잠시 후 재시도하면 정상 검증 경로로 진행된다.
+    if (acceptedUnverified) {
+      return NextResponse.json(
+        { error: "결제수단을 확인하는 중입니다. 잠시 후(약 30초) 다시 시도해주세요." },
+        { status: 409 }
+      );
+    }
     const { data: sub, error: upErr } = await admin
       .from("subscriptions")
       .upsert(

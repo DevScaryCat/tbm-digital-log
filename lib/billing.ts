@@ -2,6 +2,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import {
   chargeWithBillingKey,
+  getBillingKeyInfo,
   getPayment,
   addOneMonth,
   PLAN,
@@ -16,10 +17,60 @@ export interface SubscriptionRow {
   plan?: string | null;
   pending_plan?: string | null;
   billing_key: string | null;
+  // 발급 직후 UNAUTHORIZED(전파지연)로 소유권을 확인하지 못한 채 낙관수용한 키는 false.
+  // 첫 과금 직전 여기서 재검증한다. (미지정/true면 이미 검증된 것으로 간주)
+  billing_key_verified?: boolean | null;
   amount: number;
   status: string;
   current_period_end: string | null;
   failed_attempts?: number;
+}
+
+/**
+ * 낙관수용(billing_key_verified=false)한 빌링키를 과금 직전에 재검증한다.
+ * - 조회 성공 + 소유권 일치 → verified 처리(true)하고 과금 진행
+ * - 조회 성공 + 소유권 불일치 → 남의 키 → 빌링키 제거, 과금 중단(보안)
+ * - 조회 실패(아직 전파중/NOT_FOUND) → 이번 회차 과금 스킵(다음 실행 재시도)
+ * 반환: 과금을 계속해도 되면 null, 중단해야 하면 ChargeResult
+ */
+async function ensureBillingKeyVerified(
+  admin: SupabaseClient,
+  sub: SubscriptionRow,
+  paymentId: string
+): Promise<ChargeResult | null> {
+  if (sub.billing_key_verified !== false || !sub.billing_key) return null;
+  const info = await getBillingKeyInfo(sub.billing_key);
+  if (info.ok) {
+    const customerId = (info.body as { customer?: { id?: string } })?.customer?.id;
+    if (customerId && customerId !== sub.user_id) {
+      // 소유권 불일치 → 타인 카드 과금 방지: 키를 제거하고 재등록을 유도
+      console.error("cron re-verify: billing-key ownership mismatch — clearing key", {
+        subId: sub.id,
+        keyCustomerId: customerId,
+        userId: sub.user_id,
+      });
+      await admin
+        .from("subscriptions")
+        .update({
+          billing_key: null,
+          card_info: null,
+          billing_key_verified: true,
+          status: "past_due",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sub.id);
+      return { ok: false, paymentId, status: "failed", detail: "ownership mismatch — key cleared" };
+    }
+    // 검증 통과 → 플래그 정리 후 과금 진행
+    await admin.from("subscriptions").update({ billing_key_verified: true }).eq("id", sub.id);
+    return null;
+  }
+  // 아직 조회 불가(전파 지연/NOT_FOUND) → 검증 못 함 → 이번 회차는 과금하지 않고 넘어간다
+  console.warn("cron re-verify: billing-key still not readable — skipping charge this run", {
+    subId: sub.id,
+    status: info.status,
+  });
+  return { ok: false, paymentId, status: "skipped", detail: "awaiting billing-key verification" };
 }
 
 export interface ChargeResult {
@@ -68,6 +119,10 @@ export async function chargeSubscription(
   if (existing?.status === "paid") {
     return { ok: true, paymentId, status: "skipped", detail: "이미 결제됨" };
   }
+
+  // 낙관수용한 미검증 키는 과금 전에 소유권을 재검증 (통과 못 하면 여기서 중단)
+  const gate = await ensureBillingKeyVerified(admin, sub, paymentId);
+  if (gate) return gate;
 
   const res = await chargeWithBillingKey({
     paymentId,
