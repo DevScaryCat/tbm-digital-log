@@ -179,9 +179,15 @@ export function SubscribeButtons({
             )}
             <div className="mt-1 rounded-lg bg-cur-elevated/60 border border-cur-hairline p-3 text-[12px] leading-relaxed text-cur-muted">
                 <p className="font-medium text-cur-ink mb-1">정기결제(자동결제) 안내</p>
-                <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
+                {mode === "update" ? (
+                    <p>· 결제수단만 변경되며, 구독 플랜·다음 결제일·결제 금액은 그대로 유지됩니다.</p>
+                ) : (
+                    <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
+                )}
                 <p>· 이용요금: {plan === "monthly_pro" ? "Pro 월 4,900원(VAT 포함)" : "월 1,900원(VAT 포함)"}.</p>
-                <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
+                {mode !== "update" && (
+                    <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
+                )}
                 <p>· 해지는 언제든 가능하며, 중도 해지 시 이용하지 않은 잔여 기간은 일할 계산하여 환불해 드립니다.</p>
             </div>
         </div>

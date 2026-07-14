@@ -345,6 +345,7 @@ export default function AccountPage() {
                                                 <p className="text-[13px] text-cur-muted text-center">변경할 결제수단을 선택하세요</p>
                                                 <SubscribeButtons
                                                     mode="update"
+                                                    plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"}
                                                     onSuccess={async () => {
                                                         setChangingMethod(false)
                                                         await load()
