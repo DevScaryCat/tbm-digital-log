@@ -11,6 +11,8 @@ import { chargeSubscription } from "@/lib/billing";
 import { paymentsEnabled } from "@/lib/utils";
 
 export const runtime = "nodejs";
+// 카카오페이 빌링키 검증 재시도(백오프 ~9s)를 위해 실행시간 여유 확보
+export const maxDuration = 30;
 
 const PROVIDER_LABEL: Record<string, string> = {
   card: "카드",
@@ -40,10 +42,13 @@ export async function POST(request: Request) {
     const selectedPlan = getPlan(plan);
 
     // 1) 빌링키 발급 검증 (PortOne)
-    // 일부 PG(카카오페이 등)는 발급 직후 조회가 잠깐 지연될 수 있어 1회 재시도.
+    // 카카오페이 등 간편결제는 발급 직후 GET /billing-keys 가 잠깐 UNAUTHORIZED/미조회로 뜰 수 있다
+    // (PortOne 전파 지연 — 키 자체는 정상 발급됨). 백오프로 여러 번 재시도해 그 창을 넘긴다.
+    // 카드(KG이니시스)는 즉시 조회되므로 재시도 없이 통과.
     let info = await getBillingKeyInfo(billingKey);
-    if (!info.ok) {
-      await new Promise((r) => setTimeout(r, 1200));
+    const retryDelays = [1500, 3000, 4500];
+    for (let i = 0; !info.ok && i < retryDelays.length; i++) {
+      await new Promise((r) => setTimeout(r, retryDelays[i]));
       info = await getBillingKeyInfo(billingKey);
     }
     if (!info.ok) {
