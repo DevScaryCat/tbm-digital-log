@@ -30,9 +30,10 @@ const ALL_METHODS: Method[] = [
     { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: "bg-[#0064FF] text-white hover:brightness-95" },
 ]
 // 실연동(라이브) 완료된 결제수단만 운영(실서버)에 노출.
-// 현재 카드(KG이니시스)만 실연동 — 토스·카카오는 테스트 채널이라 운영에서 숨김.
-// (로컬/개발에서는 테스트용으로 모두 노출) 토스·카카오 실연동 시 LIVE_METHODS에 추가.
-const LIVE_METHODS = ["card"]
+// 카드(KG이니시스) + 카카오페이(CID CA18988263, 2026-07 심사완료) 실연동. 네이버·토스는 아직 진행중이라 숨김.
+// 운영 노출 조건: LIVE_METHODS에 있고 + Vercel prod에 해당 채널키(NEXT_PUBLIC_PORTONE_CHANNEL_KEY_*)가 '라이브' 값으로 설정됨.
+// (env 미설정 시 CHANNELS[key] undefined라 자동 숨김) 네이버·토스 실연동 시 여기에 추가.
+const LIVE_METHODS = ["card", "kakaopay"]
 const METHODS = ALL_METHODS.filter(
     (m) => CHANNELS[m.key] && (process.env.NODE_ENV !== "production" || LIVE_METHODS.includes(m.key))
 )
