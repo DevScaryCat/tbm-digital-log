@@ -188,6 +188,19 @@ export default function AccountPage() {
     const methodLabel = sub?.card_info?.last4
         ? `${sub.card_info.issuer ?? "카드"} ****${sub.card_info.last4}`
         : sub?.card_info?.provider ?? null
+    // 현재 적용된 결제수단 key — 변경 화면에서 '이미 사용 중'인 수단을 비활성 처리하는 데 사용.
+    // 카드(KG)는 last4/issuer 보유, 간편결제는 provider 라벨만 보유.
+    const PROVIDER_TO_KEY: Record<string, string> = {
+        카카오페이: "kakaopay",
+        네이버페이: "naverpay",
+        토스페이: "tosspay",
+        카드: "card",
+    }
+    const currentMethodKey: string | null = sub?.card_info
+        ? sub.card_info.last4 || sub.card_info.issuer
+            ? "card"
+            : PROVIDER_TO_KEY[sub.card_info.provider ?? ""] ?? null
+        : null
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
@@ -346,6 +359,7 @@ export default function AccountPage() {
                                                 <SubscribeButtons
                                                     mode="update"
                                                     plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"}
+                                                    currentMethod={currentMethodKey}
                                                     onSuccess={async () => {
                                                         setChangingMethod(false)
                                                         await load()
@@ -362,20 +376,32 @@ export default function AccountPage() {
                                                 </Button>
                                             </div>
                                         ) : (
+                                            <>
+                                                <Button
+                                                    onClick={() => setChangingMethod(true)}
+                                                    className="w-full h-11 rounded-xl bg-cur-elevated text-cur-ink border border-cur-hairline hover:bg-cur-hairline font-bold"
+                                                >
+                                                    결제수단 변경
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    onClick={() => router.push("/pricing")}
+                                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                                >
+                                                    플랜 변경 (베이직 ↔ Pro)
+                                                </Button>
+                                            </>
+                                        )}
+                                        {!changingMethod && (
                                             <Button
-                                                onClick={() => setChangingMethod(true)}
-                                                className="w-full h-11 rounded-xl bg-cur-elevated text-cur-ink border border-cur-hairline hover:bg-cur-hairline font-bold"
+                                                onClick={handleCancel}
+                                                disabled={busy}
+                                                className="w-full h-11 rounded-xl bg-transparent text-cur-error border border-cur-error/30 hover:bg-cur-error/10 font-bold"
                                             >
-                                                결제수단 변경
+                                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "구독 해지"}
                                             </Button>
                                         )}
-                                        <Button
-                                            onClick={handleCancel}
-                                            disabled={busy}
-                                            className="w-full h-11 rounded-xl bg-transparent text-cur-error border border-cur-error/30 hover:bg-cur-error/10 font-bold"
-                                        >
-                                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "구독 해지"}
-                                        </Button>
+                                        {/* changingMethod 중에는 취소 버튼이 있으므로 구독 해지는 숨김 */}
                                     </>
                                 ) : (
                                     // 미구독 / 해지(기간만료) / 결제실패 → 재구독

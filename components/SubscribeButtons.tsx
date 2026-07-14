@@ -52,12 +52,15 @@ export function SubscribeButtons({
     successText = "구독이 시작되었습니다! 첫 달은 무료입니다.",
     mode = "subscribe",
     plan = "monthly_basic",
+    currentMethod = null,
 }: {
     onSuccess?: () => void
     ctaSuffix?: string
     successText?: string
     mode?: "subscribe" | "update"
     plan?: "monthly_basic" | "monthly_pro"
+    // 현재 적용된 결제수단 key (update 모드에서 '사용 중'으로 비활성 표시). card/kakaopay/naverpay/tosspay
+    currentMethod?: string | null
 }) {
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
@@ -156,24 +159,36 @@ export function SubscribeButtons({
                 </div>
             )}
             <p className="text-[13px] text-cur-muted text-center">결제수단을 선택하세요</p>
-            {METHODS.map((m) => (
-                <Button
-                    key={m.key}
-                    onClick={() => handleIssue(m)}
-                    disabled={!!processing}
-                    className={`w-full font-bold h-12 rounded-xl transition-all justify-start px-4 ${m.style}`}
-                >
-                    {processing === m.key ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        // 아이콘을 고정폭 박스에 넣어 버튼끼리 아이콘 라인을 맞추고 왼쪽정렬
-                        <span className="flex items-center gap-2.5 w-full">
-                            <span className="flex w-[18px] h-[18px] items-center justify-center shrink-0">{m.icon}</span>
-                            <span>{m.label}{ctaSuffix}</span>
-                        </span>
-                    )}
-                </Button>
-            ))}
+            {METHODS.map((m) => {
+                // update 모드에서 이미 사용 중인 수단은 '현재 사용 중'으로 표시하고 선택 불가 처리
+                const isCurrent = mode === "update" && m.key === currentMethod
+                return (
+                    <Button
+                        key={m.key}
+                        onClick={() => handleIssue(m)}
+                        disabled={!!processing || isCurrent}
+                        aria-disabled={isCurrent}
+                        className={`w-full font-bold h-12 rounded-xl transition-all justify-start px-4 ${
+                            isCurrent
+                                ? "bg-cur-elevated text-cur-muted border border-cur-hairline hover:opacity-100 disabled:opacity-100 cursor-default"
+                                : m.style
+                        }`}
+                    >
+                        {processing === m.key ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            // 아이콘을 고정폭 박스에 넣어 버튼끼리 아이콘 라인을 맞추고 왼쪽정렬
+                            <span className="flex items-center gap-2.5 w-full">
+                                <span className="flex w-[18px] h-[18px] items-center justify-center shrink-0">{m.icon}</span>
+                                <span>{isCurrent ? m.label : `${m.label}${ctaSuffix}`}</span>
+                                {isCurrent && (
+                                    <span className="ml-auto text-[11px] font-semibold text-cur-muted">현재 사용 중</span>
+                                )}
+                            </span>
+                        )}
+                    </Button>
+                )
+            })}
             {METHODS.length === 0 && (
                 <p className="text-[13px] text-cur-error text-center">결제수단이 설정되지 않았습니다. (환경변수 확인)</p>
             )}
