@@ -384,7 +384,8 @@ export default function AccountPage() {
                                                 ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
                                                 : "구독하고 모든 기능을 이용하세요."}
                                         </p>
-                                        <SubscribeButtons onSuccess={load} />
+                                        {/* 재구독은 기존 플랜 유지 → 선택 플랜에 맞는 금액이 안내되도록 plan 전달 */}
+                                        <SubscribeButtons onSuccess={load} plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"} />
                                     </>
                                 )}
                             </div>

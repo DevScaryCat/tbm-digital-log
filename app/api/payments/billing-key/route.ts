@@ -52,20 +52,28 @@ export async function POST(request: Request) {
       info = await getBillingKeyInfo(billingKey);
     }
     if (!info.ok) {
-      // 실제 PortOne 사유를 화면에 노출해 진단 가능하게 (pgCode/pgMessage/message/type)
       const b = info.body as { message?: string; type?: string; pgCode?: string; pgMessage?: string } | null;
-      const reason =
-        [b?.pgCode, b?.pgMessage].filter(Boolean).join(" ") ||
-        b?.message ||
-        b?.type ||
-        `HTTP ${info.status}`;
-      console.error("billing-key verify failed:", { method, status: info.status, body: info.body });
-      return NextResponse.json({ error: `빌링키 검증 실패: ${reason}`, detail: info.body }, { status: 400 });
+      if (b?.type === "UNAUTHORIZED") {
+        // 발급은 성공(존재)했으나 발급 직후 조회 인가 전파가 지연되는 케이스(간편결제/카카오페이).
+        // 재시도로도 안 넘어가면 낙관적으로 진행한다: UNAUTHORIZED는 '키는 존재하나 지금은 조회 권한 없음'이라
+        // 조회 불가한 남의/타스토어 키는 실제 결제 시점에 어차피 실패(타인 과금 위험 없음)하고,
+        // 정상 키는 곧 조회 가능해져 다음 결제일에 정상 청구된다. (info.body가 없으므로 소유권·카드정보는 스킵/폴백)
+        console.warn("billing-key verify UNAUTHORIZED after retries — accepting optimistically", { billingKey, method });
+      } else {
+        // NOT_FOUND 등 그 외 사유는 진짜 실패 → PortOne 사유를 화면에 노출
+        const reason =
+          [b?.pgCode, b?.pgMessage].filter(Boolean).join(" ") ||
+          b?.message ||
+          b?.type ||
+          `HTTP ${info.status}`;
+        console.error("billing-key verify failed:", { method, status: info.status, body: info.body });
+        return NextResponse.json({ error: `빌링키 검증 실패: ${reason}`, detail: info.body }, { status: 400 });
+      }
     }
 
     // 1-1) 소유권 검증: 발급 시 customerId=user.id로 묶으므로 응답 customer.id가 요청 유저와 일치해야 함.
-    // 남의 빌링키를 제출해 타인 카드로 결제되는 것을 차단. (customer 정보가 없는 예외적 응답은 허용하되 경고)
-    const keyCustomerId = (info.body as { customer?: { id?: string } })?.customer?.id;
+    // 남의 빌링키를 제출해 타인 카드로 결제되는 것을 차단. (조회 실패/UNAUTHORIZED 낙관수용 시 customer가 없어 스킵)
+    const keyCustomerId = info.ok ? (info.body as { customer?: { id?: string } })?.customer?.id : undefined;
     if (keyCustomerId && keyCustomerId !== user.id) {
       console.warn("billing-key ownership mismatch", { keyCustomerId, userId: user.id });
       return NextResponse.json({ error: "본인 명의로 발급된 결제수단이 아닙니다." }, { status: 403 });
