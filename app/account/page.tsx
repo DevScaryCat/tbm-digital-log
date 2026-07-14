@@ -7,8 +7,8 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Loader2, CheckCircle2, XCircle, Receipt, Mail, Send, Plus, Trash2, Sparkles } from "lucide-react"
+import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
+import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
 
 interface Payment {
     payment_id: string
@@ -41,11 +41,6 @@ export default function AccountPage() {
     const [showRegister, setShowRegister] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
-    // Pro: 월간 보고서 수신처
-    const [recipients, setRecipients] = useState<string[]>([])
-    const [newEmail, setNewEmail] = useState("")
-    const [savingRecipients, setSavingRecipients] = useState(false)
-    const [sending, setSending] = useState(false)
 
     const load = async () => {
         const {
@@ -62,83 +57,12 @@ export default function AccountPage() {
             .select("payment_id, amount, status, paid_at, created_at")
             .order("created_at", { ascending: false })
         setPayments((data as Payment[]) || [])
-        if (isProActive(s)) {
-            const { data: sessionData } = await supabase.auth.getSession()
-            const res = await fetch("/api/reports/recipients", {
-                headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` },
-            })
-            if (res.ok) {
-                const j = await res.json()
-                setRecipients(j.recipients ?? [])
-            }
-        }
         setLoading(false)
     }
 
     useEffect(() => {
         load()
     }, [])
-
-    const saveRecipients = async (next: string[]) => {
-        setSavingRecipients(true)
-        setMsg(null)
-        try {
-            const { data: sessionData } = await supabase.auth.getSession()
-            const res = await fetch("/api/reports/recipients", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
-                body: JSON.stringify({ recipients: next }),
-            })
-            const j = await res.json()
-            if (!res.ok) {
-                setMsg({ type: "err", text: j.error || "저장 실패" })
-                return false
-            }
-            setRecipients(j.recipients ?? next)
-            return true
-        } finally {
-            setSavingRecipients(false)
-        }
-    }
-
-    const addRecipient = async () => {
-        const email = newEmail.trim()
-        if (!email) return
-        if (recipients.includes(email)) {
-            setMsg({ type: "err", text: "이미 등록된 이메일입니다." })
-            return
-        }
-        const ok = await saveRecipients([...recipients, email])
-        if (ok) {
-            setNewEmail("")
-            setMsg({ type: "ok", text: "수신처가 추가되었습니다." })
-        }
-    }
-
-    const removeRecipient = async (email: string) => {
-        await saveRecipients(recipients.filter((e) => e !== email))
-    }
-
-    const sendNow = async () => {
-        setSending(true)
-        setMsg(null)
-        try {
-            const { data: sessionData } = await supabase.auth.getSession()
-            const res = await fetch("/api/reports/send", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData?.session?.access_token}` },
-                body: JSON.stringify({ which: "current" }),
-            })
-            const j = await res.json()
-            if (!res.ok) {
-                setMsg({ type: "err", text: j.error || "발송 실패" })
-                return
-            }
-            setMsg({ type: "ok", text: `이번 달 보고서를 ${recipients.length}곳으로 발송했습니다.` })
-        } finally {
-            setSending(false)
-        }
-    }
 
     const handleCancel = async () => {
         if (
@@ -344,141 +268,79 @@ export default function AccountPage() {
                         )}
 
                         {!isGrandfather && !cardlessTrial && (
-                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
-                                {active && sub?.status !== "canceled" ? (
-                                    <>
-                                        {changingMethod ? (
-                                            <div className="space-y-3">
-                                                {methodLabel && (
-                                                    <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
-                                                        <span className="text-[13px] text-cur-muted">현재 결제수단</span>
-                                                        <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
-                                                    </div>
-                                                )}
-                                                <p className="text-[13px] text-cur-muted text-center">변경할 결제수단을 선택하세요</p>
-                                                <SubscribeButtons
-                                                    mode="update"
-                                                    plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"}
-                                                    currentMethod={currentMethodKey}
-                                                    onSuccess={async () => {
-                                                        setChangingMethod(false)
-                                                        await load()
-                                                    }}
-                                                    ctaSuffix="로 변경"
-                                                    successText="결제수단이 변경되었습니다."
-                                                />
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => setChangingMethod(false)}
-                                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
-                                                >
-                                                    취소
-                                                </Button>
+                            active && sub?.status !== "canceled" ? (
+                                changingMethod ? (
+                                    // 결제수단 변경 진행 — 패딩 카드로 인라인 폼 표시
+                                    <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                        {methodLabel && (
+                                            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
+                                                <span className="text-[13px] text-cur-muted">현재 결제수단</span>
+                                                <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <Button
-                                                    onClick={() => setChangingMethod(true)}
-                                                    className="w-full h-11 rounded-xl bg-cur-elevated text-cur-ink border border-cur-hairline hover:bg-cur-hairline font-bold"
-                                                >
-                                                    결제수단 변경
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    onClick={() => router.push("/pricing")}
-                                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
-                                                >
-                                                    플랜 변경 (베이직 ↔ Pro)
-                                                </Button>
-                                            </>
                                         )}
-                                        {!changingMethod && (
-                                            <Button
-                                                onClick={handleCancel}
-                                                disabled={busy}
-                                                className="w-full h-11 rounded-xl bg-transparent text-cur-error border border-cur-error/30 hover:bg-cur-error/10 font-bold"
-                                            >
-                                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "구독 해지"}
-                                            </Button>
-                                        )}
-                                        {/* changingMethod 중에는 취소 버튼이 있으므로 구독 해지는 숨김 */}
-                                    </>
+                                        <p className="text-[13px] text-cur-muted text-center">변경할 결제수단을 선택하세요</p>
+                                        <SubscribeButtons
+                                            mode="update"
+                                            plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"}
+                                            currentMethod={currentMethodKey}
+                                            onSuccess={async () => {
+                                                setChangingMethod(false)
+                                                await load()
+                                            }}
+                                            ctaSuffix="로 변경"
+                                            successText="결제수단이 변경되었습니다."
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => setChangingMethod(false)}
+                                            className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                        >
+                                            취소
+                                        </Button>
+                                    </div>
                                 ) : (
-                                    // 미구독 / 해지(기간만료) / 결제실패 → 재구독
-                                    <>
-                                        <p className="text-[14px] text-cur-muted text-center">
-                                            {sub?.status === "canceled"
-                                                ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
-                                                : "구독하고 모든 기능을 이용하세요."}
-                                        </p>
-                                        {/* 재구독은 기존 플랜 유지 → 선택 플랜에 맞는 금액이 안내되도록 plan 전달 */}
-                                        <SubscribeButtons onSuccess={load} plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"} />
-                                    </>
-                                )}
-                            </div>
+                                    // A안: 관리 항목은 리스트로우, 해지는 조용한 회색 텍스트
+                                    <div className="space-y-3">
+                                        <SettingsCard>
+                                            <SettingsRow
+                                                icon={<CreditCard className="w-[18px] h-[18px]" />}
+                                                label="결제수단 변경"
+                                                value={methodLabel ?? undefined}
+                                                onClick={() => setChangingMethod(true)}
+                                                chevron
+                                            />
+                                            <SettingsRow
+                                                icon={<ArrowLeftRight className="w-[18px] h-[18px]" />}
+                                                label="플랜 변경"
+                                                value={sub?.plan === "monthly_pro" ? "Pro" : "베이직"}
+                                                onClick={() => router.push("/pricing")}
+                                                chevron
+                                            />
+                                        </SettingsCard>
+                                        <button
+                                            onClick={handleCancel}
+                                            disabled={busy}
+                                            className="w-full h-10 text-[13px] text-cur-muted hover:text-cur-error transition-colors disabled:opacity-50"
+                                        >
+                                            {busy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : "구독 해지"}
+                                        </button>
+                                    </div>
+                                )
+                            ) : (
+                                // 미구독 / 해지(기간만료) / 결제실패 → 재구독
+                                <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
+                                    <p className="text-[14px] text-cur-muted text-center">
+                                        {sub?.status === "canceled"
+                                            ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
+                                            : "구독하고 모든 기능을 이용하세요."}
+                                    </p>
+                                    {/* 재구독은 기존 플랜 유지 → 선택 플랜에 맞는 금액이 안내되도록 plan 전달 */}
+                                    <SubscribeButtons onSuccess={load} plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"} />
+                                </div>
+                            )
                         )}
 
-                        {/* Pro: 월간 보고서 자동 발송 설정 */}
-                        {pro && (
-                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <Mail className="w-5 h-5 text-cur-primary" />
-                                    <h2 className="text-[16px] font-bold text-cur-ink">월간 보고서 자동 발송</h2>
-                                </div>
-                                <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    매월 1일, 지난 달 안전활동을 AI가 분석한 보고서를 아래 이메일로 자동 발송합니다. 최대 5명까지 발송 가능합니다.
-                                </p>
-
-                                <div className="space-y-2">
-                                    {recipients.length === 0 ? (
-                                        <p className="text-[13px] text-cur-muted-soft py-2">등록된 수신처가 없습니다.</p>
-                                    ) : (
-                                        recipients.map((email) => (
-                                            <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
-                                                <span className="text-[14px] text-cur-ink">{email}</span>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => removeRecipient(email)}
-                                                    disabled={savingRecipients}
-                                                    className="h-7 w-7 text-cur-muted hover:text-cur-error"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <Input
-                                        type="email"
-                                        value={newEmail}
-                                        onChange={(e) => setNewEmail(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }}
-                                        placeholder="대표자 이메일, 담당자 이메일 등"
-                                        className="h-11"
-                                    />
-                                    <Button
-                                        onClick={addRecipient}
-                                        disabled={savingRecipients || !newEmail.trim()}
-                                        className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0"
-                                    >
-                                        {savingRecipients ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                    </Button>
-                                </div>
-
-                                {recipients.length > 0 && (
-                                    <Button
-                                        onClick={sendNow}
-                                        disabled={sending}
-                                        className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
-                                    >
-                                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> 이번 달 보고서 지금 보내기</>}
-                                    </Button>
-                                )}
-                            </div>
-                        )}
+                        {/* 월간 보고서 수신처·발송주기 설정은 /report-settings 로 이관 (중복 제거) */}
 
                         {/* 베이직/화이트리스트 → Pro 업그레이드 권유 */}
                         {active && !pro && (
