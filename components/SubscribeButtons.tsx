@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Loader2, CreditCard } from "lucide-react"
+import { Loader2, CreditCard, Wallet } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
 
@@ -16,18 +16,26 @@ const CHANNELS: Record<string, string | undefined> = {
     tosspay: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_TOSSPAY,
 }
 
+// 카카오톡 말풍선 아이콘 (lucide에 없어 인라인 SVG)
+const KakaoIcon = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px]" aria-hidden="true">
+        <path d="M12 3C6.48 3 2 6.54 2 10.9c0 2.82 1.87 5.29 4.68 6.69-.17.6-.63 2.29-.72 2.65-.12.45.16.44.34.32.14-.1 2.2-1.5 3.09-2.11.43.06.87.09 1.31.09 5.52 0 10-3.54 10-7.9S17.52 3 12 3z" />
+    </svg>
+)
+
 type Method = {
     key: string
     label: string
     billingKeyMethod: "CARD" | "EASY_PAY"
     style: string
+    icon: ReactNode
 }
 
 const ALL_METHODS: Method[] = [
-    { key: "card", label: "카드", billingKeyMethod: "CARD", style: "bg-cur-ink text-white hover:opacity-90" },
-    { key: "kakaopay", label: "카카오페이", billingKeyMethod: "EASY_PAY", style: "bg-[#FEE500] text-[#191600] hover:brightness-95" },
-    { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: "bg-[#03C75A] text-white hover:brightness-95" },
-    { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: "bg-[#0064FF] text-white hover:brightness-95" },
+    { key: "card", label: "카드", billingKeyMethod: "CARD", style: "bg-cur-ink text-white hover:opacity-90", icon: <CreditCard className="w-[18px] h-[18px]" /> },
+    { key: "kakaopay", label: "카카오페이", billingKeyMethod: "EASY_PAY", style: "bg-[#FEE500] text-[#191600] hover:brightness-95", icon: <KakaoIcon /> },
+    { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: "bg-[#03C75A] text-white hover:brightness-95", icon: <span className="text-[15px] font-black leading-none">N</span> },
+    { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: "bg-[#0064FF] text-white hover:brightness-95", icon: <Wallet className="w-[18px] h-[18px]" /> },
 ]
 // 실연동(라이브) 완료된 결제수단만 운영(실서버)에 노출.
 // 카드(KG이니시스) + 카카오페이(CID CA18988263, 2026-07 심사완료) 실연동. 네이버·토스는 아직 진행중이라 숨김.
@@ -153,15 +161,15 @@ export function SubscribeButtons({
                     key={m.key}
                     onClick={() => handleIssue(m)}
                     disabled={!!processing}
-                    className={`w-full font-bold h-12 rounded-xl transition-all ${m.style}`}
+                    className={`w-full font-bold h-12 rounded-xl transition-all justify-start px-4 ${m.style}`}
                 >
                     {processing === m.key ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                        <span className="flex items-center justify-center gap-2">
-                            {m.key === "card" && <CreditCard className="w-4 h-4" />}
-                            {m.label}
-                            {ctaSuffix}
+                        // 아이콘을 고정폭 박스에 넣어 버튼끼리 아이콘 라인을 맞추고 왼쪽정렬
+                        <span className="flex items-center gap-2.5 w-full">
+                            <span className="flex w-[18px] h-[18px] items-center justify-center shrink-0">{m.icon}</span>
+                            <span>{m.label}{ctaSuffix}</span>
                         </span>
                     )}
                 </Button>

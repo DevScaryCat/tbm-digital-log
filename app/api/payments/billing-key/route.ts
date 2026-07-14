@@ -40,9 +40,22 @@ export async function POST(request: Request) {
     const selectedPlan = getPlan(plan);
 
     // 1) 빌링키 발급 검증 (PortOne)
-    const info = await getBillingKeyInfo(billingKey);
+    // 일부 PG(카카오페이 등)는 발급 직후 조회가 잠깐 지연될 수 있어 1회 재시도.
+    let info = await getBillingKeyInfo(billingKey);
     if (!info.ok) {
-      return NextResponse.json({ error: "빌링키 검증 실패", detail: info.body }, { status: 400 });
+      await new Promise((r) => setTimeout(r, 1200));
+      info = await getBillingKeyInfo(billingKey);
+    }
+    if (!info.ok) {
+      // 실제 PortOne 사유를 화면에 노출해 진단 가능하게 (pgCode/pgMessage/message/type)
+      const b = info.body as { message?: string; type?: string; pgCode?: string; pgMessage?: string } | null;
+      const reason =
+        [b?.pgCode, b?.pgMessage].filter(Boolean).join(" ") ||
+        b?.message ||
+        b?.type ||
+        `HTTP ${info.status}`;
+      console.error("billing-key verify failed:", { method, status: info.status, body: info.body });
+      return NextResponse.json({ error: `빌링키 검증 실패: ${reason}`, detail: info.body }, { status: 400 });
     }
 
     // 1-1) 소유권 검증: 발급 시 customerId=user.id로 묶으므로 응답 customer.id가 요청 유저와 일치해야 함.
