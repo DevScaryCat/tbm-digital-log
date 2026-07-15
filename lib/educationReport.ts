@@ -182,6 +182,72 @@ export async function buildEducationRangeContent(
   return { companyName, periodLabel, stats: { sessions, days: dayCount, headcount, avg }, types, days, keywords: insight.keywords };
 }
 
+/** 여러 현장(계정) 합친 통합 교육일지 콘텐츠 (월간). 회사 전체 집계. */
+export async function buildMergedEducationContent(
+  admin: SupabaseClient,
+  userIds: string[],
+  year: number,
+  month: number,
+  companyName: string | null
+): Promise<EducationReportContent | null> {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const from = `${year}-${p(month)}-01`;
+  const to = `${year}-${p(month)}-${p(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
+  const periodLabel = `${year}년 ${month}월`;
+
+  const { data: rows } = await admin
+    .from("tbm_logs")
+    .select("id, date, education_type, education_content")
+    .in("user_id", userIds)
+    .gte("date", from)
+    .lte("date", to)
+    .order("date", { ascending: true });
+
+  const logs = (rows as any[]) || [];
+  if (logs.length === 0) return null;
+
+  const sessions = logs.length;
+  const dayCount = new Set(logs.map((l) => l.date)).size;
+  const ids = logs.map((l) => l.id);
+  const { count } = await admin
+    .from("tbm_participants")
+    .select("id", { count: "exact", head: true })
+    .in("log_id", ids);
+  const headcount = count ?? 0;
+  const avg = sessions ? (headcount / sessions).toFixed(1) : "0.0";
+
+  const typeMap = new Map<string, number>();
+  for (const l of logs) {
+    const t = (l.education_type as string) || "기타";
+    typeMap.set(t, (typeMap.get(t) || 0) + 1);
+  }
+  const types = [...typeMap.entries()].sort((a, b) => b[1] - a[1]).map(([type, c]) => ({ type, count: c }));
+
+  const byDate = new Map<string, string[]>();
+  for (const l of logs) {
+    const d = String(l.date);
+    const c = String(l.education_content ?? "").trim();
+    if (!byDate.has(d)) byDate.set(d, []);
+    if (c) byDate.get(d)!.push(c);
+  }
+  const dayBlocks = [...byDate.entries()]
+    .filter(([, contents]) => contents.length > 0)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .slice(0, MAX_DAYS)
+    .map(([date, contents]) => ({ date, content: contents.join("\n").slice(0, MAX_CONTENT_PER_DAY) }));
+
+  const insight = await generateEducationInsight(dayBlocks);
+  const summaryMap = new Map(insight.days.map((d) => [d.date, d.summary]));
+
+  const dayMap = new Map<string, number>();
+  for (const l of logs) dayMap.set(l.date, (dayMap.get(l.date) || 0) + 1);
+  const days: EducationDay[] = [...dayMap.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([date, n]) => ({ date, sessions: n, summary: summaryMap.get(date) || "" }));
+
+  return { companyName, periodLabel, stats: { sessions, days: dayCount, headcount, avg }, types, days, keywords: insight.keywords };
+}
+
 function escapeHtml(s: string): string {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
