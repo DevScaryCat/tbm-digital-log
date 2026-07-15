@@ -78,7 +78,18 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
         if (!email) return
         if (!pro) { setMsg({ type: "err", text: "예시 화면입니다 — Pro 구독 시 실제로 등록·발송됩니다." }); return }
         const j = await post({ addRecipient: email })
-        if (j) { setNewEmail(""); setMsg({ type: "ok", text: `확인 메일을 ${email} 로 보냈어요. 수신자가 승인하면 발송됩니다.` }) }
+        if (j) {
+            setNewEmail("")
+            setMsg(j.mailed
+                ? { type: "ok", text: `확인 메일을 ${email} 로 보냈어요. 수신자가 승인하면 발송됩니다.` }
+                : { type: "err", text: `${email} 추가했지만 확인 메일을 못 보냈어요 (${j.mailNote || "메일 오류"}). 아래 '재발송'을 눌러 다시 시도하세요.` })
+        }
+    }
+    const resendRecipient = async (email: string) => {
+        const j = await post({ resendRecipient: email })
+        if (j) setMsg(j.mailed
+            ? { type: "ok", text: `확인 메일을 ${email} 로 다시 보냈어요.` }
+            : { type: "err", text: `재발송 실패: ${j.mailNote || "메일 오류"}` })
     }
     const removeRecipient = async (email: string) => { if (!pro) return; await post({ removeRecipient: email }) }
     const changeRiskMethod = async (m: RiskMethod) => {
@@ -169,6 +180,9 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[r.status].cls}`}>
                                         {STATUS_BADGE[r.status].label}
                                     </span>
+                                    {r.status !== "approved" && (
+                                        <button onClick={() => resendRecipient(r.email)} disabled={saving} className="text-[12px] text-cur-primary hover:opacity-70 shrink-0 transition-colors">재발송</button>
+                                    )}
                                     <button onClick={() => removeRecipient(r.email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 transition-colors">삭제</button>
                                 </div>
                             ))}

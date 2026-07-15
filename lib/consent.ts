@@ -16,11 +16,6 @@ export interface ConsentRow {
   responded_at?: string | null;
 }
 
-function baseUrl(): string | null {
-  const b = process.env.NEXT_PUBLIC_APP_URL;
-  return b ? b.replace(/\/$/, "") : null;
-}
-
 function normEmail(e: string): string {
   return String(e).trim();
 }
@@ -54,14 +49,15 @@ function consentEmailHtml(site: string, link: string): string {
 
 /**
  * 계정이 수신자를 등록/재요청 → pending consent upsert + 확인 메일.
- * 이미 approved면 메일 안 보냄. 메일 미설정(로컬) 시 링크만 생성.
+ * baseUrl(요청 host에서 유도)로 링크 생성 — env 의존 제거. 메일 발송 성공 여부를 정직하게 반환.
  */
 export async function requestConsent(
   admin: SupabaseClient,
   accountUserId: string,
   recipientEmail: string,
-  companyName: string | null
-): Promise<{ status: "created" | "resent" | "already_approved" | "mail_failed"; error?: string }> {
+  companyName: string | null,
+  baseUrl?: string
+): Promise<{ ok: boolean; mailed: boolean; error?: string }> {
   const email = normEmail(recipientEmail);
   const { data: existing } = await admin
     .from("report_recipient_consents")
@@ -70,31 +66,30 @@ export async function requestConsent(
     .eq("recipient_email", email)
     .maybeSingle();
 
-  if (existing?.status === "approved") return { status: "already_approved" };
-
   let token: string | undefined = existing?.token;
   if (existing) {
-    await admin
-      .from("report_recipient_consents")
-      .update({ status: "pending", responded_at: null })
-      .eq("id", existing.id);
+    // 승인됨이 아니면 다시 pending으로 되돌려 재요청 (거부했던 것도 재요청 가능)
+    if (existing.status !== "approved") {
+      await admin
+        .from("report_recipient_consents")
+        .update({ status: "pending", responded_at: null })
+        .eq("id", existing.id);
+    }
   } else {
     const { data: created, error } = await admin
       .from("report_recipient_consents")
       .insert({ account_user_id: accountUserId, recipient_email: email })
       .select("token")
       .single();
-    if (error) return { status: "mail_failed", error: error.message };
+    if (error) return { ok: false, mailed: false, error: error.message };
     token = created?.token;
   }
-  if (!token) return { status: "mail_failed", error: "consent 생성 실패" };
+  if (!token) return { ok: false, mailed: false, error: "수신처 저장에 실패했습니다." };
 
-  const base = baseUrl();
-  const wasExisting = !!existing;
-  if (!mailerConfigured() || !base) {
-    // 로컬/메일 미설정: consent 행만 만들어 두고 메일은 스킵 (승인 페이지로 수동 접근 가능)
-    return { status: wasExisting ? "resent" : "created" };
-  }
+  // 메일 발송 (행은 이미 생성됨 — 메일 실패해도 재발송 가능)
+  if (!mailerConfigured()) return { ok: true, mailed: false, error: "메일 설정(EMAIL_USER/PASS)이 서버에 없습니다." };
+  const base = (baseUrl || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  if (!base) return { ok: true, mailed: false, error: "발신 링크 주소를 확인할 수 없습니다." };
   const link = `${base}/consent/${token}`;
   const site = companyName?.trim() || "안전톡톡e 이용 현장";
   const sent = await sendMail({
@@ -102,8 +97,8 @@ export async function requestConsent(
     subject: `[안전톡톡e] ${site}의 안전 보고서 수신 확인`,
     html: consentEmailHtml(site, link),
   });
-  if (!sent.ok) return { status: "mail_failed", error: sent.error };
-  return { status: wasExisting ? "resent" : "created" };
+  if (!sent.ok) return { ok: true, mailed: false, error: sent.error };
+  return { ok: true, mailed: true };
 }
 
 /** 토큰으로 consent 조회 (승인 페이지용) */

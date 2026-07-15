@@ -39,6 +39,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const admin = getAdminClient();
 
+  // 확인 메일 링크 주소를 요청 host에서 유도 (NEXT_PUBLIC_APP_URL 의존 제거)
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  const host = request.headers.get("host");
+  const baseUrl = host ? `${proto}://${host}` : undefined;
+  let mailNote: string | null = null;
+  const companyNameOf = async (): Promise<string | null> => {
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(user.id);
+      return (u?.user?.user_metadata as any)?.company_name ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   // ① 위험성평가 방법·매트릭스
   const subUpdate: Record<string, unknown> = {};
   if (body.riskMethod !== undefined) subUpdate.risk_assessment_method = normMethod(body.riskMethod);
@@ -62,18 +76,20 @@ export async function POST(request: Request) {
     if (existing.filter((r) => r.status !== "declined").length >= 5) {
       return NextResponse.json({ error: "수신처는 최대 5개까지 등록할 수 있습니다." }, { status: 400 });
     }
-    let companyName: string | null = null;
-    try {
-      const { data: u } = await admin.auth.admin.getUserById(user.id);
-      companyName = (u?.user?.user_metadata as any)?.company_name ?? null;
-    } catch {}
-    const r = await requestConsent(admin, user.id, email, companyName);
-    if (r.status === "mail_failed") {
-      return NextResponse.json({ error: `승인 메일 발송 실패: ${r.error || "메일 오류"}` }, { status: 502 });
+    const r = await requestConsent(admin, user.id, email, await companyNameOf(), baseUrl);
+    if (!r.ok) {
+      return NextResponse.json({ error: r.error || "수신처 등록에 실패했습니다." }, { status: 500 });
     }
+    if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
   }
 
-  // ③ 수신처 삭제
+  // ③ 확인 메일 재발송 (대기중 수신처)
+  if (body.resendRecipient !== undefined) {
+    const r = await requestConsent(admin, user.id, String(body.resendRecipient).trim(), await companyNameOf(), baseUrl);
+    if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
+  }
+
+  // ④ 수신처 삭제
   if (body.removeRecipient !== undefined) {
     await admin
       .from("report_recipient_consents")
@@ -84,5 +100,5 @@ export async function POST(request: Request) {
 
   const recipients = await listAccountConsents(admin, user.id);
   const risk = await getRiskSettings(admin, user.id, isPro);
-  return NextResponse.json({ success: true, recipients, ...risk });
+  return NextResponse.json({ success: true, recipients, ...risk, mailed: !mailNote, mailNote });
 }

@@ -175,7 +175,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={() => router.push('/report-settings')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 보고서 주기 설정
+                    <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 보고서 설정
                     <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[9px] font-bold px-1 py-0.5 rounded-[3px] tracking-wide">PRO</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
