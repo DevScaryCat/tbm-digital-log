@@ -397,7 +397,7 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   </div>`;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
 
