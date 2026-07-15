@@ -32,6 +32,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [riskMethod, setRiskMethod] = useState<RiskMethod>("level3")
     const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
     const [saving, setSaving] = useState(false)
+    const [loaded, setLoaded] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
 
@@ -49,9 +50,13 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     useEffect(() => {
         let cancelled = false
         ;(async () => {
-            const token = await authToken()
-            const res = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${token}` } })
-            if (res.ok && !cancelled) applyResponse(await res.json())
+            try {
+                const token = await authToken()
+                const res = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${token}` } })
+                if (res.ok && !cancelled) applyResponse(await res.json())
+            } finally {
+                if (!cancelled) setLoaded(true)
+            }
         })()
         return () => { cancelled = true }
     }, [])
@@ -170,7 +175,9 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                             수신자를 추가하면 <b>확인 메일</b>이 가고, 수신자가 승인해야 발송됩니다. 여러 현장이 같은 이메일을 등록하면 <b>한 통으로 합쳐</b> 보내드려요.
                         </p>
                     </div>
-                    {recipients.length === 0 ? (
+                    {!loaded ? (
+                        <div className="py-3 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-cur-muted-soft" /></div>
+                    ) : recipients.length === 0 ? (
                         <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
                     ) : (
                         <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
