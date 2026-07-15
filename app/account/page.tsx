@@ -198,7 +198,7 @@ export default function AccountPage() {
                                     )}
                                     {sub?.pending_plan && sub.pending_plan !== sub.plan && (
                                         <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-3 py-2 text-[13px] text-cur-primary">
-                                            다음 결제일부터 {sub.pending_plan === "monthly_pro" ? "Pro 플랜(4,900원)" : "베이직 플랜(1,900원)"}으로 변경 예정
+                                            다음 결제일부터 {sub.pending_plan === "monthly_pro" ? "Pro 플랜(4,900원)으로 업그레이드" : "베이직 플랜(1,900원)으로 다운그레이드"} 예정
                                         </div>
                                     )}
                                 </div>

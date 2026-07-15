@@ -211,7 +211,7 @@ export default function PricingPage() {
                     {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
                     {pending && pending !== currentPlan && (
                         <p className="text-[13px] text-cur-primary">
-                            다음 결제일부터 {PLAN_LABEL[pending]}로 변경 예정
+                            다음 결제일부터 {PLAN_LABEL[pending]}로 {pending === "monthly_pro" ? "업그레이드" : "다운그레이드"} 예정
                         </p>
                     )}
                 </div>
@@ -225,7 +225,7 @@ export default function PricingPage() {
                 return (
                     <div className="space-y-2">
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-center text-[14px] text-cur-ink">
-                            다음 결제일부터 <b>{PLAN_LABEL[selected]}</b>로 변경 예정입니다.
+                            다음 결제일부터 <b>{PLAN_LABEL[selected]}</b>로 {toPro ? "업그레이드" : "다운그레이드"} 예정입니다.
                         </div>
                         <Button onClick={() => changePlan(currentPlan!)} disabled={changing} variant="ghost" className="w-full h-10 text-cur-muted hover:text-cur-ink text-[13px]">
                             {changing ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경 예약 취소"}
@@ -240,7 +240,7 @@ export default function PricingPage() {
                         disabled={changing}
                         className={cn("w-full font-bold h-12 rounded-xl text-white hover:opacity-90", toPro ? "bg-cur-primary" : "bg-cur-ink")}
                     >
-                        {changing ? <Loader2 className="w-4 h-4 animate-spin" /> : toPro ? "Pro로 업그레이드" : "베이직으로 변경"}
+                        {changing ? <Loader2 className="w-4 h-4 animate-spin" /> : toPro ? "Pro로 업그레이드" : "베이직으로 다운그레이드"}
                     </Button>
                     <p className="text-[12px] text-cur-muted-soft text-center">변경은 다음 결제일부터 적용됩니다.</p>
                 </div>
