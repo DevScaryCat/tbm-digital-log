@@ -10,6 +10,7 @@ import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { MATRIX_DIMS, freqSevGrade, type MatrixScale } from "@/lib/riskMatrix"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,6 +67,10 @@ interface Hazard {
     factor: string
     level: string
     measure: string
+    // 빈도강도법일 때만 채워짐 (상중하법이면 undefined)
+    frequency?: number
+    severity?: number
+    risk?: number
 }
 
 interface TBMMinutesData {
@@ -205,6 +210,9 @@ export default function TBMMinutesPage() {
         hazards: [],
         participants: [{ id: 1, name: "", gender: "M", signature: null }],
     })
+    // 위험성평가 방법(AI 응답에서 받음). freq_sev면 위험성 편집을 빈도/강도 입력으로.
+    const [riskMethod, setRiskMethod] = useState<"level3" | "freq_sev">("level3")
+    const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
 
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
     const minutes = ["00", "10", "20", "30", "40", "50"]
@@ -468,6 +476,8 @@ export default function TBMMinutesPage() {
             const data = await res.json()
 
             if (res.ok) {
+                if (data.riskMethod === "freq_sev" || data.riskMethod === "level3") setRiskMethod(data.riskMethod)
+                if (data.riskMatrix === "3x3" || data.riskMatrix === "5x4" || data.riskMatrix === "5x5") setRiskMatrix(data.riskMatrix)
                 setFormData(prev => ({
                     ...prev,
                     processName: data.processName || prev.processName,
@@ -662,10 +672,24 @@ export default function TBMMinutesPage() {
     const updateParticipant = (id: number, field: keyof Participant, value: Participant[keyof Participant]) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } as Participant : p) }))
     const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
-    const addHazard = () => setFormData(prev => ({ ...prev, hazards: [...prev.hazards, { factor: "", level: "중", measure: "" }] }))
+    const addHazard = () => setFormData(prev => {
+        const g = freqSevGrade(1, 1, riskMatrix)
+        const h: Hazard = riskMethod === "freq_sev"
+            ? { factor: "", measure: "", frequency: 1, severity: 1, risk: g.score, level: g.level }
+            : { factor: "", level: "중", measure: "" }
+        return { ...prev, hazards: [...prev.hazards, h] }
+    })
     const updateHazard = (idx: number, field: string, value: string) => {
         const newHazards = [...formData.hazards];
         newHazards[idx] = { ...newHazards[idx], [field]: value };
+        setFormData(prev => ({ ...prev, hazards: newHazards }));
+    }
+    // 빈도/강도 변경 시 위험도·등급을 다시 산정해 함께 저장
+    const updateHazardFreqSev = (idx: number, field: "frequency" | "severity", value: number) => {
+        const newHazards = [...formData.hazards];
+        const h = { ...newHazards[idx], [field]: value };
+        const { score, level } = freqSevGrade(Number(h.frequency) || 1, Number(h.severity) || 1, riskMatrix);
+        newHazards[idx] = { ...h, risk: score, level };
         setFormData(prev => ({ ...prev, hazards: newHazards }));
     }
     const removeHazard = (idx: number) => {
@@ -940,18 +964,42 @@ export default function TBMMinutesPage() {
                                                 />
                                             </div>
                                             <div className="flex gap-3 items-start">
-                                                <div className="flex flex-col gap-1.5 w-24 shrink-0">
+                                                <div className={`flex flex-col gap-1.5 shrink-0 ${riskMethod === "freq_sev" ? "w-28" : "w-24"}`}>
                                                     <Label className="text-[13px] text-amber-800 font-bold">위험성</Label>
-                                                    <select 
-                                                        value={hazard.level} 
-                                                        onChange={(e) => updateHazard(idx, "level", e.target.value)} 
-                                                        className="w-full h-11 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
-                                                    >
-                                                        <option value="상">상</option>
-                                                        <option value="중">중</option>
-                                                        <option value="하">하</option>
-                                                        <option value="상중하">복합</option>
-                                                    </select>
+                                                    {riskMethod === "freq_sev" ? (
+                                                        <>
+                                                            <select
+                                                                value={hazard.frequency ?? 1}
+                                                                onChange={(e) => updateHazardFreqSev(idx, "frequency", Number(e.target.value))}
+                                                                className="w-full h-9 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
+                                                            >
+                                                                {Array.from({ length: MATRIX_DIMS[riskMatrix].freqMax }, (_, i) => i + 1).map((n) => (
+                                                                    <option key={n} value={n}>빈도 {n}</option>
+                                                                ))}
+                                                            </select>
+                                                            <select
+                                                                value={hazard.severity ?? 1}
+                                                                onChange={(e) => updateHazardFreqSev(idx, "severity", Number(e.target.value))}
+                                                                className="w-full h-9 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
+                                                            >
+                                                                {Array.from({ length: MATRIX_DIMS[riskMatrix].sevMax }, (_, i) => i + 1).map((n) => (
+                                                                    <option key={n} value={n}>강도 {n}</option>
+                                                                ))}
+                                                            </select>
+                                                            <div className="text-center text-[12px] font-bold text-red-600">위험도 {hazard.risk ?? ""} · {hazard.level}</div>
+                                                        </>
+                                                    ) : (
+                                                        <select
+                                                            value={hazard.level}
+                                                            onChange={(e) => updateHazard(idx, "level", e.target.value)}
+                                                            className="w-full h-11 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
+                                                        >
+                                                            <option value="상">상</option>
+                                                            <option value="중">중</option>
+                                                            <option value="하">하</option>
+                                                            <option value="상중하">복합</option>
+                                                        </select>
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-col gap-1.5 flex-1">
                                                     <Label className="text-[13px] text-amber-800 font-bold">대책(제거/대체/통제)</Label>

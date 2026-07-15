@@ -3,7 +3,7 @@
 // 컬럼 너비·굵은 헤더·테두리·위험등급 색상을 넣은 진짜 엑셀로 만든다.
 // exceljs는 Node 전용·무겁기 때문에 첨부 빌더에서 동적 import로만 로드한다.
 import ExcelJS from "exceljs";
-import { riskGrade } from "@/lib/utils";
+import { normLevel } from "@/lib/riskMatrix";
 
 const INK = "FF26251E";
 const MUTED = "FF807D72";
@@ -54,42 +54,48 @@ export async function buildRiskXlsx(
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "안전톡톡e";
+  // 빈도강도 데이터가 있으면 가능성·중대성·위험성 컬럼 노출, 없으면(상중하법) 등급만.
+  const hasFreqSev = items.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
   const ws = wb.addWorksheet("위험성평가표", {
     views: [{ state: "frozen", ySplit: 4 }],
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
-  ws.columns = [
-    { width: 5 }, { width: 6 }, { width: 30 }, { width: 30 },
-    { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 }, { width: 44 },
-  ];
+  ws.columns = hasFreqSev
+    ? [{ width: 5 }, { width: 6 }, { width: 30 }, { width: 30 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 }, { width: 44 }]
+    : [{ width: 5 }, { width: 6 }, { width: 32 }, { width: 32 }, { width: 10 }, { width: 48 }];
+  const lastCol = hasFreqSev ? "I" : "F";
 
-  ws.mergeCells("A1:I1");
+  ws.mergeCells(`A1:${lastCol}1`);
   styleTitle(ws.getCell("A1"), "위험성평가표");
   ws.getRow(1).height = 26;
 
-  ws.mergeCells("A2:I2");
+  ws.mergeCells(`A2:${lastCol}2`);
   styleMeta(ws.getCell("A2"), `현장/업체: ${meta.company || "-"}     대상기간: ${meta.period}     작성일: ${meta.date}`);
 
   ws.addRow([]); // row 3 여백
 
-  const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
+  const header = hasFreqSev
+    ? ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"]
+    : ["No", "반복", "유해·위험요인", "발생 원인", "등급", "감소대책"];
   styleHeaderRow(ws.addRow(header)); // row 4
 
+  const gradeCol = hasFreqSev ? 8 : 5; // 등급 셀 위치
   items.forEach((it, i) => {
-    const r = ws.addRow([
-      i + 1, it.recurring ? "반복" : "", it.hazard, it.cause,
-      it.frequency, it.severity, it.risk, riskGrade(it.risk), it.measures,
-    ]);
+    const grade = normLevel(it.level);
+    const rowVals = hasFreqSev
+      ? [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, grade, it.measures]
+      : [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, grade, it.measures];
+    const r = ws.addRow(rowVals);
     r.eachCell((c) => {
       c.border = BORDER;
       c.alignment = { vertical: "middle", wrapText: true };
       c.font = { size: 10, color: { argb: INK } };
     });
-    [1, 2, 5, 6, 7, 8].forEach((col) => {
+    (hasFreqSev ? [1, 2, 5, 6, 7, 8] : [1, 2, 5]).forEach((col) => {
       r.getCell(col).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
-    const lv = r.getCell(8);
-    lv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: levelFill(riskGrade(it.risk)) } };
+    const lv = r.getCell(gradeCol);
+    lv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: levelFill(grade) } };
     lv.font = { size: 10, bold: true, color: { argb: INK } };
   });
 

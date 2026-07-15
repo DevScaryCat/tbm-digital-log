@@ -71,7 +71,13 @@ export function MinutesView({ minutes, participants }: { minutes: any; participa
                         return (
                             <tr key={i} className="min-h-[40px]">
                                 <td colSpan={2} className="border border-black p-2 align-top text-xs break-all">□ {hazard?.factor}</td>
-                                <td className="border border-black p-2 text-center font-bold text-red-600">{hazard?.level || '상/중/하'}</td>
+                                <td className="border border-black p-2 text-center font-bold text-red-600">
+                                    {hazard
+                                        ? (hazard.frequency && hazard.severity
+                                            ? `${hazard.frequency}×${hazard.severity} · ${hazard.level || ''}`
+                                            : (hazard.level || ''))
+                                        : '상/중/하'}
+                                </td>
                                 <td className="border border-black p-2 align-top text-xs break-all">□ {hazard?.measure}</td>
                             </tr>
                         );

@@ -232,9 +232,16 @@ function gradeColor(g: string): string {
 function riskTableHtml(items: RiskItem[]): string {
   if (!items || items.length === 0) return "";
   const recurring = items.filter((it) => it.recurring).length;
+  // 빈도강도 데이터(가능성×중대성)가 있으면 해당 컬럼 노출, 없으면(상중하법) 등급 뱃지만.
+  const hasFreqSev = items.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
   const rows = items
-    .map(
-      (it, i) => `
+    .map((it, i) => {
+      const grade = gradeOf(it.level);
+      const gradeCells = hasFreqSev
+        ? `<td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${Number(it.frequency) || 0}×${Number(it.severity) || 0}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(grade)};font-size:13px;">${Number(it.risk) || 0} · ${grade}</b></td>`
+        : `<td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;">${levelBadge(grade)}</td>`;
+      return `
       <tr style="vertical-align:top;">
         <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#999;font-size:12px;">${i + 1}</td>
         <td style="padding:8px 6px;border-bottom:1px solid #eee;">
@@ -242,12 +249,15 @@ function riskTableHtml(items: RiskItem[]): string {
           <span style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(it.hazard)}</span>
           ${it.cause ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(it.cause)}</div>` : ""}
         </td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${Number(it.frequency) || 0}×${Number(it.severity) || 0}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(gradeOf(it.risk))};font-size:13px;">${Number(it.risk) || 0} · ${gradeOf(it.risk)}</b></td>
+        ${gradeCells}
         <td style="padding:8px 6px;border-bottom:1px solid #eee;font-size:12px;color:#444;">${escapeHtml(it.measures) || "-"}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
+  const headGrade = hasFreqSev
+    ? `<th style="padding:8px 6px;text-align:center;width:60px;">가능성×중대성</th>
+            <th style="padding:8px 6px;text-align:center;width:74px;">위험성</th>`
+    : `<th style="padding:8px 6px;text-align:center;width:64px;">위험성 등급</th>`;
   return `
       <div style="font-size:15px;font-weight:700;margin:22px 0 10px;">위험성평가표</div>
       ${recurring ? `<div style="background:#f54e000d;border:1px solid #f54e0033;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#c2410c;">⟳ 반복 위험요인 ${recurring}건 — 여러 TBM에서 반복 등장, 우선 관리 대상</div>` : ""}
@@ -256,8 +266,7 @@ function riskTableHtml(items: RiskItem[]): string {
           <tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
             <th style="padding:8px 6px;text-align:center;width:34px;">No</th>
             <th style="padding:8px 6px;text-align:left;">유해·위험요인 / 원인</th>
-            <th style="padding:8px 6px;text-align:center;width:60px;">가능성×중대성</th>
-            <th style="padding:8px 6px;text-align:center;width:74px;">위험성</th>
+            ${headGrade}
             <th style="padding:8px 6px;text-align:left;">감소대책</th>
           </tr>
         </thead>
@@ -276,10 +285,10 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   // 위(주요 위험요인)·아래(위험성평가표) 등급 통일: 위험성평가(riskItems)가 있으면 그 위험성 점수(가능성×중대성)로
   // 상/중/하를 산정하고, 위 요약표도 riskItems에서 파생 → 같은 항목이 두 표에서 같은 등급을 갖는다.
   const summaryItems = riskItems.length > 0
-    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: gradeOf(it.risk), measure: it.measures }))
+    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: gradeOf(it.level), measure: it.measures }))
     : hazards;
   const displayStats = riskItems.length > 0
-    ? { total: stats.total, high: riskItems.filter((it) => gradeOf(it.risk) === "상").length, mid: riskItems.filter((it) => gradeOf(it.risk) === "중").length }
+    ? { total: stats.total, high: riskItems.filter((it) => gradeOf(it.level) === "상").length, mid: riskItems.filter((it) => gradeOf(it.level) === "중").length }
     : stats;
 
   const topWords = keywords.slice(0, 2).map((k) => escapeHtml(k.word));
@@ -413,7 +422,7 @@ export function buildRiskCsv(
   meta: { company: string; period: string; date: string }
 ): string {
   const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
-  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, gradeOf(it.risk), it.measures]);
+  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, gradeOf(it.level), it.measures]);
   const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
   return "﻿" + top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
 }
