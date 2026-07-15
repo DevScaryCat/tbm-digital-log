@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription } from "@/lib/portone";
 import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
+import { MATRIX_DIMS, freqSevGrade, matrixPromptGuide, normMatrix, type MatrixScale } from "@/lib/riskMatrix";
 
 export const runtime = "nodejs";
 
@@ -14,9 +15,13 @@ const MAX_TEXT_LEN = 20000;
 
 export async function POST(request: Request) {
   try {
-    const { user, allowed } = await getUserAndSubscription(request);
+    const { user, allowed, riskMethod, riskMatrix } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
+    // 위험성평가 방법(서버 강제값): freq_sev면 빈도·강도, 아니면 상중하
+    const freqSev = riskMethod === "freq_sev";
+    const matrix: MatrixScale = normMatrix(riskMatrix);
+    const { freqMax, sevMax } = MATRIX_DIMS[matrix];
     // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
     if (!(await checkAndRecordAiUsage(user.id, "minutes"))) {
       return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
@@ -46,7 +51,9 @@ export async function POST(request: Request) {
       3. workContent (작업내용): 오늘 수행할 작업 내용을 1~2문장으로 요약.
       4. hazards (잠재 유해위험요인 및 대책): 추락/충돌/질식/화상 등 언급되거나 문맥상 파악되는 위험을 추출.
          - factor: 위험 요인을 명사형/개조식으로 간결히. (예: "작업 발판 위 추락 위험")
-         - level: "상", "중", "하" 중 하나.
+         ${freqSev
+           ? `- frequency, severity: ${matrixPromptGuide(matrix)} 위험이 클수록 높은 값을 부여.`
+           : `- level: "상", "중", "하" 중 하나.`}
          - measure: 예방 조치/지시사항. 명사형으로 마무리. (예: "코너에 반사경 설치 및 서행 지시")
          - 최소 2~3개 도출. 언급이 적으면 문맥상 파생되는 예상 위험을 추가하여 완성.
       5. instructions (작업 시작 전 협의·지시사항): 리더가 지시·협의·당부한 사항을 요약. 항목 구분은 줄바꿈으로.
@@ -77,10 +84,19 @@ export async function POST(request: Request) {
                   type: "object",
                   properties: {
                     factor: { type: "string", description: "위험 요인" },
-                    level: { type: "string", enum: ["상", "중", "하"], description: "위험 정도" },
+                    ...(freqSev
+                      ? {
+                          frequency: { type: "integer", description: `발생가능성 1~${freqMax}` },
+                          severity: { type: "integer", description: `중대성 1~${sevMax}` },
+                        }
+                      : {
+                          level: { type: "string", enum: ["상", "중", "하"], description: "위험 정도" },
+                        }),
                     measure: { type: "string", description: "통제/제거 대책" },
                   },
-                  required: ["factor", "level", "measure"],
+                  required: freqSev
+                    ? ["factor", "frequency", "severity", "measure"]
+                    : ["factor", "level", "measure"],
                 },
               },
               instructions: {
@@ -115,11 +131,22 @@ export async function POST(request: Request) {
     const hazards = Array.isArray(input.hazards)
       ? (input.hazards as unknown[])
           .filter((h): h is Record<string, unknown> => !!h && typeof h === "object")
-          .map((h) => ({
-            factor: str(h.factor),
-            level: ["상", "중", "하"].includes(str(h.level)) ? str(h.level) : "중",
-            measure: str(h.measure),
-          }))
+          .map((h) => {
+            const factor = str(h.factor);
+            const measure = str(h.measure);
+            if (freqSev) {
+              // 빈도·강도: AI가 준 정수를 클램프하고 위험도·등급을 서버에서 산정
+              const f = Math.min(Math.max(1, Math.round(Number(h.frequency) || 1)), freqMax);
+              const s = Math.min(Math.max(1, Math.round(Number(h.severity) || 1)), sevMax);
+              const { score, level } = freqSevGrade(f, s, matrix);
+              return { factor, frequency: f, severity: s, risk: score, level, measure };
+            }
+            return {
+              factor,
+              level: ["상", "중", "하"].includes(str(h.level)) ? str(h.level) : "중",
+              measure,
+            };
+          })
       : [];
 
     const result = {
@@ -129,6 +156,8 @@ export async function POST(request: Request) {
       hazards,
       instructions: str(input.instructions),
       safetyPhrase: str(input.safetyPhrase, "안전제일!"),
+      riskMethod, // 프론트가 hazard 편집 UI(상중하 select ↔ 빈도/강도)를 고르는 데 사용
+      riskMatrix: matrix,
     };
 
     return NextResponse.json(result);

@@ -104,13 +104,16 @@ export async function getUserAndSubscription(request: Request) {
   const admin = getAdminClient();
   const { data } = await admin
     .from("subscriptions")
-    .select("status, plan, current_period_end, billing_key")
+    .select("status, plan, current_period_end, billing_key, risk_assessment_method, risk_matrix")
     .eq("user_id", user.id)
     .maybeSingle();
   const allowed = subscriptionAllows(data);
   // Pro 기능은 (구독이 유효하면서) 플랜이 Pro일 때만 허용
   const isPro = allowed && isProPlan(data?.plan);
-  return { user, allowed, isPro, sub: data };
+  // 위험성평가 방법: Pro가 아니면 서버에서 강제로 상중하(level3)로 고정 (클라 우회 차단)
+  const riskMethod = isPro && data?.risk_assessment_method === "freq_sev" ? "freq_sev" : "level3";
+  const riskMatrix = data?.risk_matrix === "5x4" || data?.risk_matrix === "5x5" ? data.risk_matrix : "3x3";
+  return { user, allowed, isPro, sub: data, riskMethod, riskMatrix };
 }
 
 function apiSecret(): string {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription, getAdminClient } from "@/lib/portone";
+import { MATRIX_DIMS, freqSevGrade, matrixPromptGuide, normMatrix, type MatrixScale } from "@/lib/riskMatrix";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,7 @@ const RA_MONTHLY_LIMIT = 20;
 export async function POST(request: Request) {
   try {
     // 인증 + Pro 구독 확인 (위험성평가 생성은 Pro 전용)
-    const { user, allowed, isPro } = await getUserAndSubscription(request);
+    const { user, allowed, isPro, riskMethod, riskMatrix } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
     if (!isPro)
@@ -22,6 +23,10 @@ export async function POST(request: Request) {
         { error: "AI 분석 보고서 생성은 Pro 플랜에서 이용할 수 있습니다." },
         { status: 403 }
       );
+    // 위험성평가 방법(서버 강제값). 기본 level3(상중하), freq_sev면 선택 매트릭스로 빈도강도.
+    const freqSev = riskMethod === "freq_sev";
+    const matrix: MatrixScale = normMatrix(riskMatrix);
+    const { freqMax, sevMax } = MATRIX_DIMS[matrix];
 
     // 이번 달 위험성평가 생성 횟수 확인 (월 20회 한도)
     // 월 경계는 사용자 기준(KST)으로 계산한다. 서버(UTC) startOfMonth를 쓰면 매월 말/초 ~9시간
@@ -69,11 +74,16 @@ export async function POST(request: Request) {
       - 각 요인마다 다음을 작성합니다.
         1) hazard: 유해·위험요인 (예: "고소작업 중 추락", "중량물 취급 중 협착")
         2) cause: 발생 원인/상황 (구체적으로)
-        3) frequency: 발생 가능성 1~5 (1=거의없음, 5=매우높음)
-        4) severity: 중대성(피해 크기) 1~5 (1=경미, 5=사망/중상)
+${freqSev
+  ? `        3) frequency: 발생 가능성 1~${freqMax} 정수 (클수록 자주 발생)
+        4) severity: 중대성(피해 크기) 1~${sevMax} 정수 (클수록 피해가 큼)
         5) measures: 위험성 감소대책 (구체적 안전조치, 개조식)
         6) recurring: 여러 TBM에서 반복 등장하면 true, 아니면 false
-      - frequency와 severity는 작업 특성에 맞게 현실적으로 평가하세요. 모두 같은 값으로 두지 마세요.
+      - frequency와 severity는 작업 특성에 맞게 현실적으로 평가하세요. 모두 같은 값으로 두지 마세요. (${matrixPromptGuide(matrix)})`
+  : `        3) level: 위험성 등급 "상"·"중"·"하" 중 하나 (상=중대/우선관리, 중=관리필요, 하=경미)
+        4) measures: 위험성 감소대책 (구체적 안전조치, 개조식)
+        5) recurring: 여러 TBM에서 반복 등장하면 true, 아니면 false
+      - level은 작업 특성에 맞게 현실적으로 평가하세요. 모두 같은 값으로 두지 마세요.`}
       - 일반론이 아니라 입력된 TBM 내용에 특화된 내용으로 작성하세요.
     `;
 
@@ -97,22 +107,20 @@ export async function POST(request: Request) {
                   properties: {
                     hazard: { type: "string", description: "유해·위험요인" },
                     cause: { type: "string", description: "발생 원인/상황" },
-                    frequency: {
-                      type: "integer",
-                      description: "발생 가능성 1~5",
-                      minimum: 1,
-                      maximum: 5,
-                    },
-                    severity: {
-                      type: "integer",
-                      description: "중대성 1~5",
-                      minimum: 1,
-                      maximum: 5,
-                    },
+                    ...(freqSev
+                      ? {
+                          frequency: { type: "integer", description: `발생 가능성 1~${freqMax}`, minimum: 1, maximum: freqMax },
+                          severity: { type: "integer", description: `중대성 1~${sevMax}`, minimum: 1, maximum: sevMax },
+                        }
+                      : {
+                          level: { type: "string", enum: ["상", "중", "하"], description: "위험성 등급" },
+                        }),
                     measures: { type: "string", description: "위험성 감소대책" },
                     recurring: { type: "boolean", description: "여러 TBM에서 반복 등장하면 true" },
                   },
-                  required: ["hazard", "cause", "frequency", "severity", "measures"],
+                  required: freqSev
+                    ? ["hazard", "cause", "frequency", "severity", "measures"]
+                    : ["hazard", "cause", "level", "measures"],
                 },
               },
             },
@@ -130,26 +138,32 @@ export async function POST(request: Request) {
     const raw = (toolUse?.input ?? {}) as { items?: unknown };
     const rawItems = Array.isArray(raw.items) ? raw.items : [];
 
-    // 위험성 등급 산정: 위험성 = 가능성 × 중대성
+    const lvlRank = (l: string) => (l === "상" ? 3 : l === "중" ? 2 : 1);
+    // 방법별 항목 정규화: freq_sev는 빈도×강도로 위험도·등급 산정, level3는 AI가 준 상/중/하 사용
     const items = rawItems
       .map((it: any) => {
-        const frequency = clamp(Number(it?.frequency), 1, 5);
-        const severity = clamp(Number(it?.severity), 1, 5);
-        const risk = frequency * severity;
-        return {
+        const base = {
           hazard: String(it?.hazard ?? "").trim(),
           cause: String(it?.cause ?? "").trim(),
-          frequency,
-          severity,
-          risk,
-          level: riskLevel(risk),
           measures: String(it?.measures ?? "").trim(),
           recurring: it?.recurring === true,
         };
+        if (freqSev) {
+          const frequency = clamp(Number(it?.frequency), 1, freqMax);
+          const severity = clamp(Number(it?.severity), 1, sevMax);
+          const { score, level } = freqSevGrade(frequency, severity, matrix);
+          return { ...base, frequency, severity, risk: score, level };
+        }
+        const level = ["상", "중", "하"].includes(String(it?.level)) ? String(it?.level) : "중";
+        return { ...base, level };
       })
       .filter((it) => it.hazard)
-      // 반복 위험요인을 앞으로, 그 다음 위험성 높은 순
-      .sort((a, b) => Number(b.recurring) - Number(a.recurring) || b.risk - a.risk);
+      // 반복 위험요인을 앞으로, 그 다음 위험 높은 순 (freq_sev=위험도점수, level3=상>중>하)
+      .sort(
+        (a: any, b: any) =>
+          Number(b.recurring) - Number(a.recurring) ||
+          (b.risk ?? lvlRank(b.level)) - (a.risk ?? lvlRank(a.level))
+      );
 
     if (items.length === 0) {
       return NextResponse.json(
@@ -167,7 +181,7 @@ export async function POST(request: Request) {
     });
     if (countErr) console.error("RA count insert error:", countErr);
 
-    return NextResponse.json({ items });
+    return NextResponse.json({ items, riskMethod, riskMatrix: matrix });
   } catch (error: unknown) {
     console.error("Risk Assessment AI Error:", error);
     const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류";
@@ -181,12 +195,4 @@ export async function POST(request: Request) {
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
   return Math.min(max, Math.max(min, Math.round(n)));
-}
-
-/** 위험성(1~25) → 등급 */
-function riskLevel(risk: number): string {
-  if (risk >= 15) return "매우높음";
-  if (risk >= 9) return "높음";
-  if (risk >= 4) return "보통";
-  return "낮음";
 }
