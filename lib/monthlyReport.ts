@@ -67,6 +67,8 @@ export interface ReportContent {
   hazards: HazardRow[];
   aiSummary: string;
   riskItems?: RiskItem[];
+  /** 통합(여러 현장 병합) 보고서의 현장별 소계 — 있으면 렌더에 '현장별 요약' 섹션 표시 */
+  sites?: { name: string; total: number; high: number; mid: number }[];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -128,6 +130,67 @@ async function buildMinutesContent(
   const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
 
   return { companyName, periodLabel, stats, keywords, hazards, aiSummary };
+}
+
+/** 여러 현장(계정)을 합친 통합 회의록 콘텐츠 — 현장별 소계 포함 */
+export async function buildMergedMinutesContent(
+  admin: SupabaseClient,
+  accounts: { userId: string; siteName: string }[],
+  year: number,
+  month: number,
+  companyName: string | null
+): Promise<ReportContent> {
+  const from = `${year}-${pad(month)}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const to = `${year}-${pad(month)}-${pad(lastDay)}`;
+
+  const items: HazardRow[] = [];
+  const sites: { name: string; total: number; high: number; mid: number }[] = [];
+  let totalMinutes = 0;
+
+  for (const acc of accounts) {
+    const { data: minutes } = await admin
+      .from("tbm_minutes")
+      .select("date, hazards, work_name, process_name")
+      .eq("user_id", acc.userId)
+      .gte("date", from)
+      .lte("date", to);
+    const rows = (minutes as any[]) || [];
+    totalMinutes += rows.length;
+    let sHigh = 0;
+    let sMid = 0;
+    for (const m of rows) {
+      const hs = Array.isArray(m.hazards) ? m.hazards : [];
+      for (const h of hs) {
+        const factor = String(h?.factor ?? "").trim();
+        if (!factor) continue;
+        const level = gradeOf(h?.level);
+        if (level === "상") sHigh++;
+        else if (level === "중") sMid++;
+        const proc = m.process_name || m.work_name || "";
+        items.push({
+          factor,
+          level,
+          measure: String(h?.measure ?? "").trim(),
+          process: proc ? `${acc.siteName} · ${proc}` : acc.siteName,
+          date: m.date || "",
+        });
+      }
+    }
+    sites.push({ name: acc.siteName, total: rows.length, high: sHigh, mid: sMid });
+  }
+
+  const freq = new Map<string, number>();
+  for (const it of items) freq.set(it.factor, (freq.get(it.factor) || 0) + 1);
+  const keywords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }));
+  const high = items.filter((it) => it.level === "상").length;
+  const mid = items.filter((it) => it.level === "중").length;
+  const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 40);
+  const periodLabel = `${year}년 ${month}월`;
+  const stats: ReportStats = { total: totalMinutes, high, mid };
+  const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
+
+  return { companyName, periodLabel, stats, keywords, hazards, aiSummary, sites };
 }
 
 /** 월간(year, month) 보고서 콘텐츠 */
@@ -291,6 +354,31 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
     ? { total: stats.total, high: riskItems.filter((it) => gradeOf(it.level) === "상").length, mid: riskItems.filter((it) => gradeOf(it.level) === "중").length }
     : stats;
 
+  // 통합(여러 현장 병합) 보고서면 현장별 소계 섹션
+  const sites = content.sites || [];
+  const sitesSection =
+    sites.length > 1
+      ? `<div style="font-size:15px;font-weight:700;margin:0 0 10px;">현장별 요약</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e6e5e0;border-radius:8px;overflow:hidden;margin-bottom:20px;">
+        <thead><tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
+          <th style="padding:8px 10px;text-align:left;">현장</th>
+          <th style="padding:8px 6px;text-align:center;width:60px;">회의록</th>
+          <th style="padding:8px 6px;text-align:center;width:48px;">상</th>
+          <th style="padding:8px 6px;text-align:center;width:48px;">중</th>
+        </tr></thead>
+        <tbody>${sites
+          .map(
+            (s) => `<tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #eee;font-weight:600;color:#26251e;">${escapeHtml(s.name)}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#555;">${s.total}건</td>
+          <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#cf2d56;font-weight:700;">${s.high}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#d4691a;font-weight:700;">${s.mid}</td>
+        </tr>`
+          )
+          .join("")}</tbody>
+      </table>`
+      : "";
+
   const topWords = keywords.slice(0, 2).map((k) => escapeHtml(k.word));
   const keywordChips =
     keywords.length > 0
@@ -349,6 +437,8 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
         </tr>
       </table>
 
+      ${sitesSection}
+
       ${
         aiSummary
           ? `<div style="background:#fafaf7;border:1px solid #eee;border-radius:10px;padding:16px;margin-bottom:20px;">
@@ -397,7 +487,7 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   </div>`;
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
 
