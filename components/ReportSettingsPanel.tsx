@@ -105,7 +105,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
 
             {/* 발송 주기 + 발송 시점 + 수신처 — Pro 전용 */}
             {pro && (
-                <>
+                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-5">
                     {/* 발송 주기 토글 */}
                     <div className="space-y-1.5">
                         <Label className="text-[13px]">발송 주기</Label>
@@ -157,12 +157,14 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                         {recipients.length === 0 ? (
                             <p className="text-[13px] text-cur-muted-soft py-1">등록된 수신처가 없습니다.</p>
                         ) : (
-                            recipients.map((email) => (
-                                <div key={email} className="flex items-center justify-between bg-cur-elevated rounded-lg px-3 py-2">
-                                    <span className="text-[14px] text-cur-ink truncate">{email}</span>
-                                    <button onClick={() => removeRecipient(email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2">삭제</button>
-                                </div>
-                            ))
+                            <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                                {recipients.map((email) => (
+                                    <div key={email} className="flex items-center justify-between px-3 py-2.5">
+                                        <span className="text-[14px] text-cur-ink truncate">{email}</span>
+                                        <button onClick={() => removeRecipient(email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 ml-2 transition-colors">삭제</button>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                         <div className="flex gap-2">
                             <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addRecipient() }} placeholder="대표자 이메일, 담당자 이메일 등" className="h-11" />
@@ -171,11 +173,11 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                             </Button>
                         </div>
                     </div>
-                </>
+                </div>
             )}
 
             {/* 미리보기 — TBM 회의록 종합 / 안전보건교육일지 종합 2개 탭, iframe 없이 인라인 전체 펼침 */}
-            <div className="space-y-2">
+            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-2">
                 <Label className="text-[13px]">보고서 미리보기</Label>
                 <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
                     {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
