@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { formatRangeLabelKo } from "@/lib/utils"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
+import { HtmlPreview } from "@/components/HtmlPreview"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DateRange } from "react-day-picker"
@@ -307,7 +308,7 @@ export default function RiskAssessmentPage() {
                     <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
                 </div>
             ) : activePreviewHtml ? (
-                <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: activePreviewHtml }} />
+                <HtmlPreview html={activePreviewHtml} />
             ) : (
                 <div className="py-16 text-center text-[13px] text-cur-muted-soft border border-cur-hairline rounded-xl bg-white">{emptyPreviewMsg}</div>
             )}

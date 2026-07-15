@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Sparkles } from "lucide-react"
 import { SAMPLE_MINUTES_HTML, SAMPLE_EDU_HTML } from "@/components/reportSampleHtml"
+import { HtmlPreview } from "@/components/HtmlPreview"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -190,7 +191,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                         </button>
                     ))}
                 </div>
-                <div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: previewTab === "minutes" ? SAMPLE_MINUTES_HTML : SAMPLE_EDU_HTML }} />
+                <HtmlPreview html={previewTab === "minutes" ? SAMPLE_MINUTES_HTML : SAMPLE_EDU_HTML} />
                 <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
             </div>
         </div>
