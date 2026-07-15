@@ -104,6 +104,8 @@ export default function AccountPage() {
     const cardlessTrial = sub?.status === "trialing" && !sub?.card_info
     const cardlessTrialActive = cardlessTrial && active
     const cardlessTrialExpired = cardlessTrial && !active
+    // 카드가 붙은 체험 = 결제일 자동청구 확정 구독 → 상태 헤더를 '무료체험 중'이 아니라 '이용 중'으로
+    const committedTrial = sub?.status === "trialing" && !!sub?.card_info
     const planLabel =
         sub?.plan === "monthly_pro" ? "Pro 플랜 (4,900원/월)" : "베이직 플랜 (1,900원/월)"
     const nextDate = sub?.current_period_end
@@ -164,6 +166,8 @@ export default function AccountPage() {
                                         ? "베이직 · 영구 무료"
                                         : cardlessTrialExpired
                                         ? "무료체험 종료"
+                                        : committedTrial
+                                        ? "이용 중"
                                         : STATUS_LABEL[sub?.status ?? ""] ?? "구독 없음"}
                                 </h2>
                             </div>

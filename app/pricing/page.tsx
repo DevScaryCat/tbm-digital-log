@@ -77,6 +77,9 @@ export default function PricingPage() {
         : null
     // 카드 없는 무료체험(휴대폰인증 가입): 결제/변경이 아니라 '결제수단 등록'으로 유도해야 한다.
     const cardlessTrial = sub?.status === "trialing" && !sub?.card_info
+    // 카드가 붙은 체험 = 결제일 자동청구 확정 구독 → '무료체험 중'이 아니라 '이용 중'으로 표기
+    const committedTrial = sub?.status === "trialing" && !!sub?.card_info
+    const statusLabel = committedTrial ? "이용 중" : STATUS_LABEL[sub?.status ?? ""] ?? "이용 중"
 
     const changePlan = async (plan: PlanId) => {
         setChangeMsg(null)
@@ -153,7 +156,7 @@ export default function PricingPage() {
             if (selected && subscribed && currentPlan === selected) {
                 return (
                     <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center space-y-1">
-                        <p className="font-bold text-cur-ink">{PLAN_LABEL[selected]} · {STATUS_LABEL[sub!.status] ?? "이용 중"}</p>
+                        <p className="font-bold text-cur-ink">{PLAN_LABEL[selected]} · {statusLabel}</p>
                         {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
                     </div>
                 )
@@ -203,7 +206,7 @@ export default function PricingPage() {
             return (
                 <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4 text-center space-y-2">
                     <p className="font-bold text-cur-ink">
-                        {PLAN_LABEL[selected]} · {STATUS_LABEL[sub!.status] ?? "이용 중"}
+                        {PLAN_LABEL[selected]} · {statusLabel}
                     </p>
                     {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
                     {pending && pending !== currentPlan && (

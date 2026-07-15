@@ -28,10 +28,11 @@ export function isWhitelist(sub: SubscriptionRow | null): boolean {
 /** 메인/헤더에 표시할 플랜 배지. 사용 가능한 구독이 없으면 null */
 export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean; trial: boolean } | null {
     if (!isAllowed(sub)) return null
-    const trial = sub?.status === "trialing"
     const isPro = sub?.plan === "monthly_pro"
     const base = isPro ? "Pro" : "베이직"
-    // 무료체험 중이면 배지에 '체험'을 붙여 체험 상태를 인식시킨다.
+    // '체험'은 아직 확정되지 않은 상태에만 표기: 카드 없는 무료체험, 또는 해지(남은 기간 소진 중).
+    // 카드가 붙은 체험은 결제일에 자동 청구되는 확정 구독이므로 '체험'을 떼고 Pro/베이직으로 표기.
+    const trial = sub?.status === "trialing" ? !sub?.card_info : sub?.status === "canceled"
     return { label: trial ? `${base} 체험` : base, isPro, trial }
 }
 
