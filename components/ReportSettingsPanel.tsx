@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Sparkles } from "lucide-react"
 import { SAMPLE_MINUTES_HTML, SAMPLE_EDU_HTML } from "@/components/reportSampleHtml"
 import { HtmlPreview } from "@/components/HtmlPreview"
+import { MATRIX_SCALES, MATRIX_LABEL, type RiskMethod, type MatrixScale } from "@/lib/riskMatrix"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -24,6 +25,8 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [sendDay, setSendDay] = useState(1)
     const [frequency, setFrequency] = useState<"monthly" | "weekly">("monthly")
     const [weekday, setWeekday] = useState(1)
+    const [riskMethod, setRiskMethod] = useState<RiskMethod>("level3")
+    const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
@@ -44,12 +47,17 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 setSendDay(j.sendDay ?? 1)
                 setFrequency(j.frequency === "weekly" ? "weekly" : "monthly")
                 setWeekday(j.weekday ?? 1)
+                setRiskMethod(j.riskMethod === "freq_sev" ? "freq_sev" : "level3")
+                if (j.riskMatrix === "5x4" || j.riskMatrix === "5x5" || j.riskMatrix === "3x3") setRiskMatrix(j.riskMatrix)
             }
         })()
         return () => { cancelled = true }
     }, [])
 
-    const saveSettings = async (next: { recipients?: string[]; sendDay?: number; frequency?: string; weekday?: number }) => {
+    const saveSettings = async (next: {
+        recipients?: string[]; sendDay?: number; frequency?: string; weekday?: number
+        riskMethod?: RiskMethod; riskMatrix?: MatrixScale
+    }) => {
         setSaving(true)
         setMsg(null)
         try {
@@ -64,6 +72,8 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
             setSendDay(j.sendDay ?? 1)
             setFrequency(j.frequency === "weekly" ? "weekly" : "monthly")
             setWeekday(j.weekday ?? 1)
+            if (j.riskMethod) setRiskMethod(j.riskMethod === "freq_sev" ? "freq_sev" : "level3")
+            if (j.riskMatrix) setRiskMatrix(j.riskMatrix)
             return true
         } finally { setSaving(false) }
     }
@@ -80,6 +90,13 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const changeSendDay = async (d: number) => { if (!pro) { setSendDay(d); return } await saveSettings({ sendDay: d }) }
     const changeWeekday = async (w: number) => { if (!pro) { setWeekday(w); return } await saveSettings({ weekday: w }) }
     const changeFrequency = async (f: "monthly" | "weekly") => { if (!pro) { setFrequency(f); return } await saveSettings({ frequency: f }) }
+    const changeRiskMethod = async (m: RiskMethod) => {
+        if (!pro) { setMsg({ type: "err", text: "빈도강도법은 Pro 플랜에서 설정할 수 있습니다. 베이직은 상중하법으로 제공됩니다." }); return }
+        setRiskMethod(m)
+        // 빈도강도로 처음 켤 때 매트릭스도 함께 저장
+        await saveSettings(m === "freq_sev" ? { riskMethod: m, riskMatrix } : { riskMethod: m })
+    }
+    const changeRiskMatrix = async (mx: MatrixScale) => { if (!pro) { setRiskMatrix(mx); return } setRiskMatrix(mx); await saveSettings({ riskMatrix: mx }) }
 
     return (
         <div className="space-y-5">
@@ -102,6 +119,45 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
 
             {msg && (
                 <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
+            )}
+
+            {/* 위험성 평가 방법 — Pro 전용 토글 (베이직은 상중하 고정) */}
+            {pro && (
+                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                    <div className="space-y-1.5">
+                        <Label className="text-[13px]">위험성 평가 방법</Label>
+                        <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
+                            {([["level3", "상중하법"], ["freq_sev", "빈도·강도법"]] as const).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => changeRiskMethod(key)}
+                                    disabled={saving}
+                                    className={`flex-1 h-9 rounded-md text-[14px] font-semibold transition-colors ${riskMethod === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {riskMethod === "freq_sev" && (
+                        <div className="space-y-1.5">
+                            <Label className="text-[13px]">빈도강도 매트릭스</Label>
+                            <select
+                                value={riskMatrix}
+                                onChange={(e) => changeRiskMatrix(e.target.value as MatrixScale)}
+                                disabled={saving}
+                                className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
+                            >
+                                {MATRIX_SCALES.map((mx) => (
+                                    <option key={mx} value={mx}>{MATRIX_LABEL[mx]}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
+                        설정한 방법은 <b className="text-cur-muted">이후 새로 생성되는</b> TBM 회의록·위험성평가 보고서에 적용됩니다. (기존 보고서는 그대로)
+                    </p>
+                </div>
             )}
 
             {/* 발송 주기 + 발송 시점 + 수신처 — Pro 전용 */}

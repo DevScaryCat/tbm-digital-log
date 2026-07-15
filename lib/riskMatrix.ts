@@ -16,6 +16,15 @@ export function normMatrix(v: unknown): MatrixScale {
     return v === "5x4" || v === "5x5" ? v : "3x3"
 }
 
+/** 저장된 등급 문자열을 상/중/하로 정규화 (구데이터 4단계 매우높음/높음/보통/낮음 포함) */
+export function normLevel(v: unknown): RiskLevel {
+    const s = String(v ?? "").trim()
+    if (s === "상" || s === "매우높음" || s === "높음") return "상"
+    if (s === "중" || s === "보통") return "중"
+    if (s === "하" || s === "낮음") return "하"
+    return "중"
+}
+
 export const RISK_METHOD_LABEL: Record<RiskMethod, string> = {
     level3: "상중하법",
     freq_sev: "빈도·강도법",
