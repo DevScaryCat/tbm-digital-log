@@ -30,13 +30,24 @@ export default function BatchMinutesReportPage() {
         if (minutes.length === 0 || exporting) return
         setExporting(true)
         try {
-            // docx 빌더는 클릭 시점에만 로드 — 초기 번들 비대 방지
-            const { buildMinutesDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
-            const { blob, imageFailures } = await buildMinutesDocx(minutes.map((m) => ({ minutes: m, participants: participantsMap[m.id] || [] })))
-            if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
             // minutes는 date 오름차순 정렬 — 처음/마지막이 기간
             const period = `${mmdd(minutes[0].date)}-${mmdd(minutes[minutes.length - 1].date)}`
-            downloadBlob(blob, suggestFilename("minutes", period))
+            // 빌더는 클릭 시점에만 로드 — 초기 번들 비대 방지
+            if (exportFormat === "hwp") {
+                // 한글 선택 시 정식 .hwpx로 저장
+                const [{ buildMinutesHwpx, suggestHwpxFilename }, { downloadBlob }] = await Promise.all([
+                    import("@/lib/exportHwpx"),
+                    import("@/lib/exportDocx"),
+                ])
+                const { blob, imageFailures } = await buildMinutesHwpx(minutes.map((m) => ({ minutes: m, participants: participantsMap[m.id] || [] })))
+                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                downloadBlob(blob, suggestHwpxFilename("minutes", period))
+            } else {
+                const { buildMinutesDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
+                const { blob, imageFailures } = await buildMinutesDocx(minutes.map((m) => ({ minutes: m, participants: participantsMap[m.id] || [] })))
+                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                downloadBlob(blob, suggestFilename("minutes", period))
+            }
         } catch (error) {
             console.error("문서 파일 생성 실패:", error)
             alert("문서 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
@@ -112,7 +123,7 @@ export default function BatchMinutesReportPage() {
                         )}
                     </div>
                     {exportFormat === "hwp" && (
-                        <p className="text-[11px] text-cur-muted">지금은 워드 형식(.docx)으로 저장돼요 — 한글에서 바로 열립니다. 정식 HWP 파일은 준비 중.</p>
+                        <p className="text-[11px] text-cur-muted">정식 한글 파일(.hwpx)로 저장돼요 — 한글 2014 이상에서 열립니다.</p>
                     )}
                     {exportFormat === "xlsx" && (
                         <p className="text-[11px] text-cur-muted">엑셀 내보내기는 준비 중이에요</p>

@@ -106,9 +106,9 @@ const C = {
 
 // ---------------- 이미지 로드 (서명 signed URL / base64 data URL 공용) ----------------
 
-type ImgType = "png" | "jpg"
+export type ImgType = "png" | "jpg"
 
-interface LoadedImage {
+export interface LoadedImage {
     data: ArrayBuffer
     type: ImgType
     width: number
@@ -124,7 +124,7 @@ export interface ImageLoadStats {
 //  1) WebP·HEIC 등 docx가 모르는 포맷이 PNG로 오라벨돼 깨진 이미지로 박히는 것 방지(포맷 통일)
 //  2) 원본 카메라 사진(수 MB)을 축소해 일괄 내보내기 메모리·파일 크기 폭주 방지
 // 브라우저가 못 여는 포맷(SVG·HEIC 등)은 실패로 집계하고 생략한다.
-async function loadImage(
+export async function loadImage(
     url: string | null | undefined,
     stats: ImageLoadStats,
     opts?: { photo?: boolean }
