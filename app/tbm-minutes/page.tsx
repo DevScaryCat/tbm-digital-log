@@ -231,6 +231,11 @@ export default function TBMMinutesPage() {
     const [riskMethod, setRiskMethod] = useState<"level3" | "freq_sev">("level3")
     const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
 
+    // 근로자 의견 합류(step 4): 이미 반영한 의견 id — '이전'으로 갔다 와도 중복 추가 방지
+    const processedSuggestionIds = useRef(new Set<string>())
+    const isMergingRef = useRef(false)
+    const [isMergingSuggestions, setIsMergingSuggestions] = useState(false)
+
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
     const minutes = ["00", "10", "20", "30", "40", "50"]
 
@@ -345,6 +350,52 @@ export default function TBMMinutesPage() {
             return () => { supabase.removeChannel(channel); }
         }
     }, [step, sessionId]);
+
+    // step 4 진입(또는 step 4에서 STT/AI 처리 종료) 시 근로자 의견을 위험성평가 항목으로 합류.
+    // 의견은 step 3(QR 서명) 동안 worker_suggestions에 쌓이므로 요약 이후인 여기서 병합한다.
+    useEffect(() => {
+        if (step !== 4 || isProcessingSTT || isProcessingAI || !sessionId) return;
+        const mergeWorkerSuggestions = async () => {
+            if (isMergingRef.current) return;
+            isMergingRef.current = true;
+            try {
+                const { data, error } = await supabase
+                    .from('worker_suggestions')
+                    .select('id, content')
+                    .eq('session_id', sessionId);
+                if (error || !data) return; // 실패해도 검토 흐름은 계속
+                const fresh = (data as { id: string; content: string }[])
+                    .filter(s => !processedSuggestionIds.current.has(s.id))
+                    .slice(0, 30); // API 상한
+                if (fresh.length === 0) return;
+                setIsMergingSuggestions(true);
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const res = await fetch('/api/ai/suggestion-hazards', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+                        body: JSON.stringify({ suggestions: fresh.map(s => s.content.slice(0, 500)) })
+                    });
+                    if (!res.ok) {
+                        if (res.status !== 429 && res.status !== 402) console.error('suggestion-hazards error:', res.status);
+                        return;
+                    }
+                    const result = await res.json();
+                    if (Array.isArray(result.hazards) && result.hazards.length > 0) {
+                        setFormData(prev => ({ ...prev, hazards: [...prev.hazards, ...result.hazards] }));
+                    }
+                    fresh.forEach(s => processedSuggestionIds.current.add(s.id));
+                } finally {
+                    setIsMergingSuggestions(false);
+                }
+            } catch (e) {
+                console.error('suggestion merge failed:', e); // 알림 없이 콘솔만
+            } finally {
+                isMergingRef.current = false;
+            }
+        };
+        mergeWorkerSuggestions();
+    }, [step, isProcessingSTT, isProcessingAI, sessionId]);
 
     const validateStep = (currentStep: number) => {
         if (currentStep === 1) {
@@ -500,7 +551,12 @@ export default function TBMMinutesPage() {
                     processName: data.processName || prev.processName,
                     workName: data.workName || prev.workName,
                     workContent: data.workContent || prev.workContent,
-                    hazards: Array.isArray(data.hazards) ? data.hazards : [],
+                    // 재요약 시에도 이미 합류된 [근로자 의견] 항목은 보존 — processedSuggestionIds에 남아
+                    // 재병합이 안 되므로 여기서 지우면 근로자 의견이 문서에서 영구 소실된다.
+                    hazards: [
+                        ...(Array.isArray(data.hazards) ? data.hazards : []),
+                        ...prev.hazards.filter(h => h.factor?.startsWith("[근로자 의견]")),
+                    ],
                     instructions: data.instructions || "",
                     safetyPhrase: data.safetyPhrase || prev.safetyPhrase
                 }))
@@ -973,6 +1029,9 @@ export default function TBMMinutesPage() {
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">근로자 참여 위험성평가</h3>
                                         <span className="text-[12px] font-medium text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px]">{formData.hazards.length}건</span>
+                                        {isMergingSuggestions && (
+                                            <span className="inline-flex items-center gap-1 text-[12px] text-cur-muted"><Loader2 className="w-3 h-3 animate-spin" /> 근로자 의견 반영 중</span>
+                                        )}
                                     </div>
                                     <Button size="sm" onClick={addHazard} variant="ghost" className="h-9 px-3 rounded-[6px] text-[12px] font-semibold bg-cur-card border border-cur-hairline text-cur-ink hover:bg-cur-canvas"><Plus className="w-3.5 h-3.5 mr-1" /> 요인 추가</Button>
                                 </div>
@@ -1036,14 +1095,6 @@ export default function TBMMinutesPage() {
                                                             {lv}
                                                         </button>
                                                     ))}
-                                                    <button
-                                                        type="button"
-                                                        aria-pressed={hazard.level === "상중하"}
-                                                        onClick={() => updateHazard(idx, "level", "상중하")}
-                                                        className={cn("flex-none px-3 h-11 rounded-[6px] text-[15px] font-semibold transition-all", hazard.level === "상중하" ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted")}
-                                                    >
-                                                        복합
-                                                    </button>
                                                 </div>
                                             )}
                                             <div className="flex flex-col gap-1.5">

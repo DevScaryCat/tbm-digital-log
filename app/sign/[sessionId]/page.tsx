@@ -14,11 +14,21 @@ import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } f
 // 근로자 의견·제안 폼 — 서명 완료 화면의 suggest 단계에서 사용.
 // submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로 익명(anon) 그대로 호출한다.
 // 익명이 기본이며, 참석자가 실명을 선택한 경우에만 서명자 이름(p_author_name)을 함께 보낸다.
-function SuggestionForm({ sessionId, signerName }: { sessionId: string; signerName: string }) {
+// sent/onSent를 상위에서 받는 이유: suggest 뷰를 나갔다 오면 이 컴포넌트가 언마운트되므로 1회 전송 상태를 상위에 보존해야 한다.
+function SuggestionForm({
+    sessionId,
+    signerName,
+    sent,
+    onSent,
+}: {
+    sessionId: string
+    signerName: string
+    sent: boolean
+    onSent: () => void
+}) {
     const [content, setContent] = useState("")
     const [anonymous, setAnonymous] = useState(true)
     const [sending, setSending] = useState(false)
-    const [sentCount, setSentCount] = useState(0)
 
     const submit = async () => {
         const text = content.trim()
@@ -45,10 +55,22 @@ function SuggestionForm({ sessionId, signerName }: { sessionId: string; signerNa
                 return
             }
             setContent("")
-            setSentCount((n) => n + 1)
+            onSent()
         } finally {
             setSending(false)
         }
+    }
+
+    if (sent) {
+        return (
+            <div className="rounded-[12px] border border-cur-hairline bg-cur-card p-4 space-y-3">
+                <div className="flex flex-col items-center text-center py-6 space-y-3">
+                    <CheckCircle2 className="w-10 h-10 text-cur-success" />
+                    <p className="text-[16px] font-bold text-cur-ink">의견이 접수되었습니다</p>
+                    <p className="text-[13px] text-cur-muted">소중한 의견 감사합니다. 안전관리에 반영하겠습니다.</p>
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -89,11 +111,6 @@ function SuggestionForm({ sessionId, signerName }: { sessionId: string; signerNa
                 placeholder="예: 2층 개구부 덮개가 파손되어 있습니다 / 휴게 공간에 식수가 부족합니다"
                 className="w-full rounded-[8px] border border-cur-hairline bg-cur-canvas p-3 text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary resize-none"
             />
-            {sentCount > 0 && (
-                <p className="text-[13px] font-medium text-cur-success flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> 접수되었습니다{sentCount > 1 ? ` (${sentCount}건)` : ""}. 더 남기실 수도 있어요.
-                </p>
-            )}
             <Button
                 onClick={submit}
                 disabled={sending || content.trim().length === 0}
@@ -116,6 +133,8 @@ export default function SignPage() {
     const [isSuccess, setIsSuccess] = useState(false)
     // 완료 화면 2단계: done(제출 완료 안내) → suggest(의견·제안 보내기)
     const [successView, setSuccessView] = useState<"done" | "suggest">("done")
+    // 의견·제안 1회 전송 완료 여부 — suggest 뷰를 나갔다 와도 폼이 다시 열리지 않게 상위에서 보존
+    const [suggestionSent, setSuggestionSent] = useState(false)
     const [isExpired, setIsExpired] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
 
@@ -215,7 +234,12 @@ export default function SignPage() {
                         <ChevronLeft className="w-5 h-5" /> 뒤로
                     </button>
                     <h1 className="text-2xl font-bold text-cur-ink mt-1 mb-5">의견·제안 보내기</h1>
-                    <SuggestionForm sessionId={sessionId} signerName={name.trim()} />
+                    <SuggestionForm
+                        sessionId={sessionId}
+                        signerName={name.trim()}
+                        sent={suggestionSent}
+                        onSent={() => setSuggestionSent(true)}
+                    />
                     <div className="mt-auto pt-6">
                         <Button
                             onClick={() => {

@@ -8,6 +8,7 @@ export const AI_DAILY_LIMITS = {
   stt: 500, // 문서 5건 × 세그먼트 ~50개 = 250회가 현실 상한 → 2배 여유
   summary: 60,
   minutes: 60,
+  "suggestion-hazards": 60, // 근로자 의견 → 위험요인 변환 (minutes와 별도 카운트 — 회의록 한도 잠식 방지)
   "minutes-insight": 30,
   "education-insight": 30,
 } as const
