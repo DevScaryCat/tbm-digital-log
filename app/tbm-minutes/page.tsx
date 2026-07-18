@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload, FileText } from "lucide-react"
+import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload, FileText, Sparkles } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
@@ -90,6 +90,23 @@ interface TBMMinutesData {
     hazards: Hazard[]
     participants: Participant[]
 }
+
+// ─── step 4 공용 스타일 상수 (quiet-filled 편집 필드) ───
+// 16px는 iOS 자동 줌 방지 임계 — 절대 내리지 말 것 (md:text-[16px]로 shadcn 기본 md:text-sm 무력화)
+const FIELD_CLS = "h-12 w-full px-3 bg-cur-canvas border-0 shadow-none rounded-[8px] text-[16px] md:text-[16px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus:outline-none focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-cur-primary"
+const AREA_CLS = "w-full p-3 min-h-[64px] resize-y leading-relaxed bg-cur-canvas border-0 shadow-none rounded-[8px] text-[16px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus:ring-1 focus:ring-cur-primary focus:outline-none"
+const SELECT_CLS = "h-12 w-full px-3 bg-cur-canvas border-0 rounded-[8px] text-[16px] font-medium text-cur-ink focus:bg-cur-card focus:ring-1 focus:ring-cur-primary focus:outline-none"
+// 라벨은 값(16px ink)보다 조용하게 — 단 cur-muted(4.1:1)는 야외 현장 가독에 부족해 body(7:1) 사용
+const LABEL_CLS = "text-[13px] font-medium text-cur-body"
+
+// 등급색 매핑 헬퍼 — 좌측 보더 / 등급 배지 / 세그먼트 선택 텍스트 / 위험도 칩에서 공유
+const LEVEL_STYLES: Record<string, { border: string; badge: string; seg: string }> = {
+    "상": { border: "border-l-cur-error", badge: "bg-cur-error/10 text-cur-error", seg: "text-cur-error" },
+    "중": { border: "border-l-cur-primary", badge: "bg-cur-primary/10 text-cur-primary-active", seg: "text-cur-primary-active" },
+    "하": { border: "border-l-cur-success", badge: "bg-cur-success/10 text-cur-success", seg: "text-cur-success" },
+    "상중하": { border: "border-l-cur-hairline-strong", badge: "bg-cur-elevated text-cur-ink", seg: "text-cur-ink" },
+}
+const levelStyle = (level: string) => LEVEL_STYLES[level] ?? LEVEL_STYLES["상중하"]
 
 export default function TBMMinutesPage() {
     const router = useRouter()
@@ -190,7 +207,7 @@ export default function TBMMinutesPage() {
 
     const getCurrentTime = () => {
         const now = new Date()
-        return now.toTimeString().slice(0, 5)
+        return now.toTimeString().slice(0, 8) // HH:MM:SS — 초까지 저장해야 1분 미만 세션이 잘리지 않음
     }
 
     const [formData, setFormData] = useState<TBMMinutesData>({
@@ -801,7 +818,7 @@ export default function TBMMinutesPage() {
                                         <span className="text-[11px] text-cur-muted">녹음 시작 시 자동 갱신 (조작 불가)</span>
                                     </div>
                                     <Input
-                                        value={formData.startTime}
+                                        value={formData.startTime?.slice(0, 5)}
                                         disabled
                                         className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
                                     />
@@ -813,7 +830,7 @@ export default function TBMMinutesPage() {
                                         <span className="text-[11px] text-cur-muted">녹음 종료 시 자동 갱신 (조작 불가)</span>
                                     </div>
                                     <Input
-                                        value={formData.endTime}
+                                        value={formData.endTime?.slice(0, 5)}
                                         disabled
                                         placeholder="녹음 종료 후 자동 입력"
                                         className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
@@ -848,7 +865,7 @@ export default function TBMMinutesPage() {
                                     </div>
                                 ) : recordingCount > 0 ? (
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
-                                        <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
+                                        <div className="bg-cur-primary/5 text-cur-primary border border-cur-primary/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
                                             <Pause className="w-4 h-4 shrink-0" /> 녹음 일시정지 · {recordingCount}회
                                             <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
                                         </div>
@@ -898,11 +915,11 @@ export default function TBMMinutesPage() {
                     )}
 
                     {step === 4 && (
-                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                        <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 요약본 확인 및 수정
                             </h2>
-                            
+
                             {(isProcessingSTT || isProcessingAI) ? (
                                 <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-12 text-center flex flex-col items-center justify-center shadow-sm">
                                     <Loader2 className="w-12 h-12 text-cur-ink animate-spin mb-4" />
@@ -913,139 +930,171 @@ export default function TBMMinutesPage() {
                                 </div>
                             ) : (
                                 <>
-                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
-                                <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
-                                    ■ 공정 및 작업명
+                            {/* AI 안내 바 */}
+                            <div className="bg-cur-elevated rounded-[10px] p-3 flex items-start gap-2">
+                                <Sparkles className="w-4 h-4 text-cur-info mt-0.5 shrink-0" />
+                                <p className="text-[14px] text-cur-body leading-relaxed">AI가 녹음을 요약해 초안을 채웠어요. 내용을 탭하면 바로 수정할 수 있습니다.</p>
+                            </div>
+
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                <div className="px-4 py-3 border-b border-cur-hairline">
+                                    <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">공정 및 작업명</h3>
                                 </div>
                                 <div className="p-4 grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-1.5">
-                                        <Label className="text-[13px] font-bold text-cur-ink">공정(종)명</Label>
-                                        <Input name="processName" value={formData.processName} onChange={handleChange} className="h-10 text-[14px] font-medium border-cur-hairline focus-visible:ring-cur-primary focus-visible:ring-1" />
+                                        <Label className={LABEL_CLS}>공정(종)명</Label>
+                                        <Input name="processName" value={formData.processName} onChange={handleChange} className={FIELD_CLS} />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <Label className="text-[13px] font-bold text-cur-ink">작업명</Label>
-                                        <Input name="workName" value={formData.workName} onChange={handleChange} className="h-10 text-[14px] font-medium border-cur-hairline focus-visible:ring-cur-primary focus-visible:ring-1" />
+                                        <Label className={LABEL_CLS}>작업명</Label>
+                                        <Input name="workName" value={formData.workName} onChange={handleChange} className={FIELD_CLS} />
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
-                                <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
-                                    ■ 금일 작업 내용
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                <div className="px-4 py-3 border-b border-cur-hairline">
+                                    <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">금일 작업 내용</h3>
                                 </div>
                                 <div className="p-4">
                                     <textarea
                                         name="workContent"
                                         value={formData.workContent}
                                         onChange={handleChange}
-                                        className="w-full p-3 border border-cur-hairline rounded-[10px] h-20 text-[15px] bg-cur-card resize-none focus:outline-none focus:border-cur-primary focus:ring-1 focus:ring-cur-primary font-medium text-cur-ink shadow-sm"
+                                        rows={3}
+                                        className={AREA_CLS}
                                         placeholder="AI가 요약한 작업 내용을 확인하고 수정하세요."
                                     />
                                 </div>
                             </div>
 
-                            <div className="bg-cur-card border border-amber-200 rounded-[12px] overflow-hidden shadow-none">
-                                <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 font-bold flex justify-between items-center text-amber-800 text-[14px]">
-                                    <span>■ 근로자 참여 위험성평가</span>
-                                    <Button size="sm" onClick={addHazard} variant="ghost" className="h-7 px-2.5 hover:bg-amber-100 bg-cur-card border border-amber-200 shadow-sm rounded-[6px] text-amber-800"><Plus className="w-3.5 h-3.5 mr-1" /> 요인 추가</Button>
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                <div className="px-4 py-3 border-b border-cur-hairline flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">근로자 참여 위험성평가</h3>
+                                        <span className="text-[12px] font-medium text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px]">{formData.hazards.length}건</span>
+                                    </div>
+                                    <Button size="sm" onClick={addHazard} variant="ghost" className="h-9 px-3 rounded-[6px] text-[12px] font-semibold bg-cur-card border border-cur-hairline text-cur-ink hover:bg-cur-canvas"><Plus className="w-3.5 h-3.5 mr-1" /> 요인 추가</Button>
                                 </div>
-                                <div className="p-4 space-y-4 bg-amber-50/50">
-                                    {formData.hazards.length === 0 && <p className="text-[13px] text-cur-muted text-center py-4 font-medium">도출된 위험요인이 없습니다.</p>}
-                                    {formData.hazards.map((hazard, idx) => (
-                                        <div key={idx} className="bg-cur-card p-4 border border-amber-200 rounded-[12px] shadow-sm space-y-4 relative">
-                                            <button onClick={() => removeHazard(idx)} className="absolute top-2.5 right-2.5 text-cur-error/70 hover:text-cur-error bg-cur-error/5 p-1.5 rounded-[6px]"><Trash2 className="w-4 h-4" /></button>
+                                <div className="divide-y divide-cur-hairline">
+                                    {formData.hazards.length === 0 && <p className="text-[14px] text-cur-muted text-center py-6 font-medium">도출된 위험요인이 없습니다.</p>}
+                                    {formData.hazards.map((hazard, idx) => {
+                                        const ls = levelStyle(hazard.level)
+                                        return (
+                                        <div key={idx} className={cn("py-4 px-4 space-y-3 border-l-[3px]", ls.border)}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[12px] font-semibold text-cur-muted-soft">위험요인 {idx + 1}</span>
+                                                    <span className={cn("text-[12px] font-bold px-2 py-0.5 rounded-[6px]", ls.badge)}>{hazard.level === "상중하" ? "복합" : hazard.level}</span>
+                                                </div>
+                                                <button onClick={() => removeHazard(idx)} aria-label="위험요인 삭제" className="h-10 w-10 flex items-center justify-center rounded-[8px] text-cur-muted-soft hover:text-cur-error hover:bg-cur-error/5 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                            <textarea
+                                                value={hazard.factor}
+                                                onChange={(e) => updateHazard(idx, "factor", e.target.value)}
+                                                className={AREA_CLS}
+                                                placeholder="잠재 유해위험요인"
+                                                aria-label="잠재 유해위험요인"
+                                                rows={2}
+                                            />
+                                            {riskMethod === "freq_sev" ? (
+                                                <div className="space-y-2">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <select
+                                                            value={hazard.frequency ?? 1}
+                                                            onChange={(e) => updateHazardFreqSev(idx, "frequency", Number(e.target.value))}
+                                                            className={SELECT_CLS}
+                                                            aria-label="빈도"
+                                                        >
+                                                            {Array.from({ length: MATRIX_DIMS[riskMatrix].freqMax }, (_, i) => i + 1).map((n) => (
+                                                                <option key={n} value={n}>빈도 {n}</option>
+                                                            ))}
+                                                        </select>
+                                                        <select
+                                                            value={hazard.severity ?? 1}
+                                                            onChange={(e) => updateHazardFreqSev(idx, "severity", Number(e.target.value))}
+                                                            className={SELECT_CLS}
+                                                            aria-label="강도"
+                                                        >
+                                                            {Array.from({ length: MATRIX_DIMS[riskMatrix].sevMax }, (_, i) => i + 1).map((n) => (
+                                                                <option key={n} value={n}>강도 {n}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <span className={cn("inline-flex items-center text-[12px] font-bold px-2 py-0.5 rounded-[6px]", ls.badge)}>위험도 {hazard.risk ?? ""} · {hazard.level}</span>
+                                                </div>
+                                            ) : (
+                                                <div role="group" aria-label="위험성 등급" className="flex p-0.5 bg-cur-elevated rounded-[8px] gap-0.5">
+                                                    {(["상", "중", "하"] as const).map((lv) => (
+                                                        <button
+                                                            key={lv}
+                                                            type="button"
+                                                            aria-pressed={hazard.level === lv}
+                                                            onClick={() => updateHazard(idx, "level", lv)}
+                                                            className={cn("flex-1 h-11 rounded-[6px] text-[15px] font-semibold transition-all", hazard.level === lv ? cn("bg-cur-card shadow-sm", levelStyle(lv).seg) : "text-cur-muted")}
+                                                        >
+                                                            {lv}
+                                                        </button>
+                                                    ))}
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={hazard.level === "상중하"}
+                                                        onClick={() => updateHazard(idx, "level", "상중하")}
+                                                        className={cn("flex-none px-3 h-11 rounded-[6px] text-[15px] font-semibold transition-all", hazard.level === "상중하" ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted")}
+                                                    >
+                                                        복합
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div className="flex flex-col gap-1.5">
-                                                <Label className="text-[13px] text-amber-800 font-bold">잠재 유해위험요인</Label>
-                                                <textarea 
-                                                    value={hazard.factor} 
-                                                    onChange={(e) => updateHazard(idx, "factor", e.target.value)} 
-                                                    className="w-full min-h-[64px] p-3 rounded-[8px] border border-amber-200 bg-cur-card text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium resize-y shadow-sm leading-relaxed"
+                                                <Label className={LABEL_CLS}>↳ 대책 (제거·대체·통제)</Label>
+                                                <textarea
+                                                    value={hazard.measure}
+                                                    onChange={(e) => updateHazard(idx, "measure", e.target.value)}
+                                                    className={AREA_CLS}
                                                     rows={2}
                                                 />
                                             </div>
-                                            <div className="flex gap-3 items-start">
-                                                <div className={`flex flex-col gap-1.5 shrink-0 ${riskMethod === "freq_sev" ? "w-28" : "w-24"}`}>
-                                                    <Label className="text-[13px] text-amber-800 font-bold">위험성</Label>
-                                                    {riskMethod === "freq_sev" ? (
-                                                        <>
-                                                            <select
-                                                                value={hazard.frequency ?? 1}
-                                                                onChange={(e) => updateHazardFreqSev(idx, "frequency", Number(e.target.value))}
-                                                                className="w-full h-9 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
-                                                            >
-                                                                {Array.from({ length: MATRIX_DIMS[riskMatrix].freqMax }, (_, i) => i + 1).map((n) => (
-                                                                    <option key={n} value={n}>빈도 {n}</option>
-                                                                ))}
-                                                            </select>
-                                                            <select
-                                                                value={hazard.severity ?? 1}
-                                                                onChange={(e) => updateHazardFreqSev(idx, "severity", Number(e.target.value))}
-                                                                className="w-full h-9 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
-                                                            >
-                                                                {Array.from({ length: MATRIX_DIMS[riskMatrix].sevMax }, (_, i) => i + 1).map((n) => (
-                                                                    <option key={n} value={n}>강도 {n}</option>
-                                                                ))}
-                                                            </select>
-                                                            <div className="text-center text-[12px] font-bold text-red-600">위험도 {hazard.risk ?? ""} · {hazard.level}</div>
-                                                        </>
-                                                    ) : (
-                                                        <select
-                                                            value={hazard.level}
-                                                            onChange={(e) => updateHazard(idx, "level", e.target.value)}
-                                                            className="w-full h-11 rounded-[8px] border border-amber-200 bg-cur-card px-2 text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium shadow-sm"
-                                                        >
-                                                            <option value="상">상</option>
-                                                            <option value="중">중</option>
-                                                            <option value="하">하</option>
-                                                            <option value="상중하">복합</option>
-                                                        </select>
-                                                    )}
-                                                </div>
-                                                <div className="flex flex-col gap-1.5 flex-1">
-                                                    <Label className="text-[13px] text-amber-800 font-bold">대책(제거/대체/통제)</Label>
-                                                    <textarea 
-                                                        value={hazard.measure} 
-                                                        onChange={(e) => updateHazard(idx, "measure", e.target.value)} 
-                                                        className="w-full min-h-[64px] p-3 rounded-[8px] border border-amber-200 bg-cur-card text-[14px] focus:outline-none focus:ring-1 focus:ring-amber-400 font-medium resize-y shadow-sm leading-relaxed"
-                                                        rows={2}
-                                                    />
-                                                </div>
-                                            </div>
                                         </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             </div>
 
-                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
-                                <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
-                                    ■ 작업 시작전 확인사항
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                <div className="px-4 py-3 border-b border-cur-hairline">
+                                    <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">작업 시작전 확인사항</h3>
                                 </div>
                                 <div className="p-4 space-y-4">
                                     <div className="flex flex-col gap-1.5">
-                                        <Label className="text-[13px] font-bold text-cur-ink">개인별 건강상태 이상 유무</Label>
-                                        <Input name="healthCheck" value={formData.healthCheck} onChange={handleChange} className="bg-amber-50 text-amber-800 border-amber-200 font-medium h-10" />
+                                        <Label className={LABEL_CLS}>개인별 건강상태 이상 유무</Label>
+                                        <Input name="healthCheck" value={formData.healthCheck} onChange={handleChange} className={FIELD_CLS} />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <Label className="text-[13px] font-bold text-cur-ink">개인 보호구 착용 상태</Label>
-                                        <Input name="ppeCheck" value={formData.ppeCheck} onChange={handleChange} className="bg-amber-50 text-amber-800 border-amber-200 font-medium h-10" />
+                                        <Label className={LABEL_CLS}>개인 보호구 착용 상태</Label>
+                                        <Input name="ppeCheck" value={formData.ppeCheck} onChange={handleChange} className={FIELD_CLS} />
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <Label className="text-[13px] font-bold text-cur-info">안전구호 제창 (AI 추천)</Label>
-                                        <Input name="safetyPhrase" value={formData.safetyPhrase} onChange={handleChange} className="font-bold border-cur-info/20 bg-cur-info/5 text-cur-info h-10" />
+                                        <div className="flex items-center gap-1.5">
+                                            <Label className={LABEL_CLS}>안전구호 제창</Label>
+                                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-cur-info bg-cur-info/10 px-1.5 py-0.5 rounded-[6px]"><Sparkles className="w-3 h-3" /> AI 추천</span>
+                                        </div>
+                                        <Input name="safetyPhrase" value={formData.safetyPhrase} onChange={handleChange} className={FIELD_CLS} />
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden shadow-none">
-                                <div className="bg-cur-canvas border-b border-cur-hairline px-4 py-3 font-bold text-cur-ink text-[14px]">
-                                    ■ 작업 시작전 협의 및 지시사항
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                <div className="px-4 py-3 border-b border-cur-hairline">
+                                    <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">작업 시작전 협의 및 지시사항</h3>
                                 </div>
                                 <div className="p-4">
                                     <textarea
                                         name="instructions"
                                         value={formData.instructions}
                                         onChange={handleChange}
-                                        className="w-full p-3 border border-cur-hairline rounded-[10px] h-32 text-[15px] bg-cur-card resize-none focus:outline-none focus:border-cur-primary focus:ring-1 focus:ring-cur-primary font-medium text-cur-ink shadow-sm"
+                                        rows={5}
+                                        className={AREA_CLS}
                                     />
                                 </div>
                             </div>
@@ -1088,7 +1137,7 @@ export default function TBMMinutesPage() {
                                                 <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-all", p.gender === 'F' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>여</button>
                                             </div>
                                             <div className="flex-1" onClick={() => openSignModal({ type: 'participant', id: p.id })}>
-                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-[#86efac] rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">내 폰으로 직접 받기</Button>}
+                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-cur-success/30 rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">내 폰으로 직접 받기</Button>}
                                             </div>
                                         </div>
                                     </div>
@@ -1100,7 +1149,7 @@ export default function TBMMinutesPage() {
                     {step === 5 && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                                <CheckCircle2 className="w-10 h-10 text-[#16a34a]" />
+                                <CheckCircle2 className="w-10 h-10 text-cur-success" />
                             </div>
                             <h2 className="text-[24px] font-bold text-cur-ink mb-2 tracking-tight">저장 완료</h2>
                             <p className="text-[14px] text-cur-muted-soft text-center mb-10 font-medium">안전가이드라인 TBM 회의록 작성이 완료되었습니다.</p>
@@ -1131,7 +1180,7 @@ export default function TBMMinutesPage() {
                                 {step === 2 ? "AI 요약" : "다음 단계"}
                             </Button>
                         ) : (
-                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
+                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] shadow-sm transition-transform active:scale-[0.98]">
                                 {isSaving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
                             </Button>
                         )}
@@ -1193,7 +1242,7 @@ export default function TBMMinutesPage() {
                     </div>
                     <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
                         <Button variant="outline" onClick={() => confirmationSigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
-                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-[#16a34a] text-cur-on-primary rounded-[10px] hover:bg-[#15803d]">동의 및 저장</Button>
+                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-cur-primary text-cur-on-primary rounded-[10px] hover:bg-cur-primary-active shadow-sm">동의 및 저장</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

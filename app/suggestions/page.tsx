@@ -1,6 +1,6 @@
-// app/suggestions/page.tsx — 근로자 익명 제안함 (소유자 열람)
-// QR 서명 페이지에서 근로자가 익명으로 보낸 의견·제안을 모아 본다.
-// 익명 보장: 작성자 정보가 저장되지 않으므로 표시할 이름도 없다.
+// app/suggestions/page.tsx — 근로자 제안함 (소유자 열람)
+// QR 서명 페이지에서 근로자가 보낸 의견·제안을 모아 본다.
+// 익명이 기본이며, 참석자가 실명을 선택한 경우에만 author_name이 저장된다(없으면 "익명" 표시).
 "use client"
 
 import { useEffect, useState } from "react"
@@ -10,7 +10,7 @@ import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, MessageSquareText, Trash2 } from "lucide-react"
 
-type Suggestion = { id: string; content: string; is_read: boolean; created_at: string }
+type Suggestion = { id: string; content: string; author_name: string | null; is_read: boolean; created_at: string }
 
 export default function SuggestionsPage() {
     useRequireSubscription()
@@ -24,7 +24,7 @@ export default function SuggestionsPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) return
             const rows = await fetchAllRows<Suggestion>((f, t) =>
-                supabase.from("worker_suggestions").select("id, content, is_read, created_at").order("id").range(f, t)
+                supabase.from("worker_suggestions").select("id, content, author_name, is_read, created_at").order("id").range(f, t)
             )
             rows.sort((a, b) => b.created_at.localeCompare(a.created_at))
             setItems(rows)
@@ -59,7 +59,7 @@ export default function SuggestionsPage() {
 
                 <div className="p-5 space-y-4 flex-1 bg-cur-canvas-soft">
                     <p className="text-[13px] leading-5 text-cur-muted bg-cur-card border border-cur-hairline rounded-[12px] p-4">
-                        참석자가 QR 서명 페이지에서 <b>익명으로</b> 보낸 의견·제안입니다. 작성자 정보는 저장되지 않습니다. (산업안전보건법 근로자 의견청취 기록으로 활용하세요)
+                        참석자가 QR 서명 페이지에서 보낸 의견·제안입니다. <b>익명이 기본</b>이며, 참석자가 원할 때만 이름이 함께 저장됩니다. (산업안전보건법 근로자 의견청취 기록으로 활용하세요)
                     </p>
 
                     {loading ? (
@@ -76,6 +76,11 @@ export default function SuggestionsPage() {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className="text-[12px] text-cur-muted font-mono">{fmt(item.created_at)}</span>
+                                        {item.author_name ? (
+                                            <span className="text-[12px] font-semibold text-cur-ink bg-cur-elevated px-2 py-0.5 rounded-[6px]">{item.author_name}</span>
+                                        ) : (
+                                            <span className="text-[12px] font-semibold text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px]">익명</span>
+                                        )}
                                         {newIds.has(item.id) && (
                                             <span className="text-[10px] font-bold text-cur-on-primary bg-cur-primary px-1.5 py-0.5 rounded-[4px]">NEW</span>
                                         )}

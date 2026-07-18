@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
+import { EXPORT_FORMATS } from "@/lib/exportFormats"
 
 // 가입 위저드(app/signup)와 동일한 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 const INDUSTRIES = ["건설업", "제조업", "물류·운수업", "조선·플랜트", "전기·정보통신공사", "시설관리·서비스업", "기타"]
@@ -23,6 +24,8 @@ export default function ProfilePage() {
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
+    // ""=미설정. 미설정 상태로 저장해도 값을 쓰지 않아야 홈의 최초 설정 모달이 유지된다(임의 pdf 확정 방지).
+    const [exportFormat, setExportFormat] = useState<string>("")
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
 
@@ -39,6 +42,7 @@ export default function ProfilePage() {
             setFullName(meta.full_name ?? "")
             setCompanyName(meta.company_name ?? "")
             setWorkerType(meta.worker_type ?? "현장 근로자 (비사무직)")
+            setExportFormat(meta.preferred_export_format ?? "")
             setIndustry(meta.industry ?? "")
             // 저장 키는 snake_case(work_category) — 가입 API와 동일
             setWorkCategory(meta.work_category ?? "")
@@ -66,6 +70,7 @@ export default function ProfilePage() {
                     full_name: fullName.trim(),
                     company_name: companyName.trim(),
                     worker_type: workerType,
+                    ...(exportFormat ? { preferred_export_format: exportFormat } : {}),
                     industry: industry || null,
                     work_category: (isConstruction ? workCategory : "") || null,
                 },
@@ -134,6 +139,22 @@ export default function ProfilePage() {
                                 <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식</Label>
+                        <Select value={exportFormat} onValueChange={setExportFormat}>
+                            <SelectTrigger className="w-full h-11 text-[14px]">
+                                <SelectValue placeholder="아직 선택하지 않았어요 (첫 화면에서 선택)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {EXPORT_FORMATS.map((f) => (
+                                    <SelectItem key={f.value} value={f.value}>
+                                        {f.label} ({f.sub})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-[12px] text-cur-muted">교육일지 등 문서를 내려받을 때 기본으로 쓸 형식입니다. PDF는 편집 불가·출력 전용입니다.</p>
                     </div>
                 </div>
 

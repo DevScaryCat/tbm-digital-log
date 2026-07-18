@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 
 const INDUSTRIES = ["건설업", "제조업", "물류·운수업", "조선·플랜트", "전기·정보통신공사", "시설관리·서비스업", "기타"]
@@ -32,6 +33,8 @@ export default function SignupPage() {
     const [siteName, setSiteName] = useState("")
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
+    // 근로자 구분 — 교육시간 산정용(기본값 프리셋, 별도 검증 불필요)
+    const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
     // 휴대폰 인증 상태
     const [phone, setPhone] = useState("")
     const [code, setCode] = useState("")
@@ -47,6 +50,8 @@ export default function SignupPage() {
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [trialStarted, setTrialStarted] = useState(false)
+    // 가입 직후 자동 로그인 성공 여부 — 실패 시 기존처럼 로그인 페이지로 유도
+    const [autoLoggedIn, setAutoLoggedIn] = useState(false)
 
     useEffect(() => {
         fetch("/api/auth/phone/status")
@@ -166,14 +171,26 @@ export default function SignupPage() {
                     id, password, siteName,
                     industry,
                     workCategory: industry === "건설업" ? workCategory : "",
+                    workerType,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "회원가입에 실패했습니다.")
             setTrialStarted(!!data.trialStarted)
-            setSuccess(true)
-            setTimeout(() => { router.push("/login") }, 4000)
+            // 가입 직후 자동 로그인 — 실패해도 가입 자체는 완료이므로 기존 흐름(로그인 페이지)으로 폴백
+            const { error: loginError } = await supabase.auth.signInWithPassword({
+                email: `${id}@tbm.com`,
+                password,
+            })
+            if (!loginError) {
+                setAutoLoggedIn(true)
+                setSuccess(true)
+                setTimeout(() => { router.push("/") }, 1800)
+            } else {
+                setSuccess(true)
+                setTimeout(() => { router.push("/login") }, 4000)
+            }
         } catch (err: unknown) {
             console.error(err)
             setError(err instanceof Error ? err.message : "오류가 발생했습니다. 다시 시도해주세요.")
@@ -192,13 +209,17 @@ export default function SignupPage() {
                         {trialStarted ? (
                             <p className="text-[15px] text-cur-muted font-medium">
                                 <b className="text-cur-primary">Pro 1개월 무료체험</b>이 시작되었습니다. 🎉<br />
-                                모든 기능을 자유롭게 써보세요.<br />잠시 후 로그인 페이지로 이동합니다.
+                                모든 기능을 자유롭게 써보세요.<br />
+                                {autoLoggedIn ? "잠시 후 메인 화면으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
                         ) : (
-                            <p className="text-[15px] text-cur-muted font-medium">성공적으로 계정이 생성되었습니다.<br/>잠시 후 로그인 페이지로 이동합니다.</p>
+                            <p className="text-[15px] text-cur-muted font-medium">
+                                성공적으로 계정이 생성되었습니다.<br />
+                                {autoLoggedIn ? "잠시 후 메인 화면으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
+                            </p>
                         )}
-                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push("/login")}>
-                            로그인 바로가기
+                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push(autoLoggedIn ? "/" : "/login")}>
+                            {autoLoggedIn ? "바로 시작하기" : "로그인 바로가기"}
                         </Button>
                     </CardContent>
                 </Card>
@@ -299,6 +320,18 @@ export default function SignupPage() {
                                         </Select>
                                     </div>
                                 )}
+                                <div className="space-y-2.5">
+                                    <Label className="text-[15px] font-semibold text-cur-ink">근로자 구분 (교육시간 산정용)</Label>
+                                    <Select value={workerType} onValueChange={setWorkerType}>
+                                        <SelectTrigger className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] text-cur-ink">
+                                            <SelectValue placeholder="근로자 구분을 선택해주세요" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                                            <SelectItem value="현장 근로자 (비사무직)" className="text-[15px] py-2.5">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
+                                            <SelectItem value="사무직 / 판매직" className="text-[15px] py-2.5">사무직 / 판매직 (반기 6시간)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </>
                         )}
 
@@ -345,6 +378,7 @@ export default function SignupPage() {
                                     ["현장명", siteName],
                                     ["업종", industry],
                                     ...(industry === "건설업" ? [["공종", workCategory]] : []),
+                                    ["근로자 구분", workerType],
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">

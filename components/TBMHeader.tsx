@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, CreditCard, Mail, MessageSquareText } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, CreditCard, Mail } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth } from "date-fns"
 import { fetchSubscription, planBadge, usageWindow } from "@/lib/useSubscription"
@@ -77,7 +77,6 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [usageStartISO, setUsageStartISO] = useState<string | null>(null)
     const [resetLabel, setResetLabel] = useState("매월 1일 초기화")
-    const [unreadSuggestions, setUnreadSuggestions] = useState(0)
 
     useEffect(() => {
         const getUser = async () => {
@@ -96,20 +95,18 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
         getUser()
     }, [])
 
-    // 사용량 3종·제안함 미열람 수는 닫힌 드롭다운 안에서만 보이므로, 매 페이지 마운트마다
+    // 사용량 3종은 닫힌 드롭다운 안에서만 보이므로, 매 페이지 마운트마다
     // 미리 조회하지 않고 메뉴를 처음 열 때 1회 조회한다(페이지당 불필요한 count 쿼리 제거).
     const loadUsage = async () => {
         if (usage) return
         // 결제/체험 기준 창 시작(없으면 달력 월). DB 트리거와 동일 규칙(usageWindow).
         const startISO = usageStartISO ?? startOfMonth(new Date()).toISOString()
-        const [logs, mins, ras, sugg] = await Promise.all([
+        const [logs, mins, ras] = await Promise.all([
             supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
             supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),
             supabase.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).gte("created_at", startISO),
-            supabase.from("worker_suggestions").select("id", { count: "exact", head: true }).eq("is_read", false),
         ])
         setUsage({ log: logs.count ?? 0, minutes: mins.count ?? 0, ra: ras.count ?? 0 })
-        setUnreadSuggestions(sugg.count ?? 0)
     }
 
     const handleLogout = async () => {
@@ -166,12 +163,6 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push('/suggestions')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <MessageSquareText className="mr-2 h-4 w-4 text-cur-muted" /> 근로자 제안함
-                    {unreadSuggestions > 0 && (
-                        <span className="ml-auto bg-cur-primary text-cur-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadSuggestions}</span>
-                    )}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={() => router.push('/report-settings')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">

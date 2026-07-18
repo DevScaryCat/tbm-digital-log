@@ -187,7 +187,7 @@ export default function TBMPage() {
 
     const getCurrentTime = () => {
         const now = new Date()
-        return now.toTimeString().slice(0, 5)
+        return now.toTimeString().slice(0, 8) // HH:MM:SS — 초까지 저장해야 1분 미만 세션이 잘리지 않음
     }
 
     const [formData, setFormData] = useState<TBMData>({
@@ -447,7 +447,7 @@ export default function TBMPage() {
                     user_id: session.user.id,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
-                    end_time: formData.endTime || new Date().toTimeString().slice(0, 5),
+                    end_time: formData.endTime || new Date().toTimeString().slice(0, 8),
                     location: formData.location,
                     company_name: formData.companyName,
                     education_type: formData.educationType,
@@ -812,7 +812,7 @@ export default function TBMPage() {
                                         <span className="text-[11px] text-cur-muted">녹음 시작 시 자동 갱신 (조작 불가)</span>
                                     </div>
                                     <Input
-                                        value={formData.startTime}
+                                        value={formData.startTime?.slice(0, 5)}
                                         disabled
                                         className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
                                     />
@@ -824,7 +824,7 @@ export default function TBMPage() {
                                         <span className="text-[11px] text-cur-muted">녹음 종료 시 자동 갱신 (조작 불가)</span>
                                     </div>
                                     <Input
-                                        value={formData.endTime}
+                                        value={formData.endTime?.slice(0, 5)}
                                         disabled
                                         placeholder="녹음 종료 후 자동 입력"
                                         className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"

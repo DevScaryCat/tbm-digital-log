@@ -23,6 +23,19 @@ export function normalizePhone(input: unknown): string | null {
   return /^010\d{8}$/.test(digits) ? digits : null
 }
 
+/**
+ * 개발자 테스트 번호 — 무료체험 1회 제한(trial_redemptions)을 우회한다.
+ * 발송 사전 체크와 가입 시 소진 기록 양쪽에서 건너뛰므로 같은 번호로 반복 가입 테스트 가능.
+ * TRIAL_TEST_PHONES 환경변수(쉼표 구분)로 교체할 수 있다.
+ */
+export function isTrialTestPhone(phone: string | null): boolean {
+  if (!phone) return false
+  return (process.env.TRIAL_TEST_PHONES ?? "01063522968")
+    .split(",")
+    .map((p) => p.replace(/\D/g, ""))
+    .includes(phone)
+}
+
 /** OTP 해시 — 평문 코드는 저장하지 않는다 */
 export function hashOtp(phone: string, code: string): string {
   const secret = process.env.SOLAPI_API_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ""

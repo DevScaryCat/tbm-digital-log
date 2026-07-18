@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
-import { phoneAuthEnabled, normalizePhone, hashOtp, generateOtpCode, sendOtpSms } from "@/lib/phoneAuth"
+import { phoneAuthEnabled, normalizePhone, hashOtp, generateOtpCode, sendOtpSms, isTrialTestPhone } from "@/lib/phoneAuth"
 
 export const runtime = "nodejs"
 
@@ -20,13 +20,16 @@ export async function POST(request: Request) {
     const admin = getAdminClient()
 
     // 이미 체험을 소진한 번호면 발송 전에 알려준다 (SMS 비용 절약 + 명확한 안내)
-    const { data: redeemed } = await admin
-      .from("trial_redemptions").select("id").eq("phone", phone).maybeSingle()
-    if (redeemed) {
-      return NextResponse.json(
-        { error: "이 번호로는 무료체험을 이미 사용했습니다. 로그인 후 결제수단을 등록해 이용해주세요." },
-        { status: 409 },
-      )
+    // 테스트 번호는 반복 가입 검증을 위해 이 체크를 건너뛴다.
+    if (!isTrialTestPhone(phone)) {
+      const { data: redeemed } = await admin
+        .from("trial_redemptions").select("id").eq("phone", phone).maybeSingle()
+      if (redeemed) {
+        return NextResponse.json(
+          { error: "이 번호로는 무료체험을 이미 사용했습니다. 로그인 후 결제수단을 등록해 이용해주세요." },
+          { status: 409 },
+        )
+      }
     }
 
     const dayAgoISO = new Date(Date.now() - 24 * 3600 * 1000).toISOString()

@@ -1,19 +1,26 @@
 // app/page.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, type KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Mic, LogOut, Loader2, FileText, Users, ChevronRight, CalendarDays } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, CalendarDays } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
+import { totalSeconds, secondsToHours, formatDuration } from "@/lib/educationHours"
+import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
+import { cn } from "@/lib/utils"
+
+// created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
+const toLocalDateStr = (iso: string) => {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
 
 export default function MainPage() {
   const router = useRouter()
@@ -24,7 +31,7 @@ export default function MainPage() {
   const [tbmCount, setTbmCount] = useState(0)
   const [tbmMinutesCount, setTbmMinutesCount] = useState(0)
   const [statsLoading, setStatsLoading] = useState(true)
-  const [totalEducationHours, setTotalEducationHours] = useState("0.0")
+  const [totalEducationSeconds, setTotalEducationSeconds] = useState(0)
   const [requiredHours, setRequiredHours] = useState(16)
   // 진행도 바 순차 애니메이션: 진한 바(0~100%) 먼저 → 초과분 이어서
   const [animBase, setAnimBase] = useState(0)
@@ -33,12 +40,18 @@ export default function MainPage() {
   // 월별 건수 필터용 원본(날짜만) + 선택 월("all" = 전체)
   const [logDates, setLogDates] = useState<string[]>([])
   const [minuteDates, setMinuteDates] = useState<string[]>([])
+  const [suggestionDates, setSuggestionDates] = useState<string[]>([])
+  const [unreadSuggestions, setUnreadSuggestions] = useState(0)
   const [selectedMonth, setSelectedMonth] = useState("all")
 
-  const [showOnboarding, setShowOnboarding] = useState(false)
-  const [companyInput, setCompanyInput] = useState("")
-  const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
-  const [isUpdating, setIsUpdating] = useState(false)
+  // 문서 출력 형식 최초 설정 모달 (user_metadata.preferred_export_format 없을 때 1회)
+  // 구 가입 플로우 유저는 worker_type도 없을 수 있어(온보딩 모달 제거로 유도 경로 상실) 같은 모달에서 함께 수집한다.
+  const [showFormatModal, setShowFormatModal] = useState(false)
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat | null>(null)
+  const [needsWorkerType, setNeedsWorkerType] = useState(false)
+  const [workerTypeInput, setWorkerTypeInput] = useState("현장 근로자 (비사무직)")
+  const [isSavingFormat, setIsSavingFormat] = useState(false)
+  const formatModalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -47,10 +60,11 @@ export default function MainPage() {
         const currentUser = session.user
         setUser(currentUser)
 
-        if (!currentUser.user_metadata?.company_name || !currentUser.user_metadata?.worker_type) {
-          setWorkerType(currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
-          if (currentUser.user_metadata?.company_name) setCompanyInput(currentUser.user_metadata.company_name)
-          setShowOnboarding(true)
+        const meta = currentUser.user_metadata
+        if (!meta?.preferred_export_format || !meta?.worker_type) {
+          if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
+          setNeedsWorkerType(!meta?.worker_type)
+          setShowFormatModal(true)
         }
 
         fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
@@ -59,6 +73,11 @@ export default function MainPage() {
     }
     checkSession()
   }, [])
+
+  // 모달이 뜨면 대화상자로 초점 이동 (배경 카드들이 tabIndex를 가져 오버레이 뒤로 초점이 새는 것 방지)
+  useEffect(() => {
+    if (showFormatModal) formatModalRef.current?.focus()
+  }, [showFormatModal])
 
   const fetchUserStats = async (userId: string, currentWorkerType: string) => {
     setStatsLoading(true)
@@ -72,33 +91,27 @@ export default function MainPage() {
       const halfEnd = `${currentYear}-${isFirstHalf ? '06-30' : '12-31'}`
 
       // fetchAllRows = PostgREST 1000행 침묵 절단 방지 (장기 사용자도 카운트·월 옵션 정확)
-      const [logDateRows, minuteDateRows, logTimeRows, minuteTimeRows] = await Promise.all([
+      const [logDateRows, minuteDateRows, logTimeRows, minuteTimeRows, suggestionRows] = await Promise.all([
         fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_logs').select('date').eq('user_id', userId).order('id').range(f, t)),
         fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_minutes').select('date').eq('user_id', userId).order('id').range(f, t)),
         fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_logs').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
         fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_minutes').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
+        // 제안함은 RLS로 소유자 범위 한정(suggestions 페이지와 동일) — 실패해도 다른 통계는 유지
+        fetchAllRows<{ created_at: string | null; is_read: boolean | null }>((f, t) => supabase.from('worker_suggestions').select('created_at, is_read').order('id').range(f, t)).catch(() => []),
       ])
 
       setTbmCount(logDateRows.length)
       setTbmMinutesCount(minuteDateRows.length)
       setLogDates(logDateRows.map(l => l.date).filter(Boolean) as string[])
       setMinuteDates(minuteDateRows.map(l => l.date).filter(Boolean) as string[])
+      // created_at은 UTC 타임스탬프 → 로컬 날짜로 변환해야 tbm_logs/minutes(date 컬럼)와 월 기준이 맞음
+      setSuggestionDates(suggestionRows.map(s => s.created_at ? toLocalDateStr(s.created_at) : null).filter(Boolean) as string[])
+      setUnreadSuggestions(suggestionRows.filter(s => s.is_read === false).length)
 
       setRequiredHours(currentWorkerType === '사무직 / 판매직' ? 6 : 12)
 
       const validLogs = [...(logTimeRows || []), ...(minuteTimeRows || [])]
-      let totalMins = 0
-      validLogs.forEach(log => {
-        if (log.start_time && log.end_time) {
-          const [sh, sm] = log.start_time.split(':').map(Number)
-          const [eh, em] = log.end_time.split(':').map(Number)
-          let diff = (eh * 60 + em) - (sh * 60 + sm)
-          if (diff < 0) diff += 1440 // 자정을 넘긴 경우(예: 23:50~00:10)
-          if (diff > 0) totalMins += diff
-        }
-      })
-
-      setTotalEducationHours((totalMins / 60).toFixed(1))
+      setTotalEducationSeconds(totalSeconds(validLogs))
     } catch (e) {
       console.error("통계 에러:", e)
     } finally {
@@ -111,25 +124,28 @@ export default function MainPage() {
     setUser(null)
     setTbmCount(0)
     setTbmMinutesCount(0)
+    setSuggestionDates([])
+    setUnreadSuggestions(0)
   }
 
-  const handleSaveCompany = async () => {
-    if (!companyInput.trim()) return alert("현장명(업체명)을 입력해주세요.")
-    setIsUpdating(true)
+  // 출력 형식(+구 유저의 근로자 구분) 저장 → user_metadata (내 정보 수정에서 언제든 변경 가능)
+  const handleSaveFormat = async () => {
+    if (!selectedFormat) return
+    setIsSavingFormat(true)
     const { data, error } = await supabase.auth.updateUser({
       data: {
-        company_name: companyInput.trim(),
-        worker_type: workerType
+        preferred_export_format: selectedFormat,
+        ...(needsWorkerType ? { worker_type: workerTypeInput } : {}),
       }
     })
-    if (error) { alert("저장 실패: " + error.message); setIsUpdating(false); return; }
+    if (error) { alert("저장 실패: " + error.message); setIsSavingFormat(false); return; }
     setUser(data.user)
-    setShowOnboarding(false)
-    setIsUpdating(false)
-    fetchUserStats(data.user.id, workerType)
+    if (needsWorkerType) setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
+    setShowFormatModal(false)
+    setIsSavingFormat(false)
   }
 
-  const rawPercent = (parseFloat(totalEducationHours) / requiredHours) * 100
+  const rawPercent = (secondsToHours(totalEducationSeconds) / requiredHours) * 100
   // 현재 반기 라벨 (반기별로 0에서 새로 누적 — 상반기 1~6월 / 하반기 7~12월)
   const halfLabel = (() => { const d = new Date(); return `${d.getFullYear()} ${d.getMonth() < 6 ? '상반기' : '하반기'}` })()
   const maxScale = rawPercent > 100 ? 150 : 100
@@ -150,12 +166,18 @@ export default function MainPage() {
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [statsLoading, baseFill, overFill])
 
-  // 월 선택 옵션(데이터가 있는 달, 최신순) + 선택 월 기준 건수
-  const monthOptions = [...new Set([...logDates, ...minuteDates].map(d => d.slice(0, 7)))].sort().reverse()
+  // 월 선택 옵션(데이터가 있는 달, 최신순 — 제안만 있는 달도 포함) + 선택 월 기준 건수
+  const monthOptions = [...new Set([...logDates, ...minuteDates, ...suggestionDates].map(d => d.slice(0, 7)))].sort().reverse()
   const countInMonth = (dates: string[]) => selectedMonth === "all" ? dates.length : dates.filter(d => d.startsWith(selectedMonth)).length
   const shownMinutes = countInMonth(minuteDates)
   const shownLogs = countInMonth(logDates)
+  const shownSuggestions = countInMonth(suggestionDates)
   const monthLabel = (m: string) => `${m.slice(0, 4)}년 ${parseInt(m.slice(5, 7), 10)}월`
+
+  // 활동 현황 카드 키보드 접근성: Enter/Space가 onClick과 동일하게 동작
+  const cardKeyDown = (go: () => void) => (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() }
+  }
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
@@ -260,6 +282,58 @@ export default function MainPage() {
 
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-[13px] font-semibold text-cur-ink">활동 현황</h3>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-8 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
+                  <SelectItem value="all">전체</SelectItem>
+                  {monthOptions.map(m => (
+                    <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* gap-px + bg-cur-hairline 트릭: 모바일 2×2, sm 4열 양방향 hairline 구분선 */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+              <div onClick={() => router.push('/analytics')} role="button" tabIndex={0} aria-label="TBM 회의록 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics'))} className="relative py-5 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
+                <div className="text-[28px] font-bold text-cur-ink font-mono">
+                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownMinutes}
+                </div>
+              </div>
+              <div onClick={() => router.push('/analytics/education')} role="button" tabIndex={0} aria-label="안전보건교육일지 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics/education'))} className="relative py-5 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전보건교육일지</div>
+                <div className="text-[28px] font-bold text-cur-ink font-mono">
+                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
+                </div>
+              </div>
+              <div onClick={() => router.push('/suggestions')} role="button" tabIndex={0} aria-label="근로자 제안함 보기" onKeyDown={cardKeyDown(() => router.push('/suggestions'))} className="relative py-5 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
+                {!statsLoading && unreadSuggestions > 0 && (
+                  <span className="absolute top-2 right-2 bg-cur-primary text-cur-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadSuggestions}</span>
+                )}
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">근로자 제안함</div>
+                <div className="text-[28px] font-bold text-cur-ink font-mono">
+                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownSuggestions}
+                </div>
+              </div>
+              <div onClick={() => router.push('/dashboard')} role="button" tabIndex={0} aria-label="안전문서 달력 보기" onKeyDown={cardKeyDown(() => router.push('/dashboard'))} className="relative py-5 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
+                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
+                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전문서 달력</div>
+                <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div
             onClick={() => router.push('/education-progress')}
             className="bg-cur-card rounded-[12px] p-5 border border-cur-hairline cursor-pointer hover:border-cur-primary/40 active:bg-cur-elevated/40 transition-all group"
@@ -273,7 +347,7 @@ export default function MainPage() {
               </h3>
               <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
                 <span className="text-[14px] font-bold text-cur-primary font-mono">
-                  {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${totalEducationHours} / ${requiredHours} (시간)`}
+                  {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatDuration(totalEducationSeconds)} / ${requiredHours}시간`}
                 </span>
                 <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors" />
               </span>
@@ -333,47 +407,6 @@ export default function MainPage() {
                 : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
             </p>
           </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-[13px] font-semibold text-cur-ink">활동 현황</h3>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="h-8 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
-                  <SelectItem value="all">전체</SelectItem>
-                  {monthOptions.map(m => (
-                    <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="rounded-[12px] flex text-center divide-x divide-cur-hairline border border-cur-hairline bg-cur-card overflow-hidden">
-              <div onClick={() => router.push('/analytics')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">TBM 회의록</div>
-                <div className="text-[28px] font-bold text-cur-ink font-mono">
-                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownMinutes}
-                </div>
-              </div>
-              <div onClick={() => router.push('/analytics/education')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전보건교육일지</div>
-                <div className="text-[28px] font-bold text-cur-ink font-mono">
-                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
-                </div>
-              </div>
-              <div onClick={() => router.push('/dashboard')} className="relative flex-1 py-5 px-2 cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.88px] mb-1">안전문서 달력</div>
-                <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
-                  <CalendarDays className="w-5 h-5" />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="flex-1 p-6 space-y-4">
@@ -417,42 +450,60 @@ export default function MainPage() {
         </div>
       </div>
 
-      {showOnboarding && (
+      {/* 출력 형식 최초 설정 모달 — preferred_export_format이 없을 때 1회 표시 */}
+      {showFormatModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline">
-            <h3 className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">환영합니다!</h3>
-            <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">원활한 일지 작성을 위해<br />기본 정보를 설정해주세요.</p>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[13px] font-medium text-cur-body">소속 현장명 (또는 업체명)</label>
-                <Input
-                  value={companyInput}
-                  onChange={(e) => setCompanyInput(e.target.value)}
-                  placeholder="소속 현장명 (또는 업체명)"
-                  className="h-11 text-[14px] border-cur-hairline rounded-[6px] focus:border-cur-primary focus:ring-1 focus:ring-cur-primary bg-cur-elevated text-cur-ink placeholder:text-cur-muted"
-                />
-              </div>
-              <div className="space-y-2">
+          <div
+            ref={formatModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="format-modal-title"
+            tabIndex={-1}
+            className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
+          >
+            <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">문서 출력 형식</h3>
+            <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">회의록·일지 등 결과물을 어떤 형식으로 받을지 선택하세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
+            <div className="grid grid-cols-4 gap-2">
+              {EXPORT_FORMATS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setSelectedFormat(f.value)}
+                  aria-pressed={selectedFormat === f.value}
+                  className={cn(
+                    "h-16 rounded-[8px] border flex flex-col items-center justify-center gap-0.5 transition-colors",
+                    selectedFormat === f.value
+                      ? "border-cur-primary ring-1 ring-cur-primary bg-cur-primary/5 text-cur-primary"
+                      : "border-cur-hairline bg-cur-card text-cur-ink"
+                  )}
+                >
+                  <span className="text-[15px] font-semibold">{f.label}</span>
+                  <span className="text-[11px] text-cur-muted">{f.sub}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[12px] text-cur-muted-soft mt-3 leading-relaxed">PDF는 편집이 불가능한 출력 전용 형식입니다.</p>
+            {needsWorkerType && (
+              <div className="mt-5 space-y-2">
                 <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>
-                <Select value={workerType} onValueChange={setWorkerType}>
-                  <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[6px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
+                <Select value={workerTypeInput} onValueChange={setWorkerTypeInput}>
+                  <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
                     <SelectValue placeholder="직군 선택" />
                   </SelectTrigger>
-                  <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
-
+                  <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                     <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
                     <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                onClick={handleSaveCompany}
-                disabled={isUpdating}
-                className="w-full h-11 mt-4 text-[14px] font-semibold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[6px]"
-              >
-                {isUpdating ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기
-              </Button>
-            </div>
+            )}
+            <Button
+              onClick={handleSaveFormat}
+              disabled={!selectedFormat || isSavingFormat}
+              className="w-full h-12 mt-5 text-[15px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px]"
+            >
+              {isSavingFormat ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기
+            </Button>
           </div>
         </div>
       )}

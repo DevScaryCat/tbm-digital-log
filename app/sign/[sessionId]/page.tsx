@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { CheckCircle2, Loader2, MessageSquarePlus } from "lucide-react"
+import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } from "lucide-react"
 
-// 근로자 익명 제안 박스 — 서명 화면·완료 화면 양쪽에서 사용.
-// submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로
-// 익명(anon) 그대로 호출한다. 이름 등 식별 정보는 일절 보내지 않는다.
-function SuggestionBox({ sessionId }: { sessionId: string }) {
+// 근로자 의견·제안 폼 — 서명 완료 화면의 suggest 단계에서 사용.
+// submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로 익명(anon) 그대로 호출한다.
+// 익명이 기본이며, 참석자가 실명을 선택한 경우에만 서명자 이름(p_author_name)을 함께 보낸다.
+function SuggestionForm({ sessionId, signerName }: { sessionId: string; signerName: string }) {
     const [content, setContent] = useState("")
+    const [anonymous, setAnonymous] = useState(true)
     const [sending, setSending] = useState(false)
     const [sentCount, setSentCount] = useState(0)
 
@@ -27,13 +28,19 @@ function SuggestionBox({ sessionId }: { sessionId: string }) {
         }
         setSending(true)
         try {
-            const { error } = await supabase.rpc("submit_worker_suggestion", { p_session: sessionId, p_content: text })
+            const { error } = await supabase.rpc("submit_worker_suggestion", {
+                p_session: sessionId,
+                p_content: text,
+                p_author_name: anonymous ? null : signerName,
+            })
             if (error) {
                 const msg = error.message.includes("SESSION_CLOSED")
                     ? "세션이 종료되어 제안을 보낼 수 없습니다."
                     : error.message.includes("TOO_MANY")
                         ? "이 세션의 제안 접수가 마감되었습니다."
-                        : "전송에 실패했습니다. 잠시 후 다시 시도해주세요."
+                        : error.message.includes("NAME_TOO_LONG")
+                            ? "이름이 너무 길어 실명으로 접수할 수 없습니다. 익명으로 보내주세요."
+                            : "전송에 실패했습니다. 잠시 후 다시 시도해주세요."
                 alert(msg)
                 return
             }
@@ -45,32 +52,55 @@ function SuggestionBox({ sessionId }: { sessionId: string }) {
     }
 
     return (
-        <div className="rounded-2xl border border-cur-hairline bg-cur-elevated/50 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-                <MessageSquarePlus className="w-5 h-5 text-cur-primary shrink-0" />
-                <div>
-                    <p className="text-[15px] font-bold text-cur-ink">근로자 의견·제안 (익명)</p>
-                    <p className="text-[12px] text-cur-muted">현장 위험요인, 개선 아이디어 등을 자유롭게 남겨주세요. <b>누가 보냈는지 기록되지 않습니다.</b></p>
-                </div>
+        <div className="rounded-[12px] border border-cur-hairline bg-cur-card p-4 space-y-3">
+            <div role="group" aria-label="작성자 표시 방식" className="flex bg-cur-elevated p-0.5 rounded-[8px] gap-0.5">
+                <button
+                    aria-pressed={anonymous}
+                    onClick={() => setAnonymous(true)}
+                    className={cn(
+                        "flex-1 h-12 text-[15px] font-bold rounded-[6px] transition-all",
+                        anonymous ? "bg-cur-card shadow-sm text-cur-ink" : "text-cur-muted"
+                    )}
+                >
+                    익명
+                </button>
+                <button
+                    aria-pressed={!anonymous}
+                    onClick={() => setAnonymous(false)}
+                    className={cn(
+                        "flex-1 h-12 text-[15px] font-bold rounded-[6px] transition-all",
+                        !anonymous ? "bg-cur-card shadow-sm text-cur-ink" : "text-cur-muted"
+                    )}
+                >
+                    실명
+                </button>
+            </div>
+            {/* aria-live: 실명 전환 시 스크린리더에 접수 이름 안내 */}
+            <div aria-live="polite">
+                {!anonymous && (
+                    <p className="text-[12px] text-cur-muted">&lsquo;{signerName}&rsquo; 이름으로 접수됩니다</p>
+                )}
             </div>
             <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 maxLength={500}
-                rows={3}
+                rows={5}
                 placeholder="예: 2층 개구부 덮개가 파손되어 있습니다 / 휴게 공간에 식수가 부족합니다"
-                className="w-full rounded-xl border border-cur-hairline bg-white p-3 text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary resize-none"
+                className="w-full rounded-[8px] border border-cur-hairline bg-cur-canvas p-3 text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary resize-none"
             />
-            <div className="flex items-center justify-between gap-3">
-                {sentCount > 0 ? (
-                    <span className="text-[13px] font-medium text-cur-success flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4" /> 익명으로 접수되었습니다{sentCount > 1 ? ` (${sentCount}건)` : ""}
-                    </span>
-                ) : <span />}
-                <Button onClick={submit} disabled={sending || content.trim().length === 0} variant="outline" className="h-10 px-4 border-cur-hairline-strong text-cur-ink font-semibold rounded-[8px]">
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "익명으로 보내기"}
-                </Button>
-            </div>
+            {sentCount > 0 && (
+                <p className="text-[13px] font-medium text-cur-success flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> 접수되었습니다{sentCount > 1 ? ` (${sentCount}건)` : ""}. 더 남기실 수도 있어요.
+                </p>
+            )}
+            <Button
+                onClick={submit}
+                disabled={sending || content.trim().length === 0}
+                className="w-full h-12 text-[15px] font-bold bg-cur-primary hover:bg-cur-primary/90 text-cur-on-primary rounded-[8px]"
+            >
+                {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : anonymous ? "익명으로 보내기" : "이름으로 보내기"}
+            </Button>
         </div>
     )
 }
@@ -84,6 +114,8 @@ export default function SignPage() {
     const [gender, setGender] = useState<"M" | "F">("M")
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
+    // 완료 화면 2단계: done(제출 완료 안내) → suggest(의견·제안 보내기)
+    const [successView, setSuccessView] = useState<"done" | "suggest">("done")
     const [isExpired, setIsExpired] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
 
@@ -173,19 +205,51 @@ export default function SignPage() {
     }
 
     if (isSuccess) {
+        if (successView === "suggest") {
+            return (
+                <div className="min-h-[100dvh] bg-cur-canvas p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col max-w-md mx-auto">
+                    <button
+                        onClick={() => setSuccessView("done")}
+                        className="self-start h-12 flex items-center gap-1 text-[15px] font-semibold text-cur-muted -ml-2 px-2 rounded-[8px]"
+                    >
+                        <ChevronLeft className="w-5 h-5" /> 뒤로
+                    </button>
+                    <h1 className="text-2xl font-bold text-cur-ink mt-1 mb-5">의견·제안 보내기</h1>
+                    <SuggestionForm sessionId={sessionId} signerName={name.trim()} />
+                    <div className="mt-auto pt-6">
+                        <Button
+                            onClick={() => {
+                                window.close()
+                            }}
+                            className="w-full h-14 text-lg bg-cur-ink hover:bg-cur-ink/90"
+                        >
+                            닫기
+                        </Button>
+                    </div>
+                </div>
+            )
+        }
         return (
             <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-cur-canvas">
-                <CheckCircle2 className="w-24 h-24 text-green-500 mb-6 animate-in zoom-in" />
+                <CheckCircle2 className="w-24 h-24 text-cur-success mb-6 animate-in zoom-in" />
                 <h1 className="text-2xl font-bold text-cur-ink mb-2">서명 제출 완료</h1>
                 <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.</p>
-                <div className="w-full max-w-sm mb-6">
-                    <SuggestionBox sessionId={sessionId} />
-                </div>
+                <button
+                    onClick={() => setSuccessView("suggest")}
+                    className="w-full max-w-sm mb-6 flex items-center gap-3 rounded-[12px] border border-cur-hairline bg-cur-card p-4 text-left transition-transform active:scale-[0.98]"
+                >
+                    <MessageSquarePlus className="w-6 h-6 text-cur-primary shrink-0" />
+                    <span className="flex-1 min-w-0">
+                        <span className="block text-[15px] font-bold text-cur-ink">현장 의견·제안 남기기</span>
+                        <span className="block text-[12px] text-cur-muted">익명 또는 이름으로 · 선택사항</span>
+                    </span>
+                    <ChevronRight className="w-5 h-5 text-cur-muted-soft shrink-0" />
+                </button>
                 <Button
                     onClick={() => {
                         window.close()
                     }}
-                    className="w-full max-w-sm h-14 text-lg bg-cur-ink"
+                    className="w-full max-w-sm h-14 text-lg bg-cur-ink hover:bg-cur-ink/90"
                 >
                     닫기
                 </Button>
@@ -194,7 +258,7 @@ export default function SignPage() {
     }
 
     return (
-        <div className="min-h-[100dvh] bg-cur-canvas p-4 pb-[env(safe-area-inset-bottom)] flex flex-col max-w-md mx-auto relative  bg-white overflow-hidden">
+        <div className="min-h-[100dvh] bg-cur-canvas p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col max-w-md mx-auto relative  bg-white overflow-hidden">
             <div className="text-center py-6 border-b">
                 <h1 className="text-2xl font-black tracking-tight text-cur-ink">TBM 참석자 서명</h1>
                 <p className="text-cur-muted mt-2 text-sm">정보를 입력하고 서명해 주세요</p>
@@ -257,7 +321,7 @@ export default function SignPage() {
                     </div>
                 </div>
 
-                <div className="pt-6">
+                <div className="pt-6 pb-6">
                     <Button
                         onClick={handleSubmit}
                         disabled={isSubmitting}
@@ -269,10 +333,6 @@ export default function SignPage() {
                             "서명 완료 및 제출"
                         )}
                     </Button>
-                </div>
-
-                <div className="pt-2 pb-6">
-                    <SuggestionBox sessionId={sessionId} />
                 </div>
             </div>
         </div>

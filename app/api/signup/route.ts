@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { phoneAuthEnabled, normalizePhone } from "@/lib/phoneAuth";
+import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
 import { PLANS } from "@/lib/portone";
 
 export async function POST(request: Request) {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    const { id, password, siteName, industry, workCategory, phone, verificationId } = await request.json();
+    const { id, password, siteName, industry, workCategory, workerType, phone, verificationId } = await request.json();
 
     if (!id || !password || !siteName) {
       return NextResponse.json({ error: "모든 필드를 입력해주세요." }, { status: 400 });
@@ -23,6 +23,10 @@ export async function POST(request: Request) {
     // 업종/공종: 데이터 분석용 프로필(선택 목록 외 임의 값 방지, 최대 30자)
     const industryStr = typeof industry === "string" ? industry.trim().slice(0, 30) : "";
     const workCategoryStr = typeof workCategory === "string" ? workCategory.trim().slice(0, 30) : "";
+
+    // 근로자 구분: 교육시간 산정용 — 화이트리스트 외 값·누락이면 기본값(현장 근로자)
+    const WORKER_TYPES = ["현장 근로자 (비사무직)", "사무직 / 판매직"];
+    const workerTypeStr = WORKER_TYPES.includes(workerType) ? workerType : "현장 근로자 (비사무직)";
 
     if (!/^[a-z0-9_]{3,20}$/.test(id)) {
       return NextResponse.json({ error: "아이디는 영문 소문자·숫자·밑줄 3~20자로 입력해주세요." }, { status: 400 });
@@ -66,6 +70,7 @@ export async function POST(request: Request) {
         // 데이터 가공/통계용 프로필 (2026-07 가입 위저드부터 수집 — 기존 유저는 없음)
         industry: industryStr || null,
         work_category: workCategoryStr || null,
+        worker_type: workerTypeStr,
         phone: verifiedOtpId ? normalizedPhone : null,
         phone_verified_at: verifiedOtpId ? new Date().toISOString() : null,
       },
@@ -83,17 +88,20 @@ export async function POST(request: Request) {
     // 번호 소진(unique)이 최종 관문: 동시 가입 레이스에서도 한 번호는 한 번만 성공한다.
     let trialStarted = false;
     if (verifiedOtpId && normalizedPhone && user?.user) {
-      const { error: redeemErr } = await supabaseAdmin
-        .from("trial_redemptions")
-        .insert({ phone: normalizedPhone, user_id: user.user.id });
+      // 테스트 번호는 소진 기록을 남기지 않아 같은 번호로 반복 가입·체험 테스트가 가능하다.
+      if (!isTrialTestPhone(normalizedPhone)) {
+        const { error: redeemErr } = await supabaseAdmin
+          .from("trial_redemptions")
+          .insert({ phone: normalizedPhone, user_id: user.user.id });
 
-      if (redeemErr) {
-        // 이미 소진된 번호(레이스 등) → 방금 만든 계정 롤백 후 명확히 안내
-        await supabaseAdmin.auth.admin.deleteUser(user.user.id);
-        return NextResponse.json(
-          { error: "이 번호로는 무료체험을 이미 사용했습니다. 로그인 후 결제수단을 등록해 이용해주세요." },
-          { status: 409 },
-        );
+        if (redeemErr) {
+          // 이미 소진된 번호(레이스 등) → 방금 만든 계정 롤백 후 명확히 안내
+          await supabaseAdmin.auth.admin.deleteUser(user.user.id);
+          return NextResponse.json(
+            { error: "이 번호로는 무료체험을 이미 사용했습니다. 로그인 후 결제수단을 등록해 이용해주세요." },
+            { status: 409 },
+          );
+        }
       }
 
       await supabaseAdmin.from("phone_otps").update({ consumed: true }).eq("id", verifiedOtpId);

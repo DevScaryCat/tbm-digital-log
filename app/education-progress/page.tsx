@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
+import { totalSeconds, secondsToHours, formatDuration } from "@/lib/educationHours"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, CheckCircle2, ClipboardList } from "lucide-react"
@@ -21,22 +22,8 @@ const CATEGORIES: { key: string; label: string; color: string }[] = [
 ]
 const NAMED_LOG_TYPES = ["TBM", "정기 안전교육", "특별안전보건교육", "신규 채용시 교육", "작업내용 변경시 교육"]
 
-// 한 행(start~end)의 교육 시간(시간 단위). 홈(app/page.tsx)과 동일 계산.
-function hoursOf(rows: Row[]): number {
-  let mins = 0
-  for (const log of rows) {
-    if (log.start_time && log.end_time) {
-      const [sh, sm] = log.start_time.split(":").map(Number)
-      const [eh, em] = log.end_time.split(":").map(Number)
-      let diff = eh * 60 + em - (sh * 60 + sm)
-      if (diff < 0) diff += 1440 // 자정 넘김 보정
-      if (diff > 0) mins += diff
-    }
-  }
-  return mins / 60
-}
-
-interface CatStat { label: string; color: string; hours: number; count: number }
+// 소요시간 계산·표기는 lib/educationHours(totalSeconds/formatDuration)로 일원화 — 홈(app/page.tsx)과 동일 규칙.
+interface CatStat { label: string; color: string; seconds: number; count: number }
 
 export default function EducationProgressPage() {
   const router = useRouter()
@@ -44,7 +31,7 @@ export default function EducationProgressPage() {
   const [loading, setLoading] = useState(true)
   const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
   const [cats, setCats] = useState<CatStat[]>([])
-  const [totalHours, setTotalHours] = useState(0)
+  const [totalSec, setTotalSec] = useState(0)
 
   const requiredHours = workerType === "사무직 / 판매직" ? 6 : 12
   const halfLabel = (() => { const d = new Date(); return `${d.getFullYear()} ${d.getMonth() < 6 ? "상반기" : "하반기"}` })()
@@ -79,18 +66,18 @@ export default function EducationProgressPage() {
         const built: CatStat[] = CATEGORIES.map((c) => {
           // TBM 유형은 회의록(tbm_minutes) + 교육일지 중 'TBM' 분류를 합산
           const rows = c.key === "TBM" ? [...minsHalf, ...logsByType("TBM")] : logsByType(c.key)
-          return { label: c.label, color: c.color, hours: hoursOf(rows), count: rows.length }
+          return { label: c.label, color: c.color, seconds: totalSeconds(rows), count: rows.length }
         })
 
         // 명명되지 않은 유형(관리감독자 교육·기타·미분류)은 데이터가 있을 때만 '기타'로 합산 — 총합 정합성 유지
         const otherRows = logsHalf.filter((l) => !NAMED_LOG_TYPES.includes(l.education_type || ""))
         if (otherRows.length > 0) {
-          built.push({ label: "기타 교육", color: "bg-cur-muted", hours: hoursOf(otherRows), count: otherRows.length })
+          built.push({ label: "기타 교육", color: "bg-cur-muted", seconds: totalSeconds(otherRows), count: otherRows.length })
         }
 
         if (cancelled) return
         setCats(built)
-        setTotalHours(hoursOf(logsHalf) + hoursOf(minsHalf))
+        setTotalSec(totalSeconds(logsHalf) + totalSeconds(minsHalf))
         setLoading(false)
       } catch (e) {
         console.error("교육 진행도 로드 실패:", e)
@@ -100,10 +87,8 @@ export default function EducationProgressPage() {
     return () => { cancelled = true }
   }, [router])
 
-  // 홈(app/page.tsx)은 시간을 1자리로 반올림한 값으로 %·이수판정을 계산한다. 같은 '12.0시간' 표기인데
-  // %가 갈리지 않도록(홈 100% vs 여기 99%) 동일하게 표기용 반올림값에서 %를 도출한다.
-  const displayHours = parseFloat(totalHours.toFixed(1))
-  const rawPercent = requiredHours > 0 ? (displayHours / requiredHours) * 100 : 0
+  // %·이수판정은 홈(app/page.tsx)과 같은 lib/educationHours를 써서 동일 데이터면 동일 % — 두 화면이 갈리지 않음.
+  const rawPercent = requiredHours > 0 ? (secondsToHours(totalSec) / requiredHours) * 100 : 0
   const isDone = rawPercent >= 100
   const totalFill = Math.min(100, rawPercent)
 
@@ -127,7 +112,7 @@ export default function EducationProgressPage() {
                 <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold shrink-0">{workerType}</span>
               </div>
               <span className="text-[14px] font-bold text-cur-primary font-mono whitespace-nowrap shrink-0">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${displayHours.toFixed(1)} / ${requiredHours} (시간)`}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatDuration(totalSec)} / ${requiredHours}시간`}
               </span>
             </div>
 
@@ -168,8 +153,7 @@ export default function EducationProgressPage() {
             ) : (
               <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                 {cats.map((c) => {
-                  const h = parseFloat(c.hours.toFixed(1))
-                  const pct = requiredHours > 0 ? Math.min(100, (h / requiredHours) * 100) : 0
+                  const pct = requiredHours > 0 ? Math.min(100, (secondsToHours(c.seconds) / requiredHours) * 100) : 0
                   const empty = c.count === 0
                   return (
                     <div key={c.label} className="p-4 space-y-2">
@@ -179,7 +163,7 @@ export default function EducationProgressPage() {
                           <span className={`text-[13px] font-semibold truncate ${empty ? "text-cur-muted-soft" : "text-cur-ink"}`}>{c.label}</span>
                         </div>
                         <span className={`text-[13px] font-mono whitespace-nowrap shrink-0 ${empty ? "text-cur-muted-soft" : "text-cur-body font-bold"}`}>
-                          {h.toFixed(1)}시간
+                          {formatDuration(c.seconds)}
                           <span className="text-[11px] text-cur-muted ml-1 font-sans font-medium">· {c.count}건</span>
                         </span>
                       </div>
