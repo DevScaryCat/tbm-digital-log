@@ -147,7 +147,7 @@ export default function ProfilePage() {
                             value={(exportFormat || null) as ExportFormat | null}
                             onChange={(v) => setExportFormat(v)}
                         />
-                        <p className="text-[12px] text-cur-muted">교육일지 등 문서를 내려받을 때 기본으로 쓸 형식입니다. PDF는 편집 불가·출력 전용입니다.</p>
+                        <p className="text-[12px] text-cur-muted">한글·워드 선택 시 문서 보기 화면에서 해당 형식으로 저장할 수 있어요. 한글은 지금 워드 형식(.docx)으로 제공되며(한글에서 열림) 정식 HWP·엑셀은 준비 중입니다. PDF는 편집 불가·출력 전용.</p>
                     </div>
                 </div>
 
