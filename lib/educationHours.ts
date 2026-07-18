@@ -11,6 +11,18 @@ export interface TimeRow {
   end_time: string | null
 }
 
+/**
+ * 정기교육(반기 6/12시간) 시간으로 인정되는 교육일지 유형.
+ * TBM은 고용노동부 「TBM의 안전보건 정기교육 시간 인정에 관한 지침」(2024)에 따라 합산 인정.
+ * 특별안전보건·신규 채용 시·작업내용 변경 시 교육은 각각 별개의 법정 의무라 정기 시간에
+ * 합산하지 않는다(합산하면 정기 미이수를 이수로 과대표시하게 됨).
+ * 유형 미기록(레거시) 일지는 유형 기능 도입 전 TBM/정기 기록으로 보고 인정에 포함.
+ */
+export const REGULAR_EDU_TYPES = ["TBM", "정기 안전교육"] as const
+export function isRegularEducationType(type: string | null | undefined): boolean {
+  return !type || (REGULAR_EDU_TYPES as readonly string[]).includes(type)
+}
+
 function toSeconds(t: string): number {
   const [h = 0, m = 0, s = 0] = t.split(":").map(Number)
   return h * 3600 + m * 60 + s

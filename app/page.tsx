@@ -12,7 +12,7 @@ import { HardHat, Loader2, Users, ChevronRight, CalendarDays } from "lucide-reac
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
-import { totalSeconds, secondsToHours, formatDuration } from "@/lib/educationHours"
+import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { cn } from "@/lib/utils"
@@ -95,7 +95,7 @@ export default function MainPage() {
       const [logDateRows, minuteDateRows, logTimeRows, minuteTimeRows, suggestionRows] = await Promise.all([
         fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_logs').select('date').eq('user_id', userId).order('id').range(f, t)),
         fetchAllRows<{ date: string | null }>((f, t) => supabase.from('tbm_minutes').select('date').eq('user_id', userId).order('id').range(f, t)),
-        fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_logs').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
+        fetchAllRows<{ start_time: string | null; end_time: string | null; education_type: string | null }>((f, t) => supabase.from('tbm_logs').select('start_time, end_time, education_type').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
         fetchAllRows<{ start_time: string | null; end_time: string | null }>((f, t) => supabase.from('tbm_minutes').select('start_time, end_time').eq('user_id', userId).gte('date', halfStart).lte('date', halfEnd).order('id').range(f, t)),
         // 제안함은 RLS로 소유자 범위 한정(suggestions 페이지와 동일) — 실패해도 다른 통계는 유지
         fetchAllRows<{ created_at: string | null; is_read: boolean | null }>((f, t) => supabase.from('worker_suggestions').select('created_at, is_read').order('id').range(f, t)).catch(() => []),
@@ -111,7 +111,12 @@ export default function MainPage() {
 
       setRequiredHours(currentWorkerType === '사무직 / 판매직' ? 6 : 12)
 
-      const validLogs = [...(logTimeRows || []), ...(minuteTimeRows || [])]
+      // 정기교육(반기 6/12h) 진행도에는 정기 인정 유형(TBM·정기 안전교육·레거시 미분류)만 합산 —
+      // 특별·신규채용·작업내용변경 교육은 별개의 법정 의무라 여기 합산하면 과대표시가 된다.
+      const validLogs = [
+        ...(logTimeRows || []).filter(l => isRegularEducationType(l.education_type)),
+        ...(minuteTimeRows || []),
+      ]
       setTotalEducationSeconds(totalSeconds(validLogs))
     } catch (e) {
       console.error("통계 에러:", e)

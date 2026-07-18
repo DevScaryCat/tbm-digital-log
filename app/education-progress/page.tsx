@@ -5,17 +5,20 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
-import { totalSeconds, secondsToHours, formatDuration } from "@/lib/educationHours"
+import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, CheckCircle2, ClipboardList } from "lucide-react"
 
 interface Row { date: string | null; start_time: string | null; end_time: string | null; education_type?: string | null }
 
-// 유형별 표기(순서·색). 홈 진행도와 동일하게 반기 누적 시간을 유형별로 쪼갠다.
-const CATEGORIES: { key: string; label: string; color: string }[] = [
+// 유형 표기(순서·색). 정기교육 반기 의무(6/12h)에 합산되는 유형과 별개 법정 의무를 구분한다 —
+// 특별·신규채용·작업내용변경 교육 시간을 정기 바에 합산하면 정기 미이수를 이수로 과대표시하게 된다.
+const REGULAR_CATEGORIES: { key: string; label: string; color: string }[] = [
   { key: "TBM", label: "TBM (작업 전 안전점검)", color: "bg-cur-primary" },
   { key: "정기 안전교육", label: "정기 안전교육", color: "bg-[#ff9a5c]" },
+]
+const SEPARATE_CATEGORIES: { key: string; label: string; color: string }[] = [
   { key: "특별안전보건교육", label: "특별안전보건교육", color: "bg-amber-400" },
   { key: "신규 채용시 교육", label: "신규 채용시 교육", color: "bg-emerald-400" },
   { key: "작업내용 변경시 교육", label: "작업내용 변경시 교육", color: "bg-sky-400" },
@@ -30,7 +33,8 @@ export default function EducationProgressPage() {
   const { checking } = useRequireSubscription()
   const [loading, setLoading] = useState(true)
   const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
-  const [cats, setCats] = useState<CatStat[]>([])
+  const [regularCats, setRegularCats] = useState<CatStat[]>([])
+  const [separateCats, setSeparateCats] = useState<CatStat[]>([])
   const [totalSec, setTotalSec] = useState(0)
 
   const requiredHours = workerType === "사무직 / 판매직" ? 6 : 12
@@ -62,22 +66,31 @@ export default function EducationProgressPage() {
         ])
 
         const logsByType = (type: string) => logsHalf.filter((l) => (l.education_type || "") === type)
+        // 유형 미기록(레거시) 일지는 유형 기능 도입 전 TBM 기록으로 보고 TBM 행·정기 인정에 포함
+        const legacyRows = logsHalf.filter((l) => !l.education_type)
 
-        const built: CatStat[] = CATEGORIES.map((c) => {
-          // TBM 유형은 회의록(tbm_minutes) + 교육일지 중 'TBM' 분류를 합산
-          const rows = c.key === "TBM" ? [...minsHalf, ...logsByType("TBM")] : logsByType(c.key)
+        const regular: CatStat[] = REGULAR_CATEGORIES.map((c) => {
+          // TBM 유형은 회의록(tbm_minutes) + 교육일지 중 'TBM' 분류(+레거시 미분류)를 합산
+          const rows = c.key === "TBM" ? [...minsHalf, ...logsByType("TBM"), ...legacyRows] : logsByType(c.key)
           return { label: c.label, color: c.color, seconds: totalSeconds(rows), count: rows.length }
         })
 
-        // 명명되지 않은 유형(관리감독자 교육·기타·미분류)은 데이터가 있을 때만 '기타'로 합산 — 총합 정합성 유지
-        const otherRows = logsHalf.filter((l) => !NAMED_LOG_TYPES.includes(l.education_type || ""))
+        const separate: CatStat[] = SEPARATE_CATEGORIES.map((c) => {
+          const rows = logsByType(c.key)
+          return { label: c.label, color: c.color, seconds: totalSeconds(rows), count: rows.length }
+        })
+
+        // 목록 밖 이름의 유형(향후 추가되는 유형 등)은 데이터가 있을 때만 '기타'로 — 별도 의무 그룹에 표시
+        const otherRows = logsHalf.filter((l) => l.education_type && !NAMED_LOG_TYPES.includes(l.education_type))
         if (otherRows.length > 0) {
-          built.push({ label: "기타 교육", color: "bg-cur-muted", seconds: totalSeconds(otherRows), count: otherRows.length })
+          separate.push({ label: "기타 교육", color: "bg-cur-muted", seconds: totalSeconds(otherRows), count: otherRows.length })
         }
 
         if (cancelled) return
-        setCats(built)
-        setTotalSec(totalSeconds(logsHalf) + totalSeconds(minsHalf))
+        setRegularCats(regular)
+        setSeparateCats(separate)
+        // 총 진행도 = 정기 인정 유형만 (홈 app/page.tsx와 동일 규칙 — isRegularEducationType)
+        setTotalSec(totalSeconds(minsHalf) + totalSeconds(logsHalf.filter((l) => isRegularEducationType(l.education_type))))
         setLoading(false)
       } catch (e) {
         console.error("교육 진행도 로드 실패:", e)
@@ -139,11 +152,11 @@ export default function EducationProgressPage() {
             </div>
           </div>
 
-          {/* 유형별 진행 현황 */}
+          {/* 정기교육 인정 현황 — 반기 의무시간에 합산되는 유형 */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 px-1">
               <ClipboardList className="w-4 h-4 text-cur-primary" />
-              <h3 className="text-[14px] font-bold text-cur-ink">유형별 진행 현황</h3>
+              <h3 className="text-[14px] font-bold text-cur-ink">정기교육 인정 현황</h3>
             </div>
 
             {loading ? (
@@ -152,7 +165,7 @@ export default function EducationProgressPage() {
               </div>
             ) : (
               <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
-                {cats.map((c) => {
+                {regularCats.map((c) => {
                   const pct = requiredHours > 0 ? Math.min(100, (secondsToHours(c.seconds) / requiredHours) * 100) : 0
                   const empty = c.count === 0
                   return (
@@ -177,9 +190,41 @@ export default function EducationProgressPage() {
             )}
 
             <p className="text-[12px] text-cur-muted leading-relaxed px-1">
-              정기 안전교육은 <span className="font-semibold text-cur-body">TBM(작업 전 안전점검)으로 대체 가능</span>합니다. 막대는 각 유형이 반기 의무시간({requiredHours}시간)에서 차지하는 비중이에요.
+              정기 안전교육은 <span className="font-semibold text-cur-body">TBM(작업 전 안전점검)으로 대체 가능</span>합니다(고용노동부 지침). 막대는 각 유형이 반기 의무시간({requiredHours}시간)에서 차지하는 비중이에요.
             </p>
           </div>
+
+          {/* 별도 법정 의무 교육 — 정기교육 진행도에 합산되지 않음 */}
+          {!loading && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <ClipboardList className="w-4 h-4 text-cur-muted" />
+                <h3 className="text-[14px] font-bold text-cur-ink">별도 법정 의무 교육</h3>
+              </div>
+
+              <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                {separateCats.map((c) => {
+                  const empty = c.count === 0
+                  return (
+                    <div key={c.label} className="p-4 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2.5 h-2.5 rounded-[3px] shrink-0 ${empty ? "bg-cur-hairline" : c.color}`} />
+                        <span className={`text-[13px] font-semibold truncate ${empty ? "text-cur-muted-soft" : "text-cur-ink"}`}>{c.label}</span>
+                      </div>
+                      <span className={`text-[13px] font-mono whitespace-nowrap shrink-0 ${empty ? "text-cur-muted-soft" : "text-cur-body font-bold"}`}>
+                        {formatDuration(c.seconds)}
+                        <span className="text-[11px] text-cur-muted ml-1 font-sans font-medium">· {c.count}건</span>
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-[12px] text-cur-muted leading-relaxed px-1">
+                특별·신규 채용·작업내용 변경 교육은 <span className="font-semibold text-cur-body">정기교육과 별도의 법정 의무</span>라 위 진행도({requiredHours}시간)에 합산되지 않습니다. 의무시간은 작업·대상에 따라 다르므로 기록 관리용으로 집계해요.
+              </p>
+            </div>
+          )}
 
         </div>
       </div>
