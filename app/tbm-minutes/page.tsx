@@ -812,7 +812,7 @@ export default function TBMMinutesPage() {
     if (isLoading) return <div className="min-h-screen flex justify-center items-center bg-cur-canvas"><Loader2 className="animate-spin w-10 h-10 text-cur-ink" /></div>
 
     const tbmGuideBox = (
-        <div className="w-full text-left border border-cur-hairline rounded-[12px] overflow-hidden">
+        <div className="w-full text-left border-t border-cur-hairline">
             {/* 탭 → 세그먼트 컨트롤 (주황 배급 금지 — 주황은 CTA 전용) */}
             <div className="m-3 h-9 p-1 rounded-[8px] bg-cur-canvas grid grid-cols-2 gap-1">
                 <button onClick={() => setGuideTab('guide')} className={guideTab === 'guide' ? "rounded-[6px] bg-cur-card shadow-sm text-cur-ink text-[13px] font-semibold" : "rounded-[6px] text-cur-muted text-[13px] font-medium"}>TBM 가이드</button>
@@ -901,13 +901,16 @@ export default function TBMMinutesPage() {
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 회의 녹음
                             </h2>
 
-                            {/* 가이드 아코디언 — 전 상태 상시 렌더 (녹음 중에도 대본 접근 가능) */}
-                            <button type="button" onClick={() => setGuideOpen(v => !v)}
-                                className="h-12 w-full flex items-center justify-between rounded-[8px] border border-cur-hairline bg-cur-card px-4 text-[14px] font-medium text-cur-body active:bg-cur-elevated">
-                                <span className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-cur-muted" /> 진행 순서·대본 보기</span>
-                                <ChevronDown className={cn("w-4 h-4 text-cur-muted-soft transition-transform", guideOpen && "rotate-180")} />
-                            </button>
-                            {guideOpen && tbmGuideBox}
+                            {/* 가이드 아코디언 — 전 상태 상시 렌더 (녹음 중에도 대본 접근 가능).
+                                트리거와 패널을 한 카드로 묶어 펼쳤을 때 따로 떠 보이지 않게 한다. */}
+                            <div className="rounded-[12px] border border-cur-hairline bg-cur-card overflow-hidden">
+                                <button type="button" onClick={() => setGuideOpen(v => !v)}
+                                    className="h-12 w-full flex items-center justify-between px-4 text-[14px] font-medium text-cur-body active:bg-cur-elevated">
+                                    <span className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-cur-muted" /> 진행 순서·대본 보기</span>
+                                    <ChevronDown className={cn("w-4 h-4 text-cur-muted-soft transition-transform", guideOpen && "rotate-180")} />
+                                </button>
+                                {guideOpen && tbmGuideBox}
+                            </div>
 
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 min-h-[360px] flex flex-col items-center justify-center text-center">
                                 {isRecording ? (
@@ -942,8 +945,7 @@ export default function TBMMinutesPage() {
                                             <Mic className="w-14 h-14 text-cur-on-primary" />
                                             <span className="text-[18px] font-bold text-cur-on-primary">녹음 시작</span>
                                         </Button>
-                                        <p className="mt-5 text-[14px] text-cur-body flex items-center justify-center gap-1.5">
-                                            <Sparkles className="w-4 h-4 text-cur-info shrink-0" />
+                                        <p className="mt-5 text-[14px] text-cur-body text-center">
                                             누르고 평소처럼 회의하세요 — AI가 회의록으로 정리합니다
                                         </p>
 
