@@ -358,8 +358,9 @@ export default function TBMMinutesPage() {
         }
     }, [step, sessionId]);
 
-    // step 4 진입(또는 step 4에서 STT/AI 처리 종료) 시 근로자 의견을 위험성평가 항목으로 합류.
-    // 의견은 step 3(QR 서명) 동안 worker_suggestions에 쌓이므로 요약 이후인 여기서 병합한다.
+    // step 4에서 근로자 의견을 위험성평가 항목으로 합류.
+    // 진입 시 1회 + 12초 주기 폴링 — 소장이 검토 화면을 보는 동안 뒤늦게 도착하는 의견도
+    // 저장 전에 잡아야 한다(진입 시 1회만 조회하면 검토 중 도착분이 문서에서 빠짐 — 실사고 있었음).
     useEffect(() => {
         if (step !== 4 || isProcessingSTT || isProcessingAI || !sessionId) return;
         const mergeWorkerSuggestions = async () => {
@@ -402,6 +403,8 @@ export default function TBMMinutesPage() {
             }
         };
         mergeWorkerSuggestions();
+        const poll = setInterval(mergeWorkerSuggestions, 12_000);
+        return () => clearInterval(poll);
     }, [step, isProcessingSTT, isProcessingAI, sessionId]);
 
     const validateStep = (currentStep: number) => {
