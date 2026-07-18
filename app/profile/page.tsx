@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { EXPORT_FORMATS } from "@/lib/exportFormats"
+import { type ExportFormat } from "@/lib/exportFormats"
+import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 
 // 가입 위저드(app/signup)와 동일한 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 const INDUSTRIES = ["건설업", "제조업", "물류·운수업", "조선·플랜트", "전기·정보통신공사", "시설관리·서비스업", "기타"]
@@ -142,18 +143,10 @@ export default function ProfilePage() {
                     </div>
                     <div className="space-y-2">
                         <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식</Label>
-                        <Select value={exportFormat} onValueChange={setExportFormat}>
-                            <SelectTrigger className="w-full h-11 text-[14px]">
-                                <SelectValue placeholder="아직 선택하지 않았어요 (첫 화면에서 선택)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {EXPORT_FORMATS.map((f) => (
-                                    <SelectItem key={f.value} value={f.value}>
-                                        {f.label} ({f.sub})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <ExportFormatPicker
+                            value={(exportFormat || null) as ExportFormat | null}
+                            onChange={(v) => setExportFormat(v)}
+                        />
                         <p className="text-[12px] text-cur-muted">교육일지 등 문서를 내려받을 때 기본으로 쓸 형식입니다. PDF는 편집 불가·출력 전용입니다.</p>
                     </div>
                 </div>

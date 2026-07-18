@@ -13,7 +13,8 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
 import { totalSeconds, secondsToHours, formatDuration } from "@/lib/educationHours"
-import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
+import { type ExportFormat } from "@/lib/exportFormats"
+import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { cn } from "@/lib/utils"
 
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
@@ -463,25 +464,7 @@ export default function MainPage() {
           >
             <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">문서 출력 형식</h3>
             <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">회의록·일지 등 결과물을 어떤 형식으로 받을지 선택하세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
-            <div className="grid grid-cols-4 gap-2">
-              {EXPORT_FORMATS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setSelectedFormat(f.value)}
-                  aria-pressed={selectedFormat === f.value}
-                  className={cn(
-                    "h-16 rounded-[8px] border flex flex-col items-center justify-center gap-0.5 transition-colors",
-                    selectedFormat === f.value
-                      ? "border-cur-primary ring-1 ring-cur-primary bg-cur-primary/5 text-cur-primary"
-                      : "border-cur-hairline bg-cur-card text-cur-ink"
-                  )}
-                >
-                  <span className="text-[15px] font-semibold">{f.label}</span>
-                  <span className="text-[11px] text-cur-muted">{f.sub}</span>
-                </button>
-              ))}
-            </div>
+            <ExportFormatPicker value={selectedFormat} onChange={setSelectedFormat} />
             <p className="text-[12px] text-cur-muted-soft mt-3 leading-relaxed">PDF는 편집이 불가능한 출력 전용 형식입니다.</p>
             {needsWorkerType && (
               <div className="mt-5 space-y-2">
