@@ -226,7 +226,7 @@ export default function ReportPage() {
                         </tr>
 
                         <tr className="h-20">
-                            <td className="border border-black bg-gray-100 text-center font-bold" rowSpan={3}>교육 실시자<br />(관리감독자)</td>
+                            <td className="border border-black bg-gray-100 text-center font-bold" rowSpan={2}>교육 실시자<br />(관리감독자)</td>
                             <td className="border border-black bg-gray-50 text-center h-8 font-bold" colSpan={2}>소속 및 직위</td>
                             <td className="border border-black bg-gray-50 text-center font-bold" colSpan={2}>성 명</td>
                             <td className="border border-black bg-gray-50 text-center font-bold">서 명</td>
@@ -242,11 +242,6 @@ export default function ReportPage() {
                                 ) : (
                                     <span className="text-gray-300"></span>
                                 )}
-                            </td>
-                        </tr>
-                        <tr className="h-10">
-                            <td className="border border-black p-2 text-[10px] text-gray-500 leading-tight" colSpan={5}>
-                                본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.
                             </td>
                         </tr>
 

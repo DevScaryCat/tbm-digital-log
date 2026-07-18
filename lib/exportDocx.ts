@@ -316,17 +316,12 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
         cell({ span: 3, valign: VerticalAlign.TOP, children: paras(m.work_content, { size: 18 }) }),
     ], 1100))
 
-    // TBM 리더 + 서명 (+ 서명 시 법적 책임 동의 문구)
+    // TBM 리더 + 서명
     const leaderRuns: (TextRun | ImageRun)[] = [
         run(`직책 : ${m.leader_title ?? ""}      성명 : ${m.leader_name ?? ""}      (서명) `, { bold: true }),
     ]
     if (leaderSig) leaderRuns.push(imageRun(leaderSig, 90, 36))
     const leaderParas: Paragraph[] = [new Paragraph({ children: leaderRuns })]
-    if (leaderSig) {
-        leaderParas.push(new Paragraph({
-            children: [run("* 본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.", { size: 14, color: C.gray500 })],
-        }))
-    }
     rows.push(row([
         cell({ text: "TBM 리더", fill: C.gray200, bold: true, align: AlignmentType.CENTER }),
         cell({ span: 3, children: leaderParas }),
@@ -490,7 +485,7 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
 
     // 교육 실시자 (관리감독자) + 서명 + 법적 책임 동의 문구
     rows.push(row([
-        cell({ fill: C.gray100, rowSpan: 3, children: paras("교육 실시자\n(관리감독자)", { bold: true, align: AlignmentType.CENTER }) }),
+        cell({ fill: C.gray100, rowSpan: 2, children: paras("교육 실시자\n(관리감독자)", { bold: true, align: AlignmentType.CENTER }) }),
         cell({ span: 2, text: "소속 및 직위", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
         cell({ span: 2, text: "성 명", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
         cell({ text: "서 명", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
@@ -505,9 +500,6 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
             })],
         }),
     ], 850))
-    rows.push(row([
-        cell({ span: 5, text: "본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.", size: 14, color: C.gray500 }),
-    ], 400))
 
     // 특이사항 (뷰와 동일하게 빨간 강조)
     rows.push(row([

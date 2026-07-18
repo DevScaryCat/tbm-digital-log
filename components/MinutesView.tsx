@@ -46,11 +46,6 @@ export function MinutesView({ minutes, participants }: { minutes: any; participa
                                             <img src={minutes.leader_signature} className="absolute inset-0 w-full h-full object-contain" alt="리더 서명" />
                                         )}
                                     </div>
-                                    {minutes.leader_signature && (
-                                        <span className="text-[10px] text-gray-500 font-normal leading-tight ml-2">
-                                            * 본인은 일지의 내용을 정확하게 확인하였으며, 최종 검토 및 수정의 법적 책임이 본인에게 있음을 동의합니다.
-                                        </span>
-                                    )}
                                 </div>
                             </div>
                         </td>
