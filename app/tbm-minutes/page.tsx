@@ -148,7 +148,12 @@ export default function TBMMinutesPage() {
                         if (recognitionRef.current) {
                             recognitionRef.current.stop();
                         }
-                        alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+                        // 수동 일시정지(stopRecording)와 동일한 종료 처리 필수 — 빠뜨리면 첫 녹음이
+                        // 20분을 채웠을 때 recordingCount가 0에 머물러 'AI 요약' 버튼이 계속 잠기고
+                        // 화면도 초기 상태로 돌아가, 인식된 내용이 있어도 저장 못 하는 것처럼 보인다.
+                        setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
+                        setRecordingCount(prev => prev + 1);
+                        alert("최대 녹음 시간(20분)에 도달해 녹음이 자동 종료되었습니다.\n지금까지 인식된 내용은 그대로 있으니, 아래 'AI 요약'을 눌러 회의록을 만드세요.");
                     }
                 }
             }, 1000);
