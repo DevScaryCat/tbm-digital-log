@@ -73,6 +73,15 @@ export default function MinutesReportPage() {
                 const { blob, imageFailures } = await buildMinutesHwpx([{ minutes, participants }])
                 if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
                 downloadBlob(blob, suggestHwpxFilename("minutes", minutes.date))
+            } else if (exportFormat === "xlsx") {
+                // 엑셀 선택 시 서식 있는 .xlsx로 저장
+                const [{ buildMinutesXlsx, suggestXlsxFilename }, { downloadBlob }] = await Promise.all([
+                    import("@/lib/exportXlsx"),
+                    import("@/lib/exportDocx"),
+                ])
+                const { blob, imageFailures } = await buildMinutesXlsx([{ minutes, participants }])
+                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                downloadBlob(blob, suggestXlsxFilename("minutes", minutes.date))
             } else {
                 const { buildMinutesDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
                 const { blob, imageFailures } = await buildMinutesDocx([{ minutes, participants }])
@@ -151,11 +160,11 @@ export default function MinutesReportPage() {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                     <div className="flex gap-2">
-                        {(exportFormat === "docx" || exportFormat === "hwp") ? (
+                        {(exportFormat === "docx" || exportFormat === "hwp" || exportFormat === "xlsx") ? (
                             <>
                                 <Button onClick={handleDocxSave} disabled={exporting} className="bg-blue-900 hover:bg-blue-800 text-cur-on-primary font-bold px-6">
                                     {exporting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <FileDown className="mr-2 h-5 w-5" />}
-                                    {exportFormat === "hwp" ? "한글로 저장" : "워드로 저장"}
+                                    {exportFormat === "hwp" ? "한글로 저장" : exportFormat === "xlsx" ? "엑셀로 저장" : "워드로 저장"}
                                 </Button>
                                 <Button variant="outline" onClick={() => window.print()} className="font-bold px-6">
                                     <Printer className="mr-2 h-5 w-5" /> PDF 저장 / 인쇄
@@ -169,9 +178,6 @@ export default function MinutesReportPage() {
                     </div>
                     {exportFormat === "hwp" && (
                         <p className="text-[11px] text-cur-muted">정식 한글 파일(.hwpx)로 저장돼요 — 한글 2014 이상에서 열립니다.</p>
-                    )}
-                    {exportFormat === "xlsx" && (
-                        <p className="text-[11px] text-cur-muted">엑셀 내보내기는 준비 중이에요</p>
                     )}
                 </div>
             </div>

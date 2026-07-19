@@ -147,7 +147,7 @@ export default function ProfilePage() {
                             value={(exportFormat || null) as ExportFormat | null}
                             onChange={(v) => setExportFormat(v)}
                         />
-                        <p className="text-[12px] text-cur-muted">한글·워드 선택 시 문서 보기 화면에서 해당 형식으로 저장할 수 있어요. 한글은 정식 .hwpx 파일로 저장돼요(한글 2014 이상). 엑셀 내보내기는 준비 중입니다. PDF는 편집 불가·출력 전용.</p>
+                        <p className="text-[12px] text-cur-muted">한글(.hwpx)·워드(.docx)·엑셀(.xlsx)은 문서 보기 화면에서 해당 형식으로 저장돼요. PDF는 편집 불가·출력 전용.</p>
                     </div>
                 </div>
 
