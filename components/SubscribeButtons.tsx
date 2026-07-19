@@ -41,7 +41,7 @@ const ALL_METHODS: Method[] = [
 // 카드(KG이니시스) + 카카오페이(CID CA18988263, 2026-07 심사완료) 실연동. 네이버·토스는 아직 진행중이라 숨김.
 // 운영 노출 조건: LIVE_METHODS에 있고 + Vercel prod에 해당 채널키(NEXT_PUBLIC_PORTONE_CHANNEL_KEY_*)가 '라이브' 값으로 설정됨.
 // (env 미설정 시 CHANNELS[key] undefined라 자동 숨김) 네이버·토스 실연동 시 여기에 추가.
-const LIVE_METHODS = ["card", "kakaopay"]
+const LIVE_METHODS = ["card", "kakaopay", "tosspay"]
 const METHODS = ALL_METHODS.filter(
     (m) => CHANNELS[m.key] && (process.env.NODE_ENV !== "production" || LIVE_METHODS.includes(m.key))
 )

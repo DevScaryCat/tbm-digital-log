@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy, Sparkles } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
@@ -55,6 +55,14 @@ interface CustomWindow extends Window {
     SpeechRecognition?: new () => SpeechRecognition
     webkitSpeechRecognition?: new () => SpeechRecognition
 }
+
+// ─── 공용 스타일 상수 (quiet-filled 편집 필드) — tbm-minutes와 동일 ───
+// 16px는 iOS 자동 줌 방지 임계 — 절대 내리지 말 것 (md:text-[16px]로 shadcn 기본 md:text-sm 무력화)
+const FIELD_CLS = "h-12 w-full px-3 bg-cur-canvas border-0 shadow-none rounded-[8px] text-[16px] md:text-[16px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus:outline-none focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-cur-primary"
+const AREA_CLS = "w-full p-3 min-h-[64px] resize-y leading-relaxed bg-cur-canvas border-0 shadow-none rounded-[8px] text-[16px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus:ring-1 focus:ring-cur-primary focus:outline-none"
+const SELECT_CLS = "h-12 w-full px-3 bg-cur-canvas border-0 rounded-[8px] text-[16px] font-medium text-cur-ink focus:bg-cur-card focus:ring-1 focus:ring-cur-primary focus:outline-none"
+// 라벨은 값(16px ink)보다 조용하게 — 단 cur-muted(4.1:1)는 야외 현장 가독에 부족해 body(7:1) 사용
+const LABEL_CLS = "text-[13px] font-medium text-cur-body"
 
 function getWeatherLabel(code: number): string {
     if (code === 0) return "맑음 ☀️"
@@ -129,7 +137,12 @@ export default function TBMPage() {
                         if (recognitionRef.current) {
                             recognitionRef.current.stop();
                         }
-                        alert("최대 녹음 시간(20분)에 도달했습니다. 녹음이 자동 종료되었습니다.");
+                        // 수동 일시정지(stopRecording)와 동일한 종료 처리 필수 — 빠뜨리면 첫 녹음이
+                        // 20분을 채웠을 때 recordingCount가 0에 머물러 'AI 요약' 버튼이 계속 잠기고
+                        // 화면도 초기 상태로 돌아가, 인식된 내용이 있어도 저장 못 하는 것처럼 보인다.
+                        setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
+                        setRecordingCount(prev => prev + 1);
+                        alert("최대 녹음 시간(20분)에 도달해 녹음이 자동 종료되었습니다.\n지금까지 인식된 내용은 그대로 있으니, 아래 'AI 요약'을 눌러 일지를 만드세요.");
                     }
                 }
             }, 1000);
@@ -788,14 +801,14 @@ export default function TBMPage() {
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">1</span> 기본 정보
                             </h2>
-                            <div className="space-y-5 bg-cur-card p-5 rounded-[12px] border border-cur-hairline shadow-none">
+                            <div className="space-y-4 bg-cur-card p-4 rounded-[12px] border border-cur-hairline shadow-none">
                                 <div className="space-y-2">
-                                    <Label className="text-[14px] font-semibold text-cur-ink">교육 일자</Label>
+                                    <Label className={LABEL_CLS}>교육 일자</Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
-                                            <Button variant={"outline"} className={cn("h-12 w-full justify-start text-left font-normal text-[15px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated", !formData.date && "text-cur-muted")}>
+                                            <Button variant="ghost" className={cn(FIELD_CLS, "justify-start text-left hover:bg-cur-elevated")}>
                                                 <CalendarIcon className="mr-2 h-5 w-5 text-cur-muted" />
-                                                <span className={cn(formData.date ? "text-cur-ink font-medium" : "text-cur-muted")}>
+                                                <span className={cn(formData.date ? "text-cur-ink" : "text-cur-muted")}>
                                                     {formData.date ? format(formData.date, "yyyy년 MM월 dd일 (EEE)", { locale: ko }) : "날짜 선택"}
                                                 </span>
                                             </Button>
@@ -807,38 +820,14 @@ export default function TBMPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <Label className="text-[14px] font-semibold text-cur-ink">시작 시간</Label>
-                                        <span className="text-[11px] text-cur-muted">녹음 시작 시 자동 갱신 (조작 불가)</span>
-                                    </div>
-                                    <Input
-                                        value={formData.startTime?.slice(0, 5)}
-                                        disabled
-                                        className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <Label className="text-[14px] font-semibold text-cur-ink">종료 시간</Label>
-                                        <span className="text-[11px] text-cur-muted">녹음 종료 시 자동 갱신 (조작 불가)</span>
-                                    </div>
-                                    <Input
-                                        value={formData.endTime?.slice(0, 5)}
-                                        disabled
-                                        placeholder="녹음 종료 후 자동 입력"
-                                        className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-canvas font-medium text-cur-ink opacity-100 disabled:opacity-100 disabled:bg-cur-elevated"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label className="text-[14px] font-semibold text-cur-ink">교육 장소</Label>
-                                    <Input name="location" value={formData.location} onChange={handleChange} className="h-12 text-[15px] border-cur-hairline rounded-[8px] bg-cur-card font-medium text-cur-ink focus-visible:ring-1 focus-visible:ring-cur-primary" />
+                                    <Label className={LABEL_CLS}>교육 장소</Label>
+                                    <Input name="location" value={formData.location} onChange={handleChange} className={FIELD_CLS} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label className="text-[14px] font-semibold text-cur-ink">교육 구분</Label>
+                                    <Label className={LABEL_CLS}>교육 구분</Label>
                                     <Select value={formData.educationType} onValueChange={(val) => setFormData(prev => ({ ...prev, educationType: val }))}>
-                                        <SelectTrigger className="h-12 text-[15px] bg-cur-card border-cur-hairline rounded-[8px] font-medium text-cur-ink"><SelectValue /></SelectTrigger>
+                                        {/* shadcn 트리거 기본값(h-9·shadow-xs·3px 링)이 SELECT_CLS를 이기므로 중화 클래스 추가 — 시각 결과는 tbm-minutes SELECT_CLS와 동일 */}
+                                        <SelectTrigger className={cn(SELECT_CLS, "shadow-none data-[size=default]:h-12 focus-visible:bg-cur-card focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-cur-primary")}><SelectValue /></SelectTrigger>
                                         <SelectContent className="rounded-[12px] border-cur-hairline">
                                             <SelectItem value="정기 안전교육" className="rounded-[6px] focus:bg-cur-elevated">정기 안전교육</SelectItem>
                                             <SelectItem value="특별안전보건교육" className="rounded-[6px] focus:bg-cur-elevated">특별안전보건교육</SelectItem>
@@ -851,14 +840,31 @@ export default function TBMPage() {
 
                                 {formData.educationType !== "TBM" && (
                                     <>
-                                        <div className="space-y-2"><Label className="text-[14px] font-semibold text-cur-ink">교육실시자</Label><Input name="instructorName" value={formData.instructorName} onChange={handleChange} className="h-12 text-[15px] border-cur-hairline rounded-[8px] font-medium text-cur-ink" placeholder="이름 입력" /></div>
+                                        <div className="space-y-2"><Label className={LABEL_CLS}>교육실시자</Label><Input name="instructorName" value={formData.instructorName} onChange={handleChange} className={FIELD_CLS} placeholder="이름 입력" /></div>
                                         {instructorSignature ? (
-                                            <div onClick={() => openSignModal({ type: 'instructor' })} className="h-16 border border-cur-success bg-cur-success/5 rounded-[10px] flex items-center justify-center cursor-pointer relative overflow-hidden shadow-sm"><img src={instructorSignature} alt="서명" className="h-full object-contain mix-blend-multiply" /><div className="absolute right-2 bottom-1.5 text-[10px] text-cur-success font-bold bg-cur-card/90 px-1.5 py-0.5 rounded-[4px]">서명 완료</div></div>
+                                            <div onClick={() => openSignModal({ type: 'instructor' })} className="h-16 border border-cur-success bg-cur-success/5 rounded-[8px] flex items-center justify-center cursor-pointer relative overflow-hidden"><img src={instructorSignature} alt="서명" className="h-full object-contain mix-blend-multiply" /><div className="absolute right-2 bottom-1.5 text-[10px] text-cur-success font-bold bg-cur-card/90 px-1.5 py-0.5 rounded-[4px]">서명 완료</div></div>
                                         ) : (
-                                            <Button variant="outline" className="w-full h-14 border-dashed border-2 border-cur-hairline text-cur-muted font-medium text-[15px] hover:bg-cur-canvas rounded-[10px]" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 교육실시자 서명하기</Button>
+                                            <Button variant="outline" className="w-full h-14 border-dashed border-2 border-cur-hairline text-cur-muted font-medium text-[15px] hover:bg-cur-canvas rounded-[8px]" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 교육실시자 서명하기</Button>
                                         )}
                                     </>
                                 )}
+
+                                {/* 자동 시간 상태 라인 — 표시 전용, 기록 로직(녹음 시작/종료 시 자동 기록)은 불변.
+                                    이 페이지는 startTime이 마운트 시각으로 초기화되므로(회의록과 다름) 녹음 여부로 분기 —
+                                    startTime 기준이면 녹음 전에도 접속 시각이 '자동 기록'으로 보이는 오표시가 된다. */}
+                                <div className="pt-3 border-t border-cur-hairline-soft flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-cur-muted shrink-0" />
+                                    {(recordingCount > 0 || isRecording) && formData.startTime ? (
+                                        <>
+                                            <span className="text-[14px] font-medium text-cur-body tabular-nums">
+                                                시작 {formData.startTime.slice(0, 5)} · 종료 {formData.endTime ? formData.endTime.slice(0, 5) : "진행 전"}
+                                            </span>
+                                            <span className="text-[11px] text-cur-muted bg-cur-elevated rounded-[6px] px-1.5 py-0.5 shrink-0">자동 기록</span>
+                                        </>
+                                    ) : (
+                                        <span className="text-[13px] text-cur-muted">시작·종료 시간은 녹음할 때 자동 기록됩니다</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -869,63 +875,45 @@ export default function TBMPage() {
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 교육 진행 및 녹음
                             </h2>
 
-                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 text-center flex flex-col items-center justify-center min-h-[400px] shadow-none relative">
-
+                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 min-h-[360px] flex flex-col items-center justify-center text-center">
                                 {isRecording ? (
-                                    <div className="w-full flex flex-col items-center space-y-8 animate-in fade-in duration-300">
-                                        <div className="bg-cur-error/5 text-cur-error border border-cur-error/20 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
-                                            <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-ping shrink-0"></span>
-                                            녹음이 진행 중입니다 {recordingCount > 0 && `(${recordingCount + 1}회차)`}
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
+                                    <div className="w-full flex flex-col items-center animate-in fade-in duration-300">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-pulse shrink-0" />
+                                            <span className="text-[13px] font-semibold text-cur-error">녹음 중{recordingCount > 0 && ` · ${recordingCount + 1}회차`}</span>
                                         </div>
-
-                                        <Button
-                                            onClick={stopRecording}
-                                            className="w-32 h-32 rounded-full shadow-[0_8px_24px_rgba(207,45,86,0.2)] bg-cur-error hover:bg-cur-error/80 flex flex-col items-center justify-center gap-2 mt-4 transition-transform active:scale-95 shrink-0"
-                                        >
+                                        <div className="text-[36px] font-bold tabular-nums text-cur-ink leading-none mt-2">{formatTime(recordingTime)}</div>
+                                        <div className="text-[13px] text-cur-muted mt-1">/ 20:00</div>
+                                        <Button onClick={stopRecording} className="w-32 h-32 rounded-full shadow-[0_8px_24px_rgba(207,45,86,0.25)] bg-cur-error hover:bg-cur-error/90 flex flex-col items-center justify-center gap-2 mt-4 shrink-0 transition-transform active:scale-95">
                                             <Pause className="w-10 h-10 text-cur-on-primary" />
                                             <span className="text-cur-on-primary font-bold text-[16px]">일시정지</span>
                                         </Button>
+                                        <p className="text-[13px] font-medium text-cur-body mt-2">화면을 켜두세요 — 꺼지면 녹음이 멈춥니다</p>
                                     </div>
-
                                 ) : recordingCount > 0 ? (
                                     <div className="w-full flex flex-col items-center space-y-6 animate-in fade-in duration-300">
-                                        <div className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-full font-semibold text-[13px] flex items-center gap-2 shadow-sm whitespace-nowrap overflow-hidden">
-                                            <Pause className="w-4 h-4 shrink-0" />
-                                            녹음 일시정지 · {recordingCount}회 
-                                            <span className="ml-2 font-mono shrink-0 font-bold">{formatTime(recordingTime)} / 20:00</span>
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 className="w-5 h-5 text-cur-success shrink-0" />
+                                            <span className="text-[15px] font-semibold text-cur-ink">녹음 완료</span>
+                                            <span className="text-[13px] text-cur-muted font-mono">{recordingCount}회 · {formatTime(recordingTime)}</span>
                                         </div>
-
-                                        <div className="w-full space-y-3">
-                                            <Button
-                                                onClick={startRecording}
-                                                className="w-full h-14 text-[16px] font-semibold bg-[#ea580c] hover:bg-[#c2410c] text-white shadow-[0_4px_12px_rgba(234,88,12,0.2)] rounded-[12px] flex items-center justify-center transition-transform active:scale-95"
-                                            >
-                                                <Play className="mr-2 w-5 h-5" /> 이어서 녹음하기
-                                            </Button>
-                                        </div>
-
-                                        <p className="text-[13px] text-cur-muted-soft font-medium leading-relaxed">
-                                            추가 녹음이 필요하면 &quot;이어서 녹음하기&quot;를,<br />최종 완료되었으면 하단의 &quot;AI 요약&quot; 버튼을 누르세요.
-                                        </p>
-                                    </div>
-
-                                ) : (
-                                    <div className="w-full flex flex-col items-center space-y-8 animate-in zoom-in duration-300">
-                                        <div className="bg-cur-primary text-cur-on-primary px-5 py-2 rounded-full font-semibold text-[13px] shadow-sm tracking-wide">
-                                            먼저 녹음을 시작하세요
-                                        </div>
-
-                                        <Button
-                                            onClick={startRecording}
-                                            className="w-40 h-40 rounded-full shadow-[0_12px_32px_rgba(0,0,0,0.15)] bg-cur-ink hover:bg-cur-ink/90 flex flex-col items-center justify-center gap-3 transition-transform active:scale-95 shrink-0"
-                                        >
-                                            <Mic className="w-14 h-14 text-cur-on-primary" />
-                                            <span className="text-cur-on-primary font-bold text-[18px]">녹음 시작</span>
+                                        <Button onClick={startRecording} variant="outline" className="w-full h-12 rounded-[8px] border border-cur-hairline bg-cur-card text-cur-ink text-[15px] font-semibold hover:bg-cur-elevated shadow-none">
+                                            <Play className="mr-2 w-4 h-4 text-cur-muted" /> 이어서 녹음
                                         </Button>
+                                        <p className="text-[13px] text-cur-muted">교육을 마쳤으면 아래 &apos;AI 요약&apos;을 누르세요</p>
+                                    </div>
+                                ) : (
+                                    <div className="w-full flex flex-col items-center animate-in zoom-in duration-300">
+                                        <Button onClick={startRecording} className="w-40 h-40 rounded-full bg-cur-primary hover:bg-cur-primary-active shadow-[0_12px_32px_rgba(245,78,0,0.25)] flex flex-col items-center justify-center gap-3 shrink-0 transition-transform active:scale-95">
+                                            <Mic className="w-14 h-14 text-cur-on-primary" />
+                                            <span className="text-[18px] font-bold text-cur-on-primary">녹음 시작</span>
+                                        </Button>
+                                        <p className="mt-5 text-[14px] text-cur-body text-center">
+                                            누르고 평소처럼 교육하세요 — AI가 교육일지로 정리합니다
+                                        </p>
 
                                         {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-                                            <div className="flex flex-col items-center space-y-2">
+                                            <div className="flex flex-col items-center space-y-2 mt-8">
                                                 <input
                                                     type="file"
                                                     accept="audio/*"
@@ -945,14 +933,21 @@ export default function TBMPage() {
                                     </div>
                                 )}
                             </div>
-                            <p className="text-[11px] text-cur-muted-soft font-normal leading-relaxed bg-cur-canvas p-3 rounded-[12px] border border-cur-hairline text-center">
-                                🔒 녹음된 음성은 텍스트로 변환·저장되어 일지 작성 및 서비스 개선에 이용됩니다. 자세한 내용은 <a href="/privacy" target="_blank" className="underline hover:text-cur-primary">개인정보처리방침</a>을 확인하세요.
-                            </p>
+
+                            {/* 고지 캡션 — 녹음 시작 전(idle)에만 노출. 법적 요지(변환·저장·이용 목적·방침 링크)는 녹음 전 반드시 화면에 있어야 함 */}
+                            {recordingCount === 0 && !isRecording && (
+                                <div className="space-y-1.5 px-4">
+                                    <p className="text-[12px] text-cur-muted text-center">Chrome·Safari 브라우저 권장</p>
+                                    <p className="text-[11px] text-cur-muted-soft text-center leading-relaxed">
+                                        녹음은 텍스트로 변환·저장되어 일지 작성과 서비스 개선에 이용됩니다 · <a href="/privacy" target="_blank" className="underline">개인정보처리방침</a>
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {step === 5 && (
-                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                        <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">5</span> 내용 확인 및 수정
                             </h2>
@@ -966,39 +961,45 @@ export default function TBMPage() {
                                     <p className="text-[14px] text-cur-muted-soft font-medium mt-2">잠시만 기다려주세요...</p>
                                 </div>
                             ) : (
-                                <div className="space-y-5 bg-cur-card p-5 rounded-[12px] border border-cur-hairline shadow-none">
-                                    <div className="space-y-2">
-                                        <Label className="flex justify-between items-end">
-                                            <span className="text-[14px] font-semibold text-cur-ink">교육 내용 (요약)</span>
-                                            <span className="text-[11px] text-cur-muted font-medium bg-cur-canvas px-2 py-0.5 rounded-[4px]">AI 자동 요약</span>
-                                        </Label>
-                                        <textarea
-                                            className="w-full p-4 border border-cur-hairline rounded-[10px] bg-cur-canvas min-h-[200px] text-[15px] font-medium leading-relaxed text-cur-ink focus:bg-cur-card focus:border-cur-primary focus:ring-1 focus:ring-cur-primary transition-all resize-none shadow-inner"
-                                            value={formData.educationContent}
-                                            onChange={handleChange}
-                                            name="educationContent"
-                                            placeholder="녹음 내용이 요약되어 여기에 표시됩니다."
-                                        />
+                                <>
+                                    {/* AI 안내 바 — 파랑=AI 표시 전용 */}
+                                    <div className="bg-cur-elevated rounded-[10px] p-3 flex items-start gap-2">
+                                        <Sparkles className="w-4 h-4 text-cur-info mt-0.5 shrink-0" />
+                                        <p className="text-[14px] text-cur-body leading-relaxed">AI가 녹음을 요약해 초안을 채웠어요. 내용을 탭하면 바로 수정할 수 있습니다.</p>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label className="text-[14px] font-semibold text-cur-ink">특이사항 (안내/전파)</Label>
-                                        <textarea
-                                            name="remarks"
-                                            value={formData.remarks}
-                                            onChange={handleChange}
-                                            className="w-full p-4 border border-cur-hairline rounded-[10px] h-32 text-[15px] font-medium bg-cur-card resize-none focus:border-cur-primary focus:ring-1 focus:ring-cur-primary transition-all shadow-sm"
-                                            placeholder="전달사항이나 공지사항이 여기에 표시됩니다."
-                                        />
-                                    </div>
-
-                                    <div className="bg-cur-canvas p-4 rounded-[10px] text-[13px] text-cur-muted-soft font-medium flex items-start gap-3 border border-cur-hairline">
-                                        <div className="bg-cur-card p-1 rounded-[6px] shadow-sm shrink-0">
-                                            <FileText className="w-4 h-4 text-cur-ink" />
+                                    <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                        <div className="px-4 py-3 border-b border-cur-hairline">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">교육 내용 (요약)</h3>
                                         </div>
-                                        <p className="leading-relaxed pt-0.5">내용이 올바르지 않다면 직접 수정해주세요. 이상이 없다면 완료 및 저장을 눌러주세요.</p>
+                                        <div className="p-4">
+                                            <textarea
+                                                name="educationContent"
+                                                value={formData.educationContent}
+                                                onChange={handleChange}
+                                                rows={8}
+                                                className={AREA_CLS}
+                                                placeholder="녹음 내용이 요약되어 여기에 표시됩니다."
+                                            />
+                                        </div>
                                     </div>
-                                </div>
+
+                                    <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
+                                        <div className="px-4 py-3 border-b border-cur-hairline">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">특이사항 (안내/전파)</h3>
+                                        </div>
+                                        <div className="p-4">
+                                            <textarea
+                                                name="remarks"
+                                                value={formData.remarks}
+                                                onChange={handleChange}
+                                                rows={4}
+                                                className={AREA_CLS}
+                                                placeholder="전달사항이나 공지사항이 여기에 표시됩니다."
+                                            />
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     )}
@@ -1009,7 +1010,7 @@ export default function TBMPage() {
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 현장 사진
                             </h2>
 
-                            <div className="aspect-video bg-cur-canvas rounded-[12px] border border-cur-hairline flex items-center justify-center relative overflow-hidden shadow-inner">
+                            <div className="aspect-video bg-cur-canvas rounded-[12px] border border-cur-hairline flex items-center justify-center relative overflow-hidden">
                                 {formData.photo ? (
                                     <img src={formData.photo} className="w-full h-full object-cover" alt="교육사진" />
                                 ) : (
@@ -1032,7 +1033,7 @@ export default function TBMPage() {
                                                 reader.readAsDataURL(e.target.files[0])
                                             }
                                         }} />
-                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-card text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-all group-active:scale-95">
+                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-all group-active:scale-95">
                                         <Camera className="w-5 h-5 mr-2" /> 바로 촬영
                                     </Button>
                                 </div>
@@ -1112,7 +1113,7 @@ export default function TBMPage() {
                                                 <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-all", p.gender === 'F' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>여</button>
                                             </div>
                                             <div className="flex-1" onClick={() => openSignModal({ type: 'participant', id: p.id })}>
-                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-[#86efac] rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain mix-blend-multiply" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">서명하기</Button>}
+                                                {p.signature ? <div className="h-10 bg-cur-success/5 border border-cur-success/30 rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain mix-blend-multiply" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">서명하기</Button>}
                                             </div>
                                         </div>
                                     </div>
@@ -1124,7 +1125,7 @@ export default function TBMPage() {
                     {step === 6 && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                                <CheckCircle2 className="w-10 h-10 text-[#16a34a]" />
+                                <CheckCircle2 className="w-10 h-10 text-cur-success" />
                             </div>
                             <h2 className="text-[24px] font-bold text-cur-ink mb-2 tracking-tight">저장 완료</h2>
                             <p className="text-[14px] text-cur-muted-soft text-center mb-10 font-medium">일지가 안전하게 등록되었습니다.</p>
@@ -1148,15 +1149,21 @@ export default function TBMPage() {
                             <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
                         {step < 5 ? (
-                            <Button 
-                                onClick={step === 2 ? submitRecording : handleNext} 
+                            <Button
+                                onClick={step === 2 ? submitRecording : handleNext}
                                 disabled={step === 2 && (isRecording || recordingCount === 0)}
-                                className="flex-[2] h-14 text-[16px] font-bold bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                                className={cn(
+                                    "flex-[2] h-14 text-[16px] font-bold text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
+                                    // step 2 일시정지 상태에서만 'AI 요약'을 주황으로 승격 — 커밋 행동=주황 패턴(step 5 '완료 및 저장'과 정합)
+                                    step === 2 && recordingCount > 0 && !isRecording
+                                        ? "bg-cur-primary hover:bg-cur-primary-active"
+                                        : "bg-cur-ink hover:bg-cur-ink/90"
+                                )}
                             >
                                 {step === 2 ? "AI 요약" : "다음 단계"}
                             </Button>
                         ) : (
-                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-[#16a34a] hover:bg-[#15803d] text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(22,163,74,0.2)] transition-transform active:scale-[0.98]">
+                            <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] shadow-sm transition-transform active:scale-[0.98]">
                                 {(isSaving || isProcessingSTT || isProcessingAI) ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <Save className="mr-2 w-5 h-5" />} 완료 및 저장
                             </Button>
                         )}
@@ -1221,7 +1228,7 @@ export default function TBMPage() {
                     </div>
                     <DialogFooter className="flex-row gap-3 border-t border-cur-hairline bg-cur-card p-4 shrink-0">
                         <Button variant="outline" onClick={() => confirmationSigCanvas.current?.clear()} className="flex-1 h-12 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">지우기</Button>
-                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-[#16a34a] text-cur-on-primary rounded-[10px] hover:bg-[#15803d]">동의 및 저장</Button>
+                        <Button onClick={handleConfirmAndSave} className="flex-1 h-12 text-[15px] font-bold bg-cur-primary text-cur-on-primary rounded-[10px] hover:bg-cur-primary-active shadow-sm">동의 및 저장</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
