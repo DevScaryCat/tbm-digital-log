@@ -218,9 +218,11 @@ export default function TutorialPage() {
         setAiLoading(true)
         setErrorMsg(null)
         try {
+            // 위저드(tbm-minutes)와 동일하게 세션 토큰을 실어야 서버가 사용자를 인식한다
+            const { data: { session } } = await supabase.auth.getSession()
             const res = await fetch("/api/ai/minutes", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
                 body: JSON.stringify({ text }),
             })
             const data = await res.json()
