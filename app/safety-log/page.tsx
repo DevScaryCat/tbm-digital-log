@@ -115,6 +115,8 @@ export default function TBMPage() {
     const [recordingTime, setRecordingTime] = useState(0)
     const sessionStartTimeRef = useRef<number | null>(null);
     const accumulatedTimeRef = useRef<number>(0);
+    // 화면 꺼짐/이동으로 자동 일시정지됐음을 재개 화면에서 안내하기 위한 플래그
+    const [autoPaused, setAutoPaused] = useState(false);
     const MAX_RECORDING_TIME = 1200;
 
     // 20분 상한 임박 알림(3분·1분 전 각 1회) — 진동(안드로이드) + 짧은 알림음(진동 미지원 아이폰 폴백).
@@ -206,6 +208,7 @@ export default function TBMPage() {
                 if (recognitionRef.current) recognitionRef.current.stop();
                 setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
                 setRecordingCount(prev => prev + 1);
+                setAutoPaused(true);
             }
         };
         document.addEventListener("visibilitychange", handleVisibility);
@@ -215,6 +218,25 @@ export default function TBMPage() {
             window.removeEventListener("pagehide", handleVisibility);
         };
     }, []);
+
+    // 녹음 중 화면 자동 꺼짐 방지(Wake Lock) — 화면이 꺼지면 브라우저가 마이크·음성인식을
+    // 중단시키므로 녹음 동안은 화면을 깨워둔다(안드로이드 크롬·iOS 사파리 16.4+ 지원,
+    // 미지원 브라우저는 기존 "화면을 켜두세요" 안내가 커버).
+    useEffect(() => {
+        if (!isRecording) return;
+        let sentinel: WakeLockSentinel | null = null;
+        let cancelled = false;
+        void (async () => {
+            try {
+                sentinel = (await navigator.wakeLock?.request("screen")) ?? null;
+                if (cancelled) void sentinel?.release();
+            } catch { /* 저전력 모드 거부·구형 브라우저 미지원은 무시 */ }
+        })();
+        return () => {
+            cancelled = true;
+            try { void sentinel?.release(); } catch { /* 이미 해제됨 */ }
+        };
+    }, [isRecording]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -626,6 +648,7 @@ export default function TBMPage() {
     }
 
     const startRecording = async () => {
+        setAutoPaused(false);
         const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
         if (/KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line|DaumApps/i.test(ua)) {
             alert("카카오톡·네이버 등 인앱 브라우저에서는 음성 녹음이 동작하지 않습니다.\n우측 상단 메뉴에서 'Safari/Chrome으로 열기'를 눌러 외부 브라우저로 진행해주세요.");
@@ -941,6 +964,9 @@ export default function TBMPage() {
                                             <span className="text-[15px] font-semibold text-cur-ink">녹음 완료</span>
                                             <span className="text-[13px] text-cur-muted font-mono">{recordingCount}회 · {formatTime(recordingTime)}</span>
                                         </div>
+                                        {autoPaused && (
+                                            <p className="text-[13px] text-cur-body font-medium">화면이 꺼지거나 다른 화면으로 이동해 자동 일시정지됐어요 — &lsquo;이어서 녹음&rsquo;을 누르면 계속됩니다.</p>
+                                        )}
                                         <Button onClick={startRecording} variant="outline" className="w-full h-12 rounded-[8px] border border-cur-hairline bg-cur-card text-cur-ink text-[15px] font-semibold hover:bg-cur-elevated shadow-none">
                                             <Play className="mr-2 w-4 h-4 text-cur-muted" /> 이어서 녹음
                                         </Button>
