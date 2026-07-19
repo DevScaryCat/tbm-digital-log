@@ -187,28 +187,28 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </div>
             ) : (
                 <>
-                    <div className="flex justify-between items-center w-full">
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => router.push(backHref ?? '/')}
-                            className="h-10 w-10 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-colors"
-                        >
-                            {backHref ? <ChevronLeft className="w-5 h-5 text-cur-body" /> : <Home className="w-5 h-5 text-cur-body" />}
-                        </Button>
-                        {userProfileDropdown}
-                    </div>
-                    <div className="w-full h-[1px] bg-cur-hairline my-1" />
-                    <div className="flex items-center justify-between w-full gap-2">
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-[20px] font-bold text-cur-ink tracking-tight">{title}</h1>
+                    {/* 아이콘·제목·프로필을 한 줄로 — 제목이 별도 행을 차지하던 이전 배치보다 컴팩트 */}
+                    <div className="flex justify-between items-center w-full gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => router.push(backHref ?? '/')}
+                                className="h-10 w-10 shrink-0 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-colors"
+                            >
+                                {backHref ? <ChevronLeft className="w-5 h-5 text-cur-body" /> : <Home className="w-5 h-5 text-cur-body" />}
+                            </Button>
+                            <h1 className="text-[18px] font-bold text-cur-ink tracking-tight truncate">{title}</h1>
                             {pageBadge && (
-                                <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/10 px-2 py-0.5 rounded-full">
+                                <span className="text-[11px] font-bold text-cur-primary bg-cur-primary/10 px-2 py-0.5 rounded-full shrink-0">
                                     {pageBadge}
                                 </span>
                             )}
                         </div>
-                        {titleAction}
+                        <div className="flex items-center gap-2 shrink-0">
+                            {titleAction}
+                            {userProfileDropdown}
+                        </div>
                     </div>
                 </>
             )}
