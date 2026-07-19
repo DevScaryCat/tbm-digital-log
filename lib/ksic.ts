@@ -1,5 +1,6 @@
-// lib/ksic.ts — 한국표준산업분류(KSIC 10차) 기반 업종·공종 선택 목록
-// 용어 매핑(제품 언어): 업종 = KSIC 대분류(A~U), 공종 = KSIC 중분류(2자리).
+// lib/ksic.ts — 업종·공종 선택 목록 (한국표준산업분류 KSIC 10차 기반, TBM 관련 업종만 발췌)
+// 용어 매핑(제품 언어): 업종 = KSIC 대분류, 공종 = KSIC 중분류.
+// 가입 단순화를 위해 TBM·안전관리 수요가 있는 고위험 업종만 남기고 나머지는 "기타"로 수렴.
 // 가입 위저드(app/signup)와 내 정보 수정(app/profile)이 공유한다.
 // 저장 값은 이름 문자열(코드 아님) — 기존 user_metadata(industry/work_category)와 형식 호환.
 // 서버(app/api/signup)는 40자 절단이 있으므로 이름은 40자 이내로 유지할 것.
@@ -7,23 +8,12 @@
 export type KsicMinor = { code: string; name: string }
 export type KsicMajor = { code: string; name: string; minors: KsicMinor[] }
 
-// KSIC 대분류 순서(A~U) 그대로. TBM 다빈도 업종은 FREQUENT_CODES로 상단 그룹에 노출.
 export const KSIC_MAJORS: KsicMajor[] = [
     {
-        code: "A", name: "농업, 임업 및 어업",
+        code: "F", name: "건설업",
         minors: [
-            { code: "01", name: "농업" },
-            { code: "02", name: "임업" },
-            { code: "03", name: "어업" },
-        ],
-    },
-    {
-        code: "B", name: "광업",
-        minors: [
-            { code: "05", name: "석탄, 원유 및 천연가스 광업" },
-            { code: "06", name: "금속 광업" },
-            { code: "07", name: "비금속광물 광업(연료용 제외)" },
-            { code: "08", name: "광업 지원 서비스업" },
+            { code: "41", name: "종합 건설업" },
+            { code: "42", name: "전문직별 공사업" },
         ],
     },
     {
@@ -31,29 +21,32 @@ export const KSIC_MAJORS: KsicMajor[] = [
         minors: [
             { code: "10", name: "식료품 제조업" },
             { code: "11", name: "음료 제조업" },
-            { code: "12", name: "담배 제조업" },
             { code: "13", name: "섬유제품 제조업(의복 제외)" },
-            { code: "14", name: "의복, 의복 액세서리 및 모피 제조업" },
-            { code: "15", name: "가죽, 가방 및 신발 제조업" },
             { code: "16", name: "목재 및 나무제품 제조업(가구 제외)" },
             { code: "17", name: "펄프, 종이 및 종이제품 제조업" },
-            { code: "18", name: "인쇄 및 기록매체 복제업" },
             { code: "19", name: "코크스, 연탄 및 석유정제품 제조업" },
             { code: "20", name: "화학물질 및 화학제품 제조업(의약품 제외)" },
-            { code: "21", name: "의료용 물질 및 의약품 제조업" },
             { code: "22", name: "고무 및 플라스틱제품 제조업" },
             { code: "23", name: "비금속 광물제품 제조업" },
             { code: "24", name: "1차 금속 제조업" },
             { code: "25", name: "금속 가공제품 제조업(기계·가구 제외)" },
             { code: "26", name: "전자부품·컴퓨터·영상·음향·통신장비 제조업" },
-            { code: "27", name: "의료, 정밀, 광학기기 및 시계 제조업" },
             { code: "28", name: "전기장비 제조업" },
             { code: "29", name: "기타 기계 및 장비 제조업" },
             { code: "30", name: "자동차 및 트레일러 제조업" },
-            { code: "31", name: "기타 운송장비 제조업" },
+            { code: "31", name: "기타 운송장비 제조업(조선 등)" },
             { code: "32", name: "가구 제조업" },
             { code: "33", name: "기타 제품 제조업" },
             { code: "34", name: "산업용 기계 및 장비 수리업" },
+        ],
+    },
+    {
+        code: "H", name: "운수 및 창고업",
+        minors: [
+            { code: "49", name: "육상 운송 및 파이프라인 운송업" },
+            { code: "50", name: "수상 운송업" },
+            { code: "51", name: "항공 운송업" },
+            { code: "52", name: "창고 및 운송관련 서비스업" },
         ],
     },
     {
@@ -72,72 +65,24 @@ export const KSIC_MAJORS: KsicMajor[] = [
         ],
     },
     {
-        code: "F", name: "건설업",
+        code: "B", name: "광업",
         minors: [
-            { code: "41", name: "종합 건설업" },
-            { code: "42", name: "전문직별 공사업" },
+            { code: "05", name: "석탄, 원유 및 천연가스 광업" },
+            { code: "06", name: "금속 광업" },
+            { code: "07", name: "비금속광물 광업(연료용 제외)" },
+            { code: "08", name: "광업 지원 서비스업" },
         ],
     },
     {
-        code: "G", name: "도매 및 소매업",
+        code: "A", name: "농업, 임업 및 어업",
         minors: [
-            { code: "45", name: "자동차 및 부품 판매업" },
-            { code: "46", name: "도매 및 상품 중개업" },
-            { code: "47", name: "소매업(자동차 제외)" },
+            { code: "01", name: "농업" },
+            { code: "02", name: "임업" },
+            { code: "03", name: "어업" },
         ],
     },
     {
-        code: "H", name: "운수 및 창고업",
-        minors: [
-            { code: "49", name: "육상 운송 및 파이프라인 운송업" },
-            { code: "50", name: "수상 운송업" },
-            { code: "51", name: "항공 운송업" },
-            { code: "52", name: "창고 및 운송관련 서비스업" },
-        ],
-    },
-    {
-        code: "I", name: "숙박 및 음식점업",
-        minors: [
-            { code: "55", name: "숙박업" },
-            { code: "56", name: "음식점 및 주점업" },
-        ],
-    },
-    {
-        code: "J", name: "정보통신업",
-        minors: [
-            { code: "58", name: "출판업" },
-            { code: "59", name: "영상·오디오 기록물 제작 및 배급업" },
-            { code: "60", name: "방송업" },
-            { code: "61", name: "우편 및 통신업" },
-            { code: "62", name: "컴퓨터 프로그래밍·시스템 통합 및 관리업" },
-            { code: "63", name: "정보서비스업" },
-        ],
-    },
-    {
-        code: "K", name: "금융 및 보험업",
-        minors: [
-            { code: "64", name: "금융업" },
-            { code: "65", name: "보험 및 연금업" },
-            { code: "66", name: "금융 및 보험관련 서비스업" },
-        ],
-    },
-    {
-        code: "L", name: "부동산업",
-        minors: [
-            { code: "68", name: "부동산업" },
-        ],
-    },
-    {
-        code: "M", name: "전문, 과학 및 기술 서비스업",
-        minors: [
-            { code: "70", name: "연구개발업" },
-            { code: "71", name: "전문 서비스업" },
-            { code: "72", name: "건축기술·엔지니어링·과학기술 서비스업" },
-            { code: "73", name: "기타 전문, 과학 및 기술 서비스업" },
-        ],
-    },
-    {
-        code: "N", name: "사업시설 관리, 사업 지원 및 임대 서비스업",
+        code: "N", name: "시설관리·사업지원 서비스업",
         minors: [
             { code: "74", name: "사업시설 관리 및 조경 서비스업" },
             { code: "75", name: "사업 지원 서비스업" },
@@ -145,62 +90,12 @@ export const KSIC_MAJORS: KsicMajor[] = [
         ],
     },
     {
-        code: "O", name: "공공행정, 국방 및 사회보장 행정",
+        code: "ETC", name: "기타",
         minors: [
-            { code: "84", name: "공공행정, 국방 및 사회보장 행정" },
-        ],
-    },
-    {
-        code: "P", name: "교육 서비스업",
-        minors: [
-            { code: "85", name: "교육 서비스업" },
-        ],
-    },
-    {
-        code: "Q", name: "보건업 및 사회복지 서비스업",
-        minors: [
-            { code: "86", name: "보건업" },
-            { code: "87", name: "사회복지 서비스업" },
-        ],
-    },
-    {
-        code: "R", name: "예술, 스포츠 및 여가관련 서비스업",
-        minors: [
-            { code: "90", name: "창작, 예술 및 여가관련 서비스업" },
-            { code: "91", name: "스포츠 및 오락관련 서비스업" },
-        ],
-    },
-    {
-        code: "S", name: "협회 및 단체, 수리 및 기타 개인 서비스업",
-        minors: [
-            { code: "94", name: "협회 및 단체" },
-            { code: "95", name: "개인 및 소비용품 수리업" },
-            { code: "96", name: "기타 개인 서비스업" },
-        ],
-    },
-    {
-        code: "T", name: "가구 내 고용활동·자가소비 생산활동",
-        minors: [
-            { code: "97", name: "가구 내 고용활동" },
-            { code: "98", name: "자가소비를 위한 재화·서비스 생산활동" },
-        ],
-    },
-    {
-        code: "U", name: "국제 및 외국기관",
-        minors: [
-            { code: "99", name: "국제 및 외국기관" },
+            { code: "ETC", name: "기타" },
         ],
     },
 ]
-
-// TBM(작업 전 안전점검회의)을 자주 쓰는 고위험 업종 — 선택 목록 상단 그룹으로 노출
-const FREQUENT_CODES = ["F", "C", "H", "D", "E", "B"]
-
-export const KSIC_FREQUENT: KsicMajor[] = FREQUENT_CODES
-    .map((c) => KSIC_MAJORS.find((m) => m.code === c))
-    .filter((m): m is KsicMajor => !!m)
-
-export const KSIC_OTHERS: KsicMajor[] = KSIC_MAJORS.filter((m) => !FREQUENT_CODES.includes(m.code))
 
 export function findKsicMajor(name: string): KsicMajor | undefined {
     return KSIC_MAJORS.find((m) => m.name === name)

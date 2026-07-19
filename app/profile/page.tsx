@@ -7,12 +7,12 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
-import { KSIC_FREQUENT, KSIC_OTHERS, findKsicMajor } from "@/lib/ksic"
+import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 
 export default function ProfilePage() {
     const router = useRouter()
@@ -172,22 +172,11 @@ export default function ProfilePage() {
                                 <SelectValue placeholder="업종 선택" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectGroup>
-                                    <SelectLabel className="text-[12px] text-cur-muted">자주 찾는 업종</SelectLabel>
-                                    {KSIC_FREQUENT.map((m) => (
-                                        <SelectItem key={m.code} value={m.name}>
-                                            {m.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectGroup>
-                                <SelectGroup>
-                                    <SelectLabel className="text-[12px] text-cur-muted border-t border-cur-hairline mt-1 pt-2">그 외 업종</SelectLabel>
-                                    {KSIC_OTHERS.map((m) => (
-                                        <SelectItem key={m.code} value={m.name}>
-                                            {m.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectGroup>
+                                {KSIC_MAJORS.map((m) => (
+                                    <SelectItem key={m.code} value={m.name}>
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
                                 {isLegacyIndustry && (
                                     <SelectItem value={industry}>{industry} (이전 항목)</SelectItem>
                                 )}

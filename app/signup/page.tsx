@@ -10,12 +10,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
-import { KSIC_FREQUENT, KSIC_OTHERS, findKsicMajor } from "@/lib/ksic"
+import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
@@ -313,14 +313,7 @@ export default function SignupPage() {
                                             <SelectValue placeholder="업종을 선택해주세요" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                            <SelectGroup>
-                                                <SelectLabel className="text-[12px] text-cur-muted">자주 찾는 업종</SelectLabel>
-                                                {KSIC_FREQUENT.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
-                                            </SelectGroup>
-                                            <SelectGroup>
-                                                <SelectLabel className="text-[12px] text-cur-muted border-t border-cur-hairline mt-1 pt-2">그 외 업종</SelectLabel>
-                                                {KSIC_OTHERS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
-                                            </SelectGroup>
+                                            {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
