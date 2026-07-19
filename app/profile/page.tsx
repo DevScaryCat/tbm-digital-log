@@ -7,14 +7,12 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
-
-// 가입 위저드(app/signup)와 동일한 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
-const INDUSTRIES = ["건설업", "제조업", "물류·운수업", "조선·플랜트", "전기·정보통신공사", "시설관리·서비스업", "기타"]
-const WORK_CATEGORIES = ["건축", "토목", "전기", "기계설비", "소방", "정보통신", "조경", "철근콘크리트", "도장·방수", "실내건축(인테리어)", "기타"]
+// 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
+import { KSIC_FREQUENT, KSIC_OTHERS, findKsicMajor } from "@/lib/ksic"
 
 export default function ProfilePage() {
     const router = useRouter()
@@ -51,8 +49,11 @@ export default function ProfilePage() {
         })()
     }, [router])
 
-    // 업종이 건설업이 아니면 공종은 의미 없음 (가입 위저드와 동일 규칙)
-    const isConstruction = industry === "건설업"
+    // KSIC 개편 이전에 저장된 구 값(예: "물류·운수업", "건축")은 목록에 없어도 선택 상태로 보이게 항목을 덧붙인다.
+    const selectedMajor = industry ? findKsicMajor(industry) : undefined
+    const isLegacyIndustry = !!industry && !selectedMajor
+    const minors = selectedMajor?.minors ?? []
+    const isLegacyWorkCategory = !!workCategory && !minors.some((mi) => mi.name === workCategory)
 
     const handleSave = async () => {
         if (!fullName.trim()) {
@@ -73,7 +74,7 @@ export default function ProfilePage() {
                     worker_type: workerType,
                     ...(exportFormat ? { preferred_export_format: exportFormat } : {}),
                     industry: industry || null,
-                    work_category: (isConstruction ? workCategory : "") || null,
+                    work_category: workCategory || null,
                 },
             })
             if (error) throw error
@@ -162,22 +163,38 @@ export default function ProfilePage() {
                             value={industry}
                             onValueChange={(v) => {
                                 setIndustry(v)
-                                if (v !== "건설업") setWorkCategory("")
+                                // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
+                                const next = findKsicMajor(v)?.minors ?? []
+                                setWorkCategory(next.length === 1 ? next[0].name : "")
                             }}
                         >
                             <SelectTrigger className="w-full h-11 text-[14px]">
                                 <SelectValue placeholder="업종 선택" />
                             </SelectTrigger>
                             <SelectContent>
-                                {INDUSTRIES.map((it) => (
-                                    <SelectItem key={it} value={it}>
-                                        {it}
-                                    </SelectItem>
-                                ))}
+                                <SelectGroup>
+                                    <SelectLabel className="text-[12px] text-cur-muted">자주 찾는 업종</SelectLabel>
+                                    {KSIC_FREQUENT.map((m) => (
+                                        <SelectItem key={m.code} value={m.name}>
+                                            {m.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                                <SelectGroup>
+                                    <SelectLabel className="text-[12px] text-cur-muted border-t border-cur-hairline mt-1 pt-2">그 외 업종</SelectLabel>
+                                    {KSIC_OTHERS.map((m) => (
+                                        <SelectItem key={m.code} value={m.name}>
+                                            {m.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                                {isLegacyIndustry && (
+                                    <SelectItem value={industry}>{industry} (이전 항목)</SelectItem>
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
-                    {isConstruction && (
+                    {industry && (
                         <div className="space-y-2">
                             <Label className="text-[13px] font-medium text-cur-body">공종</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory}>
@@ -185,11 +202,14 @@ export default function ProfilePage() {
                                     <SelectValue placeholder="공종 선택" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {WORK_CATEGORIES.map((it) => (
-                                        <SelectItem key={it} value={it}>
-                                            {it}
+                                    {minors.map((mi) => (
+                                        <SelectItem key={mi.code} value={mi.name}>
+                                            {mi.name}
                                         </SelectItem>
                                     ))}
+                                    {isLegacyWorkCategory && (
+                                        <SelectItem value={workCategory}>{workCategory} (이전 항목)</SelectItem>
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>

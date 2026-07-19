@@ -20,9 +20,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "모든 필드를 입력해주세요." }, { status: 400 });
     }
 
-    // 업종/공종: 데이터 분석용 프로필(선택 목록 외 임의 값 방지, 최대 30자)
-    const industryStr = typeof industry === "string" ? industry.trim().slice(0, 30) : "";
-    const workCategoryStr = typeof workCategory === "string" ? workCategory.trim().slice(0, 30) : "";
+    // 업종/공종: 데이터 분석용 프로필(선택 목록 외 임의 값 방지, 최대 40자 — KSIC 분류명 수용)
+    const industryStr = typeof industry === "string" ? industry.trim().slice(0, 40) : "";
+    const workCategoryStr = typeof workCategory === "string" ? workCategory.trim().slice(0, 40) : "";
 
     // 근로자 구분: 교육시간 산정용 — 화이트리스트 외 값·누락이면 기본값(현장 근로자)
     const WORKER_TYPES = ["현장 근로자 (비사무직)", "사무직 / 판매직"];

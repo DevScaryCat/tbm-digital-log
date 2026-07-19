@@ -10,14 +10,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
-
-const INDUSTRIES = ["건설업", "제조업", "물류·운수업", "조선·플랜트", "전기·정보통신공사", "시설관리·서비스업", "기타"]
-const WORK_CATEGORIES = ["건축", "토목", "전기", "기계설비", "소방", "정보통신", "조경", "철근콘크리트", "도장·방수", "실내건축(인테리어)", "기타"]
+import { KSIC_FREQUENT, KSIC_OTHERS, findKsicMajor } from "@/lib/ksic"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
@@ -65,6 +63,13 @@ export default function SignupPage() {
         ? ["account", "site", "phone", "confirm"]
         : ["account", "site", "confirm"]
     const stepKey = stepKeys[stepIdx]
+
+    // 단계별 필수 입력이 모두 채워졌는지 — 비어 있으면 "다음" 비활성화 (형식 검증은 클릭 시 메시지로)
+    const stepFilled =
+        stepKey === "account" ? !!(id.trim() && password && passwordConfirm)
+        : stepKey === "site" ? !!(siteName.trim() && industry && workCategory)
+        : stepKey === "phone" ? !!verificationId
+        : true
 
     const startCooldown = (sec: number) => {
         setCooldown(sec)
@@ -127,7 +132,7 @@ export default function SignupPage() {
         if (key === "site") {
             if (!siteName.trim()) return "현장명(회사명)을 입력해주세요."
             if (!industry) return "업종을 선택해주세요."
-            if (industry === "건설업" && !workCategory) return "공종을 선택해주세요."
+            if (!workCategory) return "공종을 선택해주세요."
         }
         if (key === "phone") {
             if (!verificationId) return "휴대폰 인증을 완료해주세요."
@@ -170,7 +175,7 @@ export default function SignupPage() {
                 body: JSON.stringify({
                     id, password, siteName,
                     industry,
-                    workCategory: industry === "건설업" ? workCategory : "",
+                    workCategory,
                     workerType,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 })
@@ -298,16 +303,28 @@ export default function SignupPage() {
                                 </div>
                                 <div className="space-y-2.5">
                                     <Label className="text-[15px] font-semibold text-cur-ink">업종</Label>
-                                    <Select value={industry} onValueChange={(v) => { setIndustry(v); if (v !== "건설업") setWorkCategory("") }}>
+                                    <Select value={industry} onValueChange={(v) => {
+                                        setIndustry(v)
+                                        // 중분류가 하나뿐인 업종(전기·가스, 부동산 등)은 공종을 자동 선택
+                                        const minors = findKsicMajor(v)?.minors ?? []
+                                        setWorkCategory(minors.length === 1 ? minors[0].name : "")
+                                    }}>
                                         <SelectTrigger className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] text-cur-ink">
                                             <SelectValue placeholder="업종을 선택해주세요" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                            {INDUSTRIES.map((v) => <SelectItem key={v} value={v} className="text-[15px] py-2.5">{v}</SelectItem>)}
+                                            <SelectGroup>
+                                                <SelectLabel className="text-[12px] text-cur-muted">자주 찾는 업종</SelectLabel>
+                                                {KSIC_FREQUENT.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
+                                            </SelectGroup>
+                                            <SelectGroup>
+                                                <SelectLabel className="text-[12px] text-cur-muted border-t border-cur-hairline mt-1 pt-2">그 외 업종</SelectLabel>
+                                                {KSIC_OTHERS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
+                                            </SelectGroup>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                {industry === "건설업" && (
+                                {industry && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
                                         <Label className="text-[15px] font-semibold text-cur-ink">공종</Label>
                                         <Select value={workCategory} onValueChange={setWorkCategory}>
@@ -315,7 +332,7 @@ export default function SignupPage() {
                                                 <SelectValue placeholder="주력 공종을 선택해주세요" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                                {WORK_CATEGORIES.map((v) => <SelectItem key={v} value={v} className="text-[15px] py-2.5">{v}</SelectItem>)}
+                                                {(findKsicMajor(industry)?.minors ?? []).map((mi) => <SelectItem key={mi.code} value={mi.name} className="text-[15px] py-2.5">{mi.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -377,7 +394,7 @@ export default function SignupPage() {
                                     ["아이디", id],
                                     ["현장명", siteName],
                                     ["업종", industry],
-                                    ...(industry === "건설업" ? [["공종", workCategory]] : []),
+                                    ["공종", workCategory],
                                     ["근로자 구분", workerType],
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
@@ -409,7 +426,7 @@ export default function SignupPage() {
                                 </Button>
                             )}
                             {stepKey !== "confirm" ? (
-                                <Button type="button" onClick={goNext} disabled={checkingId} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]">
+                                <Button type="button" onClick={goNext} disabled={checkingId || !stepFilled} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98] disabled:opacity-40">
                                     {checkingId ? <Loader2 className="h-5 w-5 animate-spin" /> : "다음"}
                                 </Button>
                             ) : (
