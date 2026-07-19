@@ -59,10 +59,11 @@ const LEVEL_BORDER: Record<string, string> = {
     "하": "border-l-cur-success",
 }
 
-// 눌러보기 투어 — 실제 위저드 순서 그대로: 홈 → ①정보 → ②녹음(AI 요약) → ③QR 서명 → ④검토 → 출력
-type TourStage = "home" | "info" | "record" | "recording" | "ai" | "sign" | "review" | "export"
+// 눌러보기 투어 — 실제 위저드 순서 그대로: 홈 → ①정보 → ②녹음(AI 요약) → ③QR 서명 → ④검토 → 완성본
+type TourStage = "home" | "info" | "record" | "recording" | "ai" | "sign" | "review"
 // 진행 점 표시용 인덱스 (ai는 recording과 같은 칸 — 자동 전환 구간)
-const TOUR_DOT: Record<TourStage, number> = { home: 0, info: 1, record: 2, recording: 3, ai: 3, sign: 4, review: 5, export: 6 }
+const TOUR_DOT: Record<TourStage, number> = { home: 0, info: 1, record: 2, recording: 3, ai: 3, sign: 4, review: 5 }
+const TOUR_DOT_COUNT = 6
 const TOUR_GUIDE: Record<TourStage, string> = {
     home: "홈에서 'TBM 회의록 작성'을 눌러보세요",
     info: "날짜·시간은 자동으로 채워져요. 확인만 하고 다음",
@@ -70,8 +71,7 @@ const TOUR_GUIDE: Record<TourStage, string> = {
     recording: "말하는 내용이 실시간으로 글자가 돼요. 다 끝나면 AI 요약",
     ai: "AI가 회의 내용을 회의록으로 정리하는 중이에요",
     sign: "근로자들은 각자 폰으로 QR만 찍으면 서명돼요",
-    review: "AI가 채워준 내용을 확인하세요. 틀린 것만 고치면 돼요",
-    export: "완성된 문서는 원하는 형식으로 출력해요",
+    review: "AI가 다 채워놨어요. 훑어보고 저장하면 끝",
 }
 
 export default function TutorialPage() {
@@ -113,11 +113,13 @@ export default function TutorialPage() {
     }, [])
 
     // 투어: 녹음 화면 타자 효과 — sample.script를 실시간 인식처럼 흘려보낸다
+    // 경과 시간 기반(초당 50자): 탭이 백그라운드로 가서 타이머가 스로틀돼도 복귀 즉시 따라잡는다
     useEffect(() => {
         if (view !== "tour" || tourStage !== "recording") return
         const total = sample.script.length
+        const startedAt = Date.now()
         const iv = setInterval(() => {
-            setTypedLen((l) => (l >= total ? l : l + 2))
+            setTypedLen(Math.min(total, Math.floor((Date.now() - startedAt) / 20)))
         }, 40)
         return () => clearInterval(iv)
     }, [view, tourStage, sample])
@@ -330,8 +332,8 @@ export default function TutorialPage() {
                             >
                                 <ChevronLeft className="w-4 h-4" /> 처음으로
                             </button>
-                            <div className="flex items-center gap-1.5" aria-label={`7단계 중 ${TOUR_DOT[tourStage] + 1}단계`}>
-                                {Array.from({ length: 7 }).map((_, i) => (
+                            <div className="flex items-center gap-1.5" aria-label={`${TOUR_DOT_COUNT}단계 중 ${TOUR_DOT[tourStage] + 1}단계`}>
+                                {Array.from({ length: TOUR_DOT_COUNT }).map((_, i) => (
                                     <span key={i} className={cn("w-1.5 h-1.5 rounded-full", i <= TOUR_DOT[tourStage] ? "bg-cur-primary" : "bg-cur-hairline-strong")} />
                                 ))}
                             </div>
@@ -485,18 +487,8 @@ export default function TutorialPage() {
                                 {tourStage === "review" && (
                                     <div className="p-4 space-y-3">
                                         <p className="text-[13px] font-bold text-cur-ink">④ 검토</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2">
-                                                <p className="text-[11px] text-cur-muted font-medium">공정명</p>
-                                                <p className="text-[12px] font-medium text-cur-ink truncate">{sample.processName}</p>
-                                            </div>
-                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2">
-                                                <p className="text-[11px] text-cur-muted font-medium">작업명</p>
-                                                <p className="text-[12px] font-medium text-cur-ink truncate">{sample.workName}</p>
-                                            </div>
-                                        </div>
                                         <div className="space-y-2">
-                                            {sample.hazards.map((h, i) => (
+                                            {sample.hazards.slice(0, 2).map((h, i) => (
                                                 <div key={i} className={cn("border-l-2 bg-cur-canvas rounded-r-[8px] px-3 py-2", LEVEL_BORDER[h.level] ?? LEVEL_BORDER["중"])}>
                                                     <div className="flex items-center gap-1.5">
                                                         <span className={cn("shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-[5px]", LEVEL_BADGE[h.level] ?? LEVEL_BADGE["중"])}>{h.level}</span>
@@ -505,41 +497,16 @@ export default function TutorialPage() {
                                                     <p className="text-[11px] text-cur-body mt-1 leading-snug">{h.measure}</p>
                                                 </div>
                                             ))}
+                                            <p className="text-[11px] text-cur-muted-soft px-1">…위험요인과 대책까지 자동으로 채워져요</p>
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => setTourStage("export")}
+                                            onClick={showSampleResult}
                                             className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
                                         >
                                             <PulseRing className="rounded-[10px]" />
                                             완료 및 저장
                                         </button>
-                                    </div>
-                                )}
-
-                                {tourStage === "export" && (
-                                    <div className="p-4 space-y-3">
-                                        <p className="text-[13px] font-bold text-cur-ink">문서 출력</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {[
-                                                { label: "한글", ext: ".hwpx", hot: true },
-                                                { label: "워드", ext: ".docx" },
-                                                { label: "엑셀", ext: ".xlsx" },
-                                                { label: "PDF", ext: "출력 전용" },
-                                            ].map((f) => (
-                                                <button
-                                                    key={f.label}
-                                                    type="button"
-                                                    onClick={showSampleResult}
-                                                    className="relative rounded-[8px] border border-cur-hairline bg-cur-card px-3 py-3 text-left hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                                                >
-                                                    {f.hot && <PulseRing className="rounded-[10px]" />}
-                                                    <p className="text-[13px] font-semibold text-cur-ink">{f.label}</p>
-                                                    <p className="text-[11px] text-cur-muted mt-0.5">{f.ext}</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <p className="text-[11px] text-cur-muted">기본 출력 형식은 '내 정보 수정'에서 언제든 바꿀 수 있어요</p>
                                     </div>
                                 )}
                             </div>
