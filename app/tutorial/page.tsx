@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabaseClient"
-import { AlertCircle, ChevronLeft, ChevronRight, Eye, FileText, Loader2, Mic, Square } from "lucide-react"
+import { AlertCircle, Check, ChevronLeft, ChevronRight, FileText, Hand, Loader2, Mic, QrCode, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
 
@@ -33,6 +33,11 @@ interface CustomWindow extends Window {
     webkitSpeechRecognition?: new () => SpeechRecognition
 }
 
+// 투어에서 "지금 누를 버튼"을 알려주는 깜빡이 링
+const PulseRing = ({ className }: { className?: string }) => (
+    <span aria-hidden className={cn("absolute -inset-1 rounded-[12px] ring-2 ring-cur-primary animate-pulse pointer-events-none", className)} />
+)
+
 interface ResultData {
     processName: string
     workName: string
@@ -48,10 +53,32 @@ const LEVEL_BADGE: Record<string, string> = {
     "중": "bg-cur-primary/10 text-cur-primary",
     "하": "bg-cur-success/10 text-cur-success",
 }
+const LEVEL_BORDER: Record<string, string> = {
+    "상": "border-l-cur-error",
+    "중": "border-l-cur-primary",
+    "하": "border-l-cur-success",
+}
+
+// 눌러보기 투어 — 실제 위저드 순서 그대로: 홈 → ①정보 → ②녹음(AI 요약) → ③QR 서명 → ④검토 → 출력
+type TourStage = "home" | "info" | "record" | "recording" | "ai" | "sign" | "review" | "export"
+// 진행 점 표시용 인덱스 (ai는 recording과 같은 칸 — 자동 전환 구간)
+const TOUR_DOT: Record<TourStage, number> = { home: 0, info: 1, record: 2, recording: 3, ai: 3, sign: 4, review: 5, export: 6 }
+const TOUR_GUIDE: Record<TourStage, string> = {
+    home: "홈에서 'TBM 회의록 작성'을 눌러보세요",
+    info: "날짜·시간은 자동으로 채워져요. 확인만 하고 다음",
+    record: "녹음 시작을 누르고, 평소 하던 조회 그대로 말하면 돼요",
+    recording: "말하는 내용이 실시간으로 글자가 돼요. 다 끝나면 AI 요약",
+    ai: "AI가 회의 내용을 회의록으로 정리하는 중이에요",
+    sign: "근로자들은 각자 폰으로 QR만 찍으면 서명돼요",
+    review: "AI가 채워준 내용을 확인하세요. 틀린 것만 고치면 돼요",
+    export: "완성된 문서는 원하는 형식으로 출력해요",
+}
 
 export default function TutorialPage() {
     const router = useRouter()
-    const [view, setView] = useState<"intro" | "record" | "result">("intro")
+    const [view, setView] = useState<"intro" | "tour" | "record" | "result">("intro")
+    const [tourStage, setTourStage] = useState<TourStage>("home")
+    const [typedLen, setTypedLen] = useState(0)
     const [sample, setSample] = useState<TutorialSample>(() => getTutorialSample(null))
     const [result, setResult] = useState<ResultData | null>(null)
     const [source, setSource] = useState<"sample" | "record">("sample")
@@ -84,6 +111,31 @@ export default function TutorialPage() {
             if (timerRef.current) clearInterval(timerRef.current)
         }
     }, [])
+
+    // 투어: 녹음 화면 타자 효과 — sample.script를 실시간 인식처럼 흘려보낸다
+    useEffect(() => {
+        if (view !== "tour" || tourStage !== "recording") return
+        const total = sample.script.length
+        const iv = setInterval(() => {
+            setTypedLen((l) => (l >= total ? l : l + 2))
+        }, 40)
+        return () => clearInterval(iv)
+    }, [view, tourStage, sample])
+
+    // 투어: AI 요약 스피너 → 자동으로 서명 단계 전환
+    useEffect(() => {
+        if (view !== "tour" || tourStage !== "ai") return
+        const t = setTimeout(() => setTourStage("sign"), 1600)
+        return () => clearTimeout(t)
+    }, [view, tourStage])
+
+    const startTour = () => {
+        stopRecognition()
+        setErrorMsg(null)
+        setTypedLen(0)
+        setTourStage("home")
+        setView("tour")
+    }
 
     // 완료/건너뛰기 공통 — 다시 안 보이게 표시하고 이동 (실패해도 이동은 한다)
     const markSeenAndGo = async () => {
@@ -239,15 +291,15 @@ export default function TutorialPage() {
 
                             <button
                                 type="button"
-                                onClick={showSampleResult}
+                                onClick={startTour}
                                 className="w-full flex items-center gap-4 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:bg-cur-elevated active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                             >
                                 <span className="w-12 h-12 shrink-0 rounded-[12px] bg-cur-elevated flex items-center justify-center">
-                                    <Eye className="w-6 h-6 text-cur-ink" />
+                                    <Hand className="w-6 h-6 text-cur-ink" />
                                 </span>
                                 <span className="flex-1 min-w-0">
-                                    <span className="block text-[16px] font-semibold text-cur-ink">예시로 먼저 보기</span>
-                                    <span className="block text-[13px] text-cur-body mt-0.5 leading-snug">녹음 없이 완성된 회의록 예시를 바로 보여드려요</span>
+                                    <span className="block text-[16px] font-semibold text-cur-ink">눌러보며 구경하기</span>
+                                    <span className="block text-[13px] text-cur-body mt-0.5 leading-snug">실제 화면을 본떠서, 어떤 버튼을 누르는지 하나씩 보여드려요</span>
                                 </span>
                                 <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted-soft" />
                             </button>
@@ -262,6 +314,244 @@ export default function TutorialPage() {
                                 건너뛰고 시작하기
                             </button>
                             <p className="text-[12px] text-cur-muted-soft">나중에 홈에서 언제든 볼 수 있어요</p>
+                        </div>
+                    </div>
+                )}
+
+                {view === "tour" && (
+                    <div className="bg-cur-card border border-cur-hairline rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-5 py-6 sm:px-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <button
+                                type="button"
+                                onClick={() => setView("intro")}
+                                className="inline-flex items-center gap-1 text-[13px] font-medium text-cur-muted hover:text-cur-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+                            >
+                                <ChevronLeft className="w-4 h-4" /> 처음으로
+                            </button>
+                            <div className="flex items-center gap-1.5" aria-label={`7단계 중 ${TOUR_DOT[tourStage] + 1}단계`}>
+                                {Array.from({ length: 7 }).map((_, i) => (
+                                    <span key={i} className={cn("w-1.5 h-1.5 rounded-full", i <= TOUR_DOT[tourStage] ? "bg-cur-primary" : "bg-cur-hairline-strong")} />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 안내 바 — 항상 같은 자리에서 다음 행동을 알려준다 */}
+                        <div className="flex items-start gap-2.5 p-3.5 rounded-[12px] bg-cur-primary/5 border border-cur-primary/20">
+                            <Hand className="w-4 h-4 shrink-0 text-cur-primary mt-0.5" />
+                            <p className="text-[14px] font-medium text-cur-ink leading-snug">{TOUR_GUIDE[tourStage]}</p>
+                        </div>
+
+                        {/* 실제 앱을 본뜬 연습 화면 */}
+                        <div className="rounded-[16px] bg-cur-canvas p-2.5">
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
+
+                                {tourStage === "home" && (
+                                    <div className="p-4 space-y-3">
+                                        <div className="flex items-center justify-between pb-2.5 border-b border-cur-hairline">
+                                            <span className="text-[14px] font-bold text-cur-ink">안전톡톡e</span>
+                                            <span className="w-6 h-6 rounded-full bg-cur-elevated" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[8px] overflow-hidden text-center">
+                                            <div className="bg-cur-card py-2.5">
+                                                <p className="text-[10px] text-cur-muted font-semibold">TBM 회의록</p>
+                                                <p className="text-[16px] leading-tight font-bold text-cur-ink font-mono">3</p>
+                                            </div>
+                                            <div className="bg-cur-card py-2.5">
+                                                <p className="text-[10px] text-cur-muted font-semibold">교육일지</p>
+                                                <p className="text-[16px] leading-tight font-bold text-cur-ink font-mono">5</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTourStage("info")}
+                                            className="relative w-full flex items-center justify-between gap-3 p-3.5 rounded-[10px] border border-cur-hairline bg-cur-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                        >
+                                            <PulseRing className="rounded-[12px]" />
+                                            <span className="flex items-center gap-3 min-w-0">
+                                                <span className="w-9 h-9 shrink-0 rounded-[8px] bg-cur-elevated flex items-center justify-center"><Users className="w-[18px] h-[18px] text-cur-ink" /></span>
+                                                <span className="text-[14px] font-semibold text-cur-ink truncate">TBM 회의록 작성</span>
+                                            </span>
+                                            <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted" />
+                                        </button>
+                                        <div aria-hidden className="w-full flex items-center justify-between gap-3 p-3.5 rounded-[10px] border border-cur-hairline bg-cur-card opacity-50">
+                                            <span className="flex items-center gap-3 min-w-0">
+                                                <span className="w-9 h-9 shrink-0 rounded-[8px] bg-cur-elevated flex items-center justify-center"><FileText className="w-[18px] h-[18px] text-cur-ink" /></span>
+                                                <span className="text-[14px] font-semibold text-cur-ink truncate">안전보건교육일지 작성</span>
+                                            </span>
+                                            <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {tourStage === "info" && (
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-[13px] font-bold text-cur-ink">① 기본 정보</p>
+                                        <div className="space-y-2">
+                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
+                                                <p className="text-[11px] text-cur-muted font-medium">회의 일시</p>
+                                                <p className="text-[13px] font-medium text-cur-ink">오늘 07:30 <span className="text-cur-muted-soft">(자동 입력)</span></p>
+                                            </div>
+                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
+                                                <p className="text-[11px] text-cur-muted font-medium">공정명</p>
+                                                <p className="text-[13px] font-medium text-cur-ink">{sample.processName}</p>
+                                            </div>
+                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
+                                                <p className="text-[11px] text-cur-muted font-medium">작업명</p>
+                                                <p className="text-[13px] font-medium text-cur-ink">{sample.workName}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTourStage("record")}
+                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                        >
+                                            <PulseRing className="rounded-[10px]" />
+                                            다음 단계
+                                        </button>
+                                    </div>
+                                )}
+
+                                {tourStage === "record" && (
+                                    <div className="px-4 py-8 flex flex-col items-center gap-4">
+                                        <p className="text-[12px] font-semibold text-cur-muted uppercase tracking-[0.6px]">② 녹음</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setTypedLen(0); setTourStage("recording") }}
+                                            className="relative w-24 h-24 rounded-full bg-cur-primary text-cur-on-primary flex flex-col items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2 transition-transform active:scale-[0.97]"
+                                        >
+                                            <PulseRing className="-inset-1.5 rounded-full" />
+                                            <Mic className="w-7 h-7" />
+                                            <span className="text-[12px] font-bold mt-1">녹음 시작</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {tourStage === "recording" && (
+                                    <div className="p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="flex items-center gap-1.5 text-[12px] font-bold text-cur-error">
+                                                <span className="w-2 h-2 rounded-full bg-cur-error animate-pulse" /> 녹음 중
+                                            </span>
+                                            <span className="text-[12px] font-mono text-cur-muted">0:{String(Math.min(59, Math.floor(typedLen / 50))).padStart(2, "0")}</span>
+                                        </div>
+                                        <div className="rounded-[8px] bg-cur-canvas p-3 min-h-[110px]">
+                                            <p className="text-[13px] leading-relaxed text-cur-ink">{sample.script.slice(0, typedLen)}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled={typedLen < sample.script.length}
+                                            onClick={() => setTourStage("ai")}
+                                            className={cn(
+                                                "relative w-full h-11 rounded-[8px] text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2",
+                                                typedLen >= sample.script.length ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-muted-soft"
+                                            )}
+                                        >
+                                            {typedLen >= sample.script.length && <PulseRing className="rounded-[10px]" />}
+                                            AI 요약
+                                        </button>
+                                    </div>
+                                )}
+
+                                {tourStage === "ai" && (
+                                    <div className="px-4 py-12 flex flex-col items-center gap-3">
+                                        <Loader2 className="w-7 h-7 text-cur-primary animate-spin" />
+                                        <p className="text-[13px] font-medium text-cur-body">AI가 회의록을 만들고 있어요…</p>
+                                    </div>
+                                )}
+
+                                {tourStage === "sign" && (
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-[13px] font-bold text-cur-ink">③ 참석자 서명</p>
+                                        <div className="flex flex-col items-center gap-2 rounded-[8px] border border-dashed border-cur-hairline-strong py-5 px-3">
+                                            <QrCode className="w-16 h-16 text-cur-ink" />
+                                            <p className="text-[12px] text-cur-muted text-center">근로자가 스마트폰 카메라로 찍으면<br />바로 서명 화면이 열려요</p>
+                                        </div>
+                                        <p className="flex items-center gap-1.5 text-[12px] font-semibold text-cur-success">
+                                            <Check className="w-4 h-4" /> 서명 3명 완료
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTourStage("review")}
+                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                        >
+                                            <PulseRing className="rounded-[10px]" />
+                                            다음 단계
+                                        </button>
+                                    </div>
+                                )}
+
+                                {tourStage === "review" && (
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-[13px] font-bold text-cur-ink">④ 검토</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2">
+                                                <p className="text-[11px] text-cur-muted font-medium">공정명</p>
+                                                <p className="text-[12px] font-medium text-cur-ink truncate">{sample.processName}</p>
+                                            </div>
+                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2">
+                                                <p className="text-[11px] text-cur-muted font-medium">작업명</p>
+                                                <p className="text-[12px] font-medium text-cur-ink truncate">{sample.workName}</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {sample.hazards.map((h, i) => (
+                                                <div key={i} className={cn("border-l-2 bg-cur-canvas rounded-r-[8px] px-3 py-2", LEVEL_BORDER[h.level] ?? LEVEL_BORDER["중"])}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={cn("shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-[5px]", LEVEL_BADGE[h.level] ?? LEVEL_BADGE["중"])}>{h.level}</span>
+                                                        <span className="text-[12px] font-semibold text-cur-ink leading-snug">{h.factor}</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-cur-body mt-1 leading-snug">{h.measure}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setTourStage("export")}
+                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                        >
+                                            <PulseRing className="rounded-[10px]" />
+                                            완료 및 저장
+                                        </button>
+                                    </div>
+                                )}
+
+                                {tourStage === "export" && (
+                                    <div className="p-4 space-y-3">
+                                        <p className="text-[13px] font-bold text-cur-ink">문서 출력</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { label: "한글", ext: ".hwpx", hot: true },
+                                                { label: "워드", ext: ".docx" },
+                                                { label: "엑셀", ext: ".xlsx" },
+                                                { label: "PDF", ext: "출력 전용" },
+                                            ].map((f) => (
+                                                <button
+                                                    key={f.label}
+                                                    type="button"
+                                                    onClick={showSampleResult}
+                                                    className="relative rounded-[8px] border border-cur-hairline bg-cur-card px-3 py-3 text-left hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                                >
+                                                    {f.hot && <PulseRing className="rounded-[10px]" />}
+                                                    <p className="text-[13px] font-semibold text-cur-ink">{f.label}</p>
+                                                    <p className="text-[11px] text-cur-muted mt-0.5">{f.ext}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-[11px] text-cur-muted">기본 출력 형식은 '내 정보 수정'에서 언제든 바꿀 수 있어요</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <p className="text-[11px] text-cur-muted-soft">실제 앱을 본뜬 연습 화면이에요</p>
+                            <button
+                                type="button"
+                                onClick={showSampleResult}
+                                className="text-[12px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+                            >
+                                완성본만 바로 볼래요
+                            </button>
                         </div>
                     </div>
                 )}
@@ -325,10 +615,10 @@ export default function TutorialPage() {
 
                                 <button
                                     type="button"
-                                    onClick={showSampleResult}
+                                    onClick={startTour}
                                     className="w-full text-center text-[13px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
                                 >
-                                    녹음 없이 완성된 예시만 볼래요
+                                    녹음 없이 눌러보며 구경할래요
                                 </button>
                             </div>
                         )}
