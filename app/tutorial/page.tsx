@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabaseClient"
-import { AlertCircle, Check, ChevronLeft, ChevronRight, FileText, Hand, Loader2, Mic, QrCode, Square, Users } from "lucide-react"
+import { AlertCircle, Check, ChevronLeft, ChevronRight, ClipboardCheck, FileText, Hand, Loader2, Mic, Printer, QrCode, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
 
@@ -58,6 +58,14 @@ const LEVEL_BORDER: Record<string, string> = {
     "중": "border-l-cur-primary",
     "하": "border-l-cur-success",
 }
+
+// 결과 화면의 핵심 메시지 — "당신이 할 일은 이 4개뿐"
+const RESULT_STEPS = [
+    { icon: Mic, label: "녹음", desc: "평소 조회하듯 말하면 끝" },
+    { icon: ClipboardCheck, label: "검토", desc: "AI가 쓴 회의록을 훑어보고" },
+    { icon: QrCode, label: "서명", desc: "근로자들이 QR 찍고 서명" },
+    { icon: Printer, label: "출력", desc: "한글·워드·엑셀·PDF로 저장" },
+]
 
 // 눌러보기 투어 — 실제 위저드 순서 그대로: 홈 → ①정보 → ②녹음(AI 요약) → ③QR 서명 → ④검토 → 완성본
 type TourStage = "home" | "info" | "record" | "recording" | "ai" | "sign" | "review"
@@ -604,15 +612,36 @@ export default function TutorialPage() {
                                 )}>
                                     {source === "sample" ? `예시 화면 · ${sample.industry}` : "방금 읽으신 내용으로 만든 결과예요"}
                                 </span>
-                                <h2 className="text-[22px] font-semibold text-cur-ink tracking-[-0.44px]">이런 회의록이 완성돼요</h2>
-                                <p className="text-[14px] text-cur-body">체험 결과는 저장되지 않아요. 실제 문서에는 참석자 서명까지 들어갑니다.</p>
+                                <h2 className="text-[22px] font-semibold text-cur-ink tracking-[-0.44px]">사용법은 이게 전부예요</h2>
                             </div>
 
-                            {/* 문서 미리보기 */}
-                            <div className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden">
+                            {/* 핵심 메시지 — 실제 사용 4단계 (결과물보다 이게 먼저) */}
+                            <div>
+                                {RESULT_STEPS.map((s, i) => (
+                                    <div key={s.label} className="flex gap-3.5">
+                                        <div className="flex flex-col items-center">
+                                            <div className="w-10 h-10 shrink-0 rounded-full bg-cur-primary/10 flex items-center justify-center">
+                                                <s.icon className="w-5 h-5 text-cur-primary" />
+                                            </div>
+                                            {i < RESULT_STEPS.length - 1 && <div className="w-px flex-1 bg-cur-hairline-strong my-1" />}
+                                        </div>
+                                        <div className={cn("pt-1.5", i < RESULT_STEPS.length - 1 && "pb-5")}>
+                                            <p className="text-[16px] font-semibold text-cur-ink leading-tight">
+                                                <span className="text-cur-muted font-medium mr-1.5">{i + 1}</span>{s.label}
+                                            </p>
+                                            <p className="text-[13px] text-cur-body mt-0.5">{s.desc}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* 완성 문서 미리보기 — 4단계의 결과물 */}
+                            <div className="space-y-2">
+                                <p className="text-[13px] font-semibold text-cur-ink">이런 문서가 나와요 <span className="font-medium text-cur-muted-soft">· 체험 결과는 저장되지 않아요</span></p>
+                                <div className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden shadow-[0_10px_28px_rgba(0,0,0,0.08)]">
                                 <p aria-hidden className="pointer-events-none select-none absolute inset-0 flex items-center justify-center text-[64px] font-bold text-cur-ink/[0.04] -rotate-12 tracking-widest">예시</p>
-                                <div className="px-4 py-3 border-b border-cur-hairline text-center">
-                                    <p className="text-[15px] font-bold text-cur-ink tracking-[0.3px]">TBM 회의록</p>
+                                <div className="px-4 pt-4 pb-3 text-center border-b-4 border-double border-cur-hairline-strong">
+                                    <p className="text-[16px] font-bold text-cur-ink tracking-[0.2em] -mr-[0.2em]">TBM 회의록</p>
                                 </div>
                                 <div className="divide-y divide-cur-hairline text-[13px]">
                                     <div className="flex px-4 py-2.5">
@@ -650,21 +679,7 @@ export default function TutorialPage() {
                                         <span className="text-cur-muted-soft font-medium">근로자들이 QR코드로 서명해요</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            {/* 실제 사용 4단계 */}
-                            <div className="rounded-[12px] bg-cur-canvas p-4">
-                                <p className="text-[13px] font-semibold text-cur-ink mb-2">실제 사용은 딱 4단계</p>
-                                <ol className="flex items-center gap-1 text-[12px] font-medium text-cur-body">
-                                    {["녹음", "검토", "서명", "출력"].map((step, i) => (
-                                        <li key={step} className="flex items-center gap-1">
-                                            <span className="flex items-center gap-1 bg-cur-card border border-cur-hairline rounded-full px-2.5 py-1">
-                                                <span className="text-cur-muted">{i + 1}</span> {step}
-                                            </span>
-                                            {i < 3 && <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft" />}
-                                        </li>
-                                    ))}
-                                </ol>
+                                </div>
                             </div>
 
                             <div className="space-y-2.5 pt-1">
