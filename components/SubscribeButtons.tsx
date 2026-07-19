@@ -149,6 +149,18 @@ export function SubscribeButtons({
 
     return (
         <div className="space-y-3">
+            {/* 등록 처리 중 전면 잠금 — PG 인증 후 서버 검증·부착이 끝날 때까지 다른 버튼 오조작 방지 */}
+            {processing && (
+                <div
+                    role="alert"
+                    aria-busy="true"
+                    className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm flex flex-col items-center justify-center gap-3 px-6 text-center"
+                >
+                    <Loader2 className="w-10 h-10 animate-spin text-white" />
+                    <p className="text-white text-[15px] font-semibold">결제수단 등록을 처리하고 있어요</p>
+                    <p className="text-white/70 text-[13px]">완료될 때까지 화면을 닫거나 이동하지 마세요</p>
+                </div>
+            )}
             {msg && (
                 <div
                     className={`text-[13px] rounded-lg p-3 ${

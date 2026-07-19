@@ -182,7 +182,9 @@ export default function AccountPage() {
                                         <span className="text-cur-muted">플랜</span>
                                         <span className="text-cur-ink font-medium">{planLabel}</span>
                                     </div>
-                                    {methodLabel && (
+                                    {/* 해지되면 빌링키·card_info를 폐기하므로 결제수단 표시도 숨김
+                                        (구버전 해지 데이터에 card_info가 남아 있어도 여기서 걸러짐) */}
+                                    {methodLabel && sub?.status !== "canceled" && (
                                         <div className="flex justify-between">
                                             <span className="text-cur-muted">결제수단</span>
                                             <span className="text-cur-ink font-medium">{methodLabel}</span>

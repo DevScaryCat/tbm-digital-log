@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, cancelPayment } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, cancelPayment, deleteBillingKey } from "@/lib/portone";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const admin = getAdminClient();
     const { data: sub, error } = await admin
       .from("subscriptions")
-      .select("id, status, plan, amount, current_period_end")
+      .select("id, status, plan, amount, current_period_end, billing_key")
       .eq("user_id", user.id)
       .single();
 
@@ -84,11 +84,22 @@ export async function POST(request: Request) {
       }
     }
 
+    // --- 빌링키 폐기 (PG측 위임 회수) ---
+    // 해지 후엔 자동결제가 없어야 하므로 키를 남겨둘 이유가 없다. 재구독은 항상 새 키 발급 경로.
+    // PG측 폐기 실패는 로그만 — DB에서 키를 지우면 우리 쪽에선 어차피 과금 불가.
+    if (sub.billing_key) {
+      const del = await deleteBillingKey(sub.billing_key);
+      if (!del.ok) console.error("빌링키 PG측 폐기 실패(해지는 계속 진행):", del.status, del.body);
+    }
+
     // --- 구독 상태 갱신 ---
     const update: Record<string, any> = {
       status: "canceled",
       canceled_at: now.toISOString(),
       updated_at: now.toISOString(),
+      // 결제수단 표시·재과금 근거 제거 — 해지 화면에 '결제수단: 토스페이'가 남던 버그의 원인
+      billing_key: null,
+      card_info: null,
     };
     // 환불에 성공했으면(잔여 기간 정산 완료) 즉시 종료, 무환불/실패면 기간 만료까지 이용
     if (refunded > 0) update.current_period_end = now.toISOString();

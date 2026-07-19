@@ -148,6 +148,13 @@ export async function getBillingKeyInfo(billingKey: string) {
   });
 }
 
+/** 빌링키 폐기 — 구독 해지 시 PG에 남은 결제수단 위임을 회수한다(실패해도 해지는 진행, 로그만) */
+export async function deleteBillingKey(billingKey: string) {
+  return portoneFetch(`/billing-keys/${encodeURIComponent(billingKey)}`, {
+    method: "DELETE",
+  });
+}
+
 /** 결제 단건 조회 (paymentId로 실제 결제 상태 확인 — 이미 결제됨 재조정용) */
 export async function getPayment(paymentId: string) {
   return portoneFetch(`/payments/${encodeURIComponent(paymentId)}`, {
