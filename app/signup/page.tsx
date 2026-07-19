@@ -191,7 +191,7 @@ export default function SignupPage() {
             if (!loginError) {
                 setAutoLoggedIn(true)
                 setSuccess(true)
-                setTimeout(() => { router.push("/") }, 1800)
+                setTimeout(() => { router.push("/tutorial") }, 1800)
             } else {
                 setSuccess(true)
                 setTimeout(() => { router.push("/login") }, 4000)
@@ -215,15 +215,15 @@ export default function SignupPage() {
                             <p className="text-[15px] text-cur-muted font-medium">
                                 <b className="text-cur-primary">Pro 1개월 무료체험</b>이 시작되었습니다. 🎉<br />
                                 모든 기능을 자유롭게 써보세요.<br />
-                                {autoLoggedIn ? "잠시 후 메인 화면으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
+                                {autoLoggedIn ? "잠시 후 1분 사용법 안내로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
                         ) : (
                             <p className="text-[15px] text-cur-muted font-medium">
                                 성공적으로 계정이 생성되었습니다.<br />
-                                {autoLoggedIn ? "잠시 후 메인 화면으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
+                                {autoLoggedIn ? "잠시 후 1분 사용법 안내로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
                         )}
-                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push(autoLoggedIn ? "/" : "/login")}>
+                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push(autoLoggedIn ? "/tutorial" : "/login")}>
                             {autoLoggedIn ? "바로 시작하기" : "로그인 바로가기"}
                         </Button>
                     </CardContent>

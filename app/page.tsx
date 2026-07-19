@@ -8,7 +8,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, CalendarDays } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, CalendarDays, PlayCircle, X } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { NoticeBanner } from "@/components/NoticeBanner"
@@ -288,6 +288,33 @@ export default function MainPage() {
 
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
+
+          {/* 튜토리얼 미이수 배너 — 완료·건너뛰기·X 모두 tutorial_seen_at 기록으로 사라진다 */}
+          {user && !user.user_metadata?.tutorial_seen_at && (
+            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-primary/5 border border-cur-primary/20">
+              <PlayCircle className="w-5 h-5 shrink-0 text-cur-primary" />
+              <button
+                type="button"
+                onClick={() => router.push('/tutorial')}
+                className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+              >
+                <span className="block text-[14px] font-semibold text-cur-ink">1분 사용법 보기</span>
+                <span className="block text-[12px] text-cur-body mt-0.5">말한 내용이 회의록이 되는 과정을 보여드려요</span>
+              </button>
+              <button
+                type="button"
+                aria-label="사용법 안내 닫기"
+                onClick={async () => {
+                  const { data } = await supabase.auth.updateUser({ data: { tutorial_seen_at: new Date().toISOString() } })
+                  if (data?.user) setUser(data.user)
+                }}
+                className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
               <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px]">활동 현황</h3>
