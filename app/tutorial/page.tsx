@@ -635,9 +635,10 @@ export default function TutorialPage() {
                                 ))}
                             </div>
 
-                            {/* 완성 문서 미리보기 — 4단계의 결과물 */}
+                            {/* 완성 문서 미리보기 — 내 목소리 체험일 때만 (투어는 4단계 메시지로 충분, 사용자 결정) */}
+                            {source === "record" && (
                             <div className="space-y-2">
-                                <p className="text-[13px] font-semibold text-cur-ink">이런 문서가 나와요 <span className="font-medium text-cur-muted-soft">· 체험 결과는 저장되지 않아요</span></p>
+                                <p className="text-[13px] font-semibold text-cur-ink">방금 읽으신 내용이 이렇게 문서가 됐어요 <span className="font-medium text-cur-muted-soft">· 저장되지 않아요</span></p>
                                 <div className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden shadow-[0_10px_28px_rgba(0,0,0,0.08)]">
                                 <p aria-hidden className="pointer-events-none select-none absolute inset-0 flex items-center justify-center text-[64px] font-bold text-cur-ink/[0.04] -rotate-12 tracking-widest">예시</p>
                                 <div className="px-4 pt-4 pb-3 text-center border-b-4 border-double border-cur-hairline-strong">
@@ -681,6 +682,7 @@ export default function TutorialPage() {
                                 </div>
                                 </div>
                             </div>
+                            )}
 
                             <div className="space-y-2.5 pt-1">
                                 <Button
