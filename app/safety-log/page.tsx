@@ -207,7 +207,7 @@ export default function TBMPage() {
         date: new Date(),
         startTime: getCurrentTime(),
         endTime: "",
-        weather: "불러오는 중...",
+        weather: "불러오는 중…",
         temperature: "",
         companyName: "",
         location: "현장 사무실",
@@ -956,9 +956,9 @@ export default function TBMPage() {
                                 <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-12 text-center flex flex-col items-center justify-center shadow-sm">
                                     <Loader2 className="w-12 h-12 text-cur-ink animate-spin mb-4" />
                                     <p className="text-[18px] font-semibold text-cur-ink">
-                                        {isProcessingSTT ? "음성을 텍스트로 변환 중..." : "AI가 교육내용을 요약 중..."}
+                                        {isProcessingSTT ? "음성을 텍스트로 변환 중…" : "AI가 교육내용을 요약 중…"}
                                     </p>
-                                    <p className="text-[14px] text-cur-muted-soft font-medium mt-2">잠시만 기다려주세요...</p>
+                                    <p className="text-[14px] text-cur-muted-soft font-medium mt-2">잠시만 기다려주세요…</p>
                                 </div>
                             ) : (
                                 <>
@@ -1033,7 +1033,7 @@ export default function TBMPage() {
                                                 reader.readAsDataURL(e.target.files[0])
                                             }
                                         }} />
-                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-all group-active:scale-95">
+                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
                                         <Camera className="w-5 h-5 mr-2" /> 바로 촬영
                                     </Button>
                                 </div>
@@ -1051,7 +1051,7 @@ export default function TBMPage() {
                                                 reader.readAsDataURL(e.target.files[0])
                                             }
                                         }} />
-                                    <Button variant="outline" className="w-full h-14 border border-cur-hairline bg-cur-card hover:bg-cur-canvas text-cur-ink text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-all group-active:scale-95">
+                                    <Button variant="outline" className="w-full h-14 border border-cur-hairline bg-cur-card hover:bg-cur-canvas text-cur-ink text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
                                         <Upload className="w-5 h-5 mr-2" /> 앨범 업로드
                                     </Button>
                                 </div>
@@ -1101,7 +1101,7 @@ export default function TBMPage() {
 
                             <div className="space-y-3">
                                 {formData.participants.map((p, idx) => (
-                                    <div key={p.id} className="bg-cur-card p-4 border border-cur-hairline rounded-[12px] shadow-none flex flex-col gap-3 transition-all hover:border-cur-hairline">
+                                    <div key={p.id} className="bg-cur-card p-4 border border-cur-hairline rounded-[12px] shadow-none flex flex-col gap-3">
                                         <div className="flex items-center gap-3">
                                             <div className="w-7 h-7 bg-cur-canvas rounded-[6px] flex items-center justify-center font-bold text-cur-muted text-[12px] shrink-0">{idx + 1}</div>
                                             <Input placeholder="이름을 입력하세요" className="flex-1 h-10 text-[15px] font-bold border-0 border-b border-cur-hairline rounded-none px-1 focus-visible:ring-0 focus-visible:border-cur-primary" value={p.name} onChange={(e) => updateParticipant(p.id, "name", e.target.value)} />
@@ -1109,8 +1109,8 @@ export default function TBMPage() {
                                         </div>
                                         <div className="flex gap-3 mt-1">
                                             <div className="flex bg-cur-canvas p-1 rounded-[8px] shrink-0">
-                                                <button onClick={() => updateParticipant(p.id, "gender", "M")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-all", p.gender === 'M' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>남</button>
-                                                <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-all", p.gender === 'F' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>여</button>
+                                                <button onClick={() => updateParticipant(p.id, "gender", "M")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-colors", p.gender === 'M' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>남</button>
+                                                <button onClick={() => updateParticipant(p.id, "gender", "F")} className={cn("px-4 py-1.5 text-[13px] font-bold rounded-[6px] transition-colors", p.gender === 'F' ? 'bg-cur-card text-cur-ink shadow-sm' : 'text-cur-muted hover:text-cur-ink')}>여</button>
                                             </div>
                                             <div className="flex-1" onClick={() => openSignModal({ type: 'participant', id: p.id })}>
                                                 {p.signature ? <div className="h-10 bg-cur-success/5 border border-cur-success/30 rounded-[8px] flex items-center justify-center overflow-hidden"><img src={p.signature} className="h-[120%] object-contain mix-blend-multiply" /></div> : <Button variant="outline" className="w-full h-10 border-dashed text-cur-muted font-medium text-[13px] border-cur-hairline rounded-[8px] hover:bg-cur-elevated">서명하기</Button>}
@@ -1197,7 +1197,7 @@ export default function TBMPage() {
                     <div className="p-5 flex-1 bg-cur-canvas-soft overflow-y-auto space-y-5">
                         <div className="bg-cur-card p-4 rounded-[12px] border border-cur-hairline text-[14px] leading-relaxed text-cur-ink space-y-3 shadow-sm">
                             <p className="font-bold text-cur-primary flex items-center gap-1.5">
-                                💡 AI 요약본 확인 안내
+                                <Sparkles className="w-4 h-4 shrink-0" /> AI 요약본 확인 안내
                             </p>
                             <p className="text-cur-muted font-medium">
                                 본 안전보건교육일지의 교육 내용 및 특이사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
