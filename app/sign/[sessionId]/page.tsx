@@ -131,8 +131,8 @@ export default function SignPage() {
     const [gender, setGender] = useState<"M" | "F">("M")
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
-    // 완료 화면 2단계: done(제출 완료 안내) → suggest(의견·제안 보내기)
-    const [successView, setSuccessView] = useState<"done" | "suggest">("done")
+    // 서명 제출 후 선형 흐름: suggest(의견·제안 — 선택사항, 건너뛰기 가능) → done(완료 안내)
+    const [successView, setSuccessView] = useState<"done" | "suggest">("suggest")
     // 의견·제안 1회 전송 완료 여부 — suggest 뷰를 나갔다 와도 폼이 다시 열리지 않게 상위에서 보존
     const [suggestionSent, setSuggestionSent] = useState(false)
     const [isExpired, setIsExpired] = useState(false)
@@ -227,27 +227,31 @@ export default function SignPage() {
         if (successView === "suggest") {
             return (
                 <div className="min-h-[100dvh] bg-cur-canvas p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col max-w-md mx-auto">
-                    <button
-                        onClick={() => setSuccessView("done")}
-                        className="self-start h-12 flex items-center gap-1 text-[15px] font-semibold text-cur-muted -ml-2 px-2 rounded-[8px]"
-                    >
-                        <ChevronLeft className="w-5 h-5" /> 뒤로
-                    </button>
-                    <h1 className="text-2xl font-bold text-cur-ink mt-1 mb-5">의견·제안 보내기</h1>
+                    <div className="flex items-center gap-2 mt-2">
+                        <CheckCircle2 className="w-5 h-5 text-cur-success shrink-0" />
+                        <span className="text-[14px] font-semibold text-cur-success">서명이 제출되었습니다</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-4 mb-2">
+                        <h1 className="text-2xl font-bold text-cur-ink">의견·제안 보내기</h1>
+                        <span className="text-[12px] font-bold text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px] shrink-0">선택사항</span>
+                    </div>
+                    <p className="text-[14px] text-cur-body mb-5 leading-relaxed">
+                        현장 위험요인이나 건의사항이 있으면 남겨주세요 — 회의록의 위험성평가에 자동 반영됩니다.
+                        <span className="text-cur-muted"> 없으면 아래 &lsquo;건너뛰고 완료&rsquo;를 누르면 돼요.</span>
+                    </p>
                     <SuggestionForm
                         sessionId={sessionId}
                         signerName={name.trim()}
                         sent={suggestionSent}
-                        onSent={() => setSuggestionSent(true)}
+                        onSent={() => { setSuggestionSent(true); setSuccessView("done") }}
                     />
                     <div className="mt-auto pt-6">
                         <Button
-                            onClick={() => {
-                                window.close()
-                            }}
-                            className="w-full h-14 text-lg bg-cur-ink hover:bg-cur-ink/90"
+                            variant="outline"
+                            onClick={() => setSuccessView("done")}
+                            className="w-full h-14 text-lg border-cur-hairline-strong text-cur-ink bg-cur-card hover:bg-cur-elevated"
                         >
-                            닫기
+                            건너뛰고 완료
                         </Button>
                     </div>
                 </div>
@@ -257,18 +261,10 @@ export default function SignPage() {
             <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-cur-canvas">
                 <CheckCircle2 className="w-24 h-24 text-cur-success mb-6 animate-in zoom-in" />
                 <h1 className="text-2xl font-bold text-cur-ink mb-2">서명 제출 완료</h1>
-                <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.</p>
-                <button
-                    onClick={() => setSuccessView("suggest")}
-                    className="w-full max-w-sm mb-6 flex items-center gap-3 rounded-[12px] border border-cur-hairline bg-cur-card p-4 text-left transition-transform active:scale-[0.98]"
-                >
-                    <MessageSquarePlus className="w-6 h-6 text-cur-primary shrink-0" />
-                    <span className="flex-1 min-w-0">
-                        <span className="block text-[15px] font-bold text-cur-ink">현장 의견·제안 남기기</span>
-                        <span className="block text-[12px] text-cur-muted">익명 또는 이름으로 · 선택사항</span>
-                    </span>
-                    <ChevronRight className="w-5 h-5 text-cur-muted-soft shrink-0" />
-                </button>
+                <p className="text-cur-body text-center mb-8">
+                    안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.
+                    {suggestionSent && <><br />남겨주신 의견도 함께 접수되었습니다.</>}
+                </p>
                 <Button
                     onClick={() => {
                         window.close()
@@ -352,9 +348,9 @@ export default function SignPage() {
                         className="w-full h-16 text-xl font-bold bg-cur-ink hover:bg-cur-ink/80 text-white rounded-2xl  transition-transform active:scale-95 flex items-center justify-center gap-2"
                     >
                         {isSubmitting ? (
-                            <><Loader2 className="w-6 h-6 animate-spin" /> 제출 중...</>
+                            <><Loader2 className="w-6 h-6 animate-spin" /> 제출 중…</>
                         ) : (
-                            "서명 완료 및 제출"
+                            "다음 단계"
                         )}
                     </Button>
                 </div>
