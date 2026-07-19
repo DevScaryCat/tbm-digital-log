@@ -117,6 +117,34 @@ export default function TBMPage() {
     const accumulatedTimeRef = useRef<number>(0);
     const MAX_RECORDING_TIME = 1200;
 
+    // 20분 상한 임박 알림(3분·1분 전 각 1회) — 진동(안드로이드) + 짧은 알림음(진동 미지원 아이폰 폴백).
+    // AudioContext는 '녹음 시작' 클릭(사용자 제스처) 이후에만 만들어져 자동재생 정책에 걸리지 않는다.
+    const limitWarnedRef = useRef({ m3: false, m1: false });
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const notifyLimit = () => {
+        try { navigator.vibrate?.([200, 100, 200]); } catch { /* 미지원 무시 */ }
+        try {
+            const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+            if (!AC) return;
+            const ctx = audioCtxRef.current ?? new AC();
+            audioCtxRef.current = ctx;
+            if (ctx.state === "suspended") void ctx.resume();
+            const t0 = ctx.currentTime;
+            [0, 0.25].forEach((t) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.frequency.value = 880;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                gain.gain.setValueAtTime(0.0001, t0 + t);
+                gain.gain.exponentialRampToValueAtTime(0.18, t0 + t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + t + 0.18);
+                osc.start(t0 + t);
+                osc.stop(t0 + t + 0.2);
+            });
+        } catch { /* 오디오 미지원 무시 */ }
+    };
+
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (isRecording) {
@@ -130,6 +158,17 @@ export default function TBMPage() {
                     const elapsed = Math.floor((now - sessionStartTimeRef.current) / 1000);
                     const total = accumulatedTimeRef.current + elapsed;
                     setRecordingTime(total);
+
+                    // 상한 임박 알림 — 3분 전(진동+알림음), 1분 전(한 번 더). 재개 시점이 늦으면 해당 단계만.
+                    const remaining = MAX_RECORDING_TIME - total;
+                    if (remaining <= 180 && remaining > 60 && !limitWarnedRef.current.m3) {
+                        limitWarnedRef.current.m3 = true;
+                        notifyLimit();
+                    }
+                    if (remaining <= 60 && remaining > 0 && !limitWarnedRef.current.m1) {
+                        limitWarnedRef.current.m1 = true;
+                        notifyLimit();
+                    }
 
                     if (total >= MAX_RECORDING_TIME) {
                         setIsRecording(false);
@@ -882,8 +921,13 @@ export default function TBMPage() {
                                             <span className="w-2.5 h-2.5 bg-cur-error rounded-full animate-pulse shrink-0" />
                                             <span className="text-[13px] font-semibold text-cur-error">녹음 중{recordingCount > 0 && ` · ${recordingCount + 1}회차`}</span>
                                         </div>
-                                        <div className="text-[36px] font-bold tabular-nums text-cur-ink leading-none mt-2">{formatTime(recordingTime)}</div>
+                                        <div className={cn("text-[36px] font-bold tabular-nums leading-none mt-2", MAX_RECORDING_TIME - recordingTime <= 60 ? "text-cur-error" : "text-cur-ink")}>{formatTime(recordingTime)}</div>
                                         <div className="text-[13px] text-cur-muted mt-1">/ 20:00</div>
+                                        {MAX_RECORDING_TIME - recordingTime <= 180 && (
+                                            <p className={cn("text-[13px] font-semibold mt-2", MAX_RECORDING_TIME - recordingTime <= 60 ? "text-cur-error" : "text-cur-body")}>
+                                                {formatTime(Math.max(0, MAX_RECORDING_TIME - recordingTime))} 남음 — 최대 20분까지 녹음되고 자동 종료돼요
+                                            </p>
+                                        )}
                                         <Button onClick={stopRecording} className="w-32 h-32 rounded-full shadow-[0_8px_24px_rgba(207,45,86,0.25)] bg-cur-error hover:bg-cur-error/90 flex flex-col items-center justify-center gap-2 mt-4 shrink-0 transition-transform active:scale-95">
                                             <Pause className="w-10 h-10 text-cur-on-primary" />
                                             <span className="text-cur-on-primary font-bold text-[16px]">일시정지</span>
