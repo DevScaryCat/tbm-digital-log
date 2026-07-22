@@ -125,8 +125,11 @@ export function SubscribeButtons({
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
                 displayAmount: plan === "monthly_pro" ? 4900 : 1900,
                 currency: "KRW",
-                // 모바일 환경은 결제사 페이지로 이동하는 리디렉션 방식 — redirectUrl 필수.
-                // (없으면 이니시스 모바일 빌링 페이지가 500) 복귀 처리는 위 useEffect.
+                // 카드(이니시스) 모바일: 이니시스 모바일 빌링 페이지는 iframe 레이어 안에서
+                // 동작하지 않음(500) → 결제사 페이지로 완전히 이동하는 REDIRECTION을 강제.
+                // (redirectUrl만 넣으면 창 방식이 안 바뀌어 iframe으로 열리다 깨짐)
+                // 카카오·토스는 잘 동작 중인 기본 창 방식 유지. 복귀 처리는 BillingRedirectHandler.
+                ...(method.key === "card" ? { windowType: { pc: "IFRAME" as const, mobile: "REDIRECTION" as const } } : {}),
                 redirectUrl: window.location.origin + window.location.pathname,
                 customer: {
                     customerId: user.id,
