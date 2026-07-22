@@ -6,6 +6,7 @@ import { CheckCircle2, Minus, ArrowLeft, Loader2, LogOut, Sparkles } from "lucid
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
+import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
 import { cn, paymentsEnabled } from "@/lib/utils"
 
@@ -332,6 +333,8 @@ export default function PricingPage() {
             </div>
 
             <div className="flex-1 max-w-md mx-auto w-full py-10 px-5">
+                {/* 모바일 결제수단 등록(리디렉션) 복귀 처리 — 플랜 선택 전에도 항상 마운트 */}
+                <BillingRedirectHandler />
                 <div className="text-center mb-8">
                     <h2 className="text-[26px] font-bold text-cur-ink mb-3">현장의 안전을 위한 완벽한 선택</h2>
                     <p className="text-cur-muted text-[15px]">플랜을 선택하고 결제수단을 정하세요.</p>

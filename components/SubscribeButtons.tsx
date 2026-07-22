@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Loader2, CreditCard, Wallet } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
+import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
 
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID
 
@@ -46,6 +47,10 @@ const METHODS = ALL_METHODS.filter(
     (m) => CHANNELS[m.key] && (process.env.NODE_ENV !== "production" || LIVE_METHODS.includes(m.key))
 )
 
+// 모바일 카드(이니시스)는 리디렉션 방식 — 발급 컨텍스트를 저장했다가 복귀 시 이어서 처리한다.
+// (redirectUrl 없이 호출하면 이니시스 모바일 빌링 페이지가 500으로 깨짐)
+// 복귀 처리는 페이지 레벨의 BillingRedirectHandler가 담당 — 이 컴포넌트는 컨텍스트 저장만.
+
 export function SubscribeButtons({
     onSuccess,
     ctaSuffix = "로 시작하기",
@@ -65,6 +70,25 @@ export function SubscribeButtons({
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+
+    // 발급된 빌링키를 서버에 등록(구독 시작/수단 변경) — 인라인(프로미스)과 리디렉션 복귀가 공용
+    const registerBillingKey = async (billingKey: string, methodKey: string, planV: string, modeV: string) => {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+        const res = await fetch("/api/payments/billing-key", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ billingKey, method: methodKey, mode: modeV, plan: planV }),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+            setMsg({ type: "err", text: json.error || "구독 처리 실패" })
+            return false
+        }
+        setMsg({ type: "ok", text: successText })
+        onSuccess?.()
+        return true
+    }
 
     const handleIssue = async (method: Method) => {
         setMsg(null)
@@ -89,6 +113,9 @@ export function SubscribeButtons({
                 "안전톡톡사용자"
             const phoneNumber = user.user_metadata?.phone || "010-0000-0000"
 
+            // 모바일(리디렉션 방식) 복귀 후에도 어떤 요청이었는지 알 수 있게 컨텍스트 보관
+            sessionStorage.setItem(REDIRECT_CTX_KEY, JSON.stringify({ plan, mode, method: method.key }))
+
             const issueResponse = await PortOne.requestIssueBillingKey({
                 storeId: STORE_ID,
                 channelKey,
@@ -98,6 +125,9 @@ export function SubscribeButtons({
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
                 displayAmount: plan === "monthly_pro" ? 4900 : 1900,
                 currency: "KRW",
+                // 모바일 환경은 결제사 페이지로 이동하는 리디렉션 방식 — redirectUrl 필수.
+                // (없으면 이니시스 모바일 빌링 페이지가 500) 복귀 처리는 위 useEffect.
+                redirectUrl: window.location.origin + window.location.pathname,
                 customer: {
                     customerId: user.id,
                     fullName,
@@ -110,26 +140,20 @@ export function SubscribeButtons({
                 // PortOne 일반 메시지("빌링키 발급 과정에서 문제가 발생하였습니다")만으론 원인 파악 불가.
                 // 이니시스 등 PG가 내려주는 실제 사유(pgCode/pgMessage)를 함께 노출해 진단 가능하게.
                 console.error("빌링키 발급 실패:", issueResponse)
+                sessionStorage.removeItem(REDIRECT_CTX_KEY)
                 const pg = [issueResponse?.pgCode, issueResponse?.pgMessage].filter(Boolean).join(" · ")
                 const base = issueResponse?.message ?? "취소되었습니다."
                 setMsg({ type: "err", text: `등록 실패: ${base}${pg ? ` — PG: ${pg}` : ""}` })
                 return
             }
 
-            const { data: sessionData } = await supabase.auth.getSession()
-            const token = sessionData?.session?.access_token
-            const res = await fetch("/api/payments/billing-key", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ billingKey: issueResponse.billingKey, method: method.key, mode, plan }),
-            })
-            const json = await res.json()
-            if (!res.ok) {
-                setMsg({ type: "err", text: json.error || "구독 처리 실패" })
+            // 인라인(IFRAME/팝업) 흐름 완료 — 리디렉션 복귀 컨텍스트는 불필요
+            sessionStorage.removeItem(REDIRECT_CTX_KEY)
+            if (!issueResponse.billingKey) {
+                setMsg({ type: "err", text: "빌링키가 발급되지 않았습니다. 다시 시도해주세요." })
                 return
             }
-            setMsg({ type: "ok", text: successText })
-            onSuccess?.()
+            await registerBillingKey(issueResponse.billingKey, method.key, plan, mode)
         } catch (e) {
             console.error(e)
             setMsg({ type: "err", text: "결제 처리 중 오류가 발생했습니다." })

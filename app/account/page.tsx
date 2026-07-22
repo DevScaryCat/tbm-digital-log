@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
+import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
@@ -135,6 +136,8 @@ export default function AccountPage() {
             </div>
 
             <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 space-y-5">
+                {/* 모바일 결제수단 등록(리디렉션) 복귀 처리 */}
+                <BillingRedirectHandler />
                 {loading ? (
                     <div className="flex justify-center py-20">
                         <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
