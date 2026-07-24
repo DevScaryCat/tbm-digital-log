@@ -1,27 +1,24 @@
 // components/Logo.tsx
-import { HardHat } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type LogoSize = "sm" | "md" | "lg"
 
-const SIZES: Record<LogoSize, { box: string; icon: string; text: string; gap: string }> = {
-  sm: { box: "w-9 h-9 rounded-[8px] p-1.5", icon: "w-5 h-5", text: "text-[15px]", gap: "gap-2" },
-  md: { box: "w-12 h-12 rounded-[10px] p-2", icon: "w-7 h-7", text: "text-[20px]", gap: "gap-2.5" },
-  lg: { box: "w-20 h-20 rounded-[14px] p-4", icon: "w-10 h-10", text: "text-[34px] sm:text-[40px]", gap: "gap-4" },
+const SIZES: Record<LogoSize, { box: string; text: string; gap: string }> = {
+  sm: { box: "w-9 h-9 rounded-[8px]", text: "text-[15px]", gap: "gap-2" },
+  md: { box: "w-12 h-12 rounded-[10px]", text: "text-[20px]", gap: "gap-2.5" },
+  lg: { box: "w-20 h-20 rounded-[14px]", text: "text-[34px] sm:text-[40px]", gap: "gap-4" },
 }
 
 export function Logo({ size = "md", className }: { size?: LogoSize; className?: string }) {
   const s = SIZES[size]
   return (
     <div className={cn("flex items-center", s.gap, className)}>
-      <div
-        className={cn(
-          "bg-cur-primary flex items-center justify-center shrink-0 shadow-[0_0_24px_rgba(245,78,0,0.18)]",
-          s.box
-        )}
-      >
-        <HardHat className={cn("text-cur-on-primary", s.icon)} />
-      </div>
+      {/* 브랜드 아이콘(안전모=말풍선) — 이미지 자체에 배경·라운드 포함, 앱 아이콘과 동일 자산 */}
+      <img
+        src="/brand/antok-icon-256.png"
+        alt=""
+        className={cn("shrink-0 object-cover shadow-[0_0_24px_rgba(245,78,0,0.18)]", s.box)}
+      />
       <div
         className={cn(
           "flex flex-col items-start text-left leading-none font-bold tracking-[-0.02em] text-cur-ink",
