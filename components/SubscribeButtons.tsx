@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Loader2, CreditCard, Wallet } from "lucide-react"
+import { Loader2, CreditCard } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
 import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
@@ -17,11 +17,17 @@ const CHANNELS: Record<string, string | undefined> = {
     tosspay: process.env.NEXT_PUBLIC_PORTONE_CHANNEL_KEY_TOSSPAY,
 }
 
-// 카카오톡 말풍선 아이콘 (lucide에 없어 인라인 SVG)
+// 카카오 공식 말풍선 마크 (결제수단 식별용 — 노란 버튼 위 검정 버블이 표준 표기)
 const KakaoIcon = () => (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px]" aria-hidden="true">
-        <path d="M12 3C6.48 3 2 6.54 2 10.9c0 2.82 1.87 5.29 4.68 6.69-.17.6-.63 2.29-.72 2.65-.12.45.16.44.34.32.14-.1 2.2-1.5 3.09-2.11.43.06.87.09 1.31.09 5.52 0 10-3.54 10-7.9S17.52 3 12 3z" />
+    <svg viewBox="0 0 256 256" fill="currentColor" className="w-[18px] h-[18px]" aria-hidden="true">
+        <path d="M128 36C70.562 36 24 72.713 24 118c0 29.279 19.466 54.97 48.748 69.477-1.593 5.494-10.237 35.344-10.581 37.689 0 0-.207 1.762.934 2.434s2.483.15 2.483.15c3.272-.457 37.943-24.811 43.944-29.04 5.995.849 12.168 1.29 18.472 1.29 57.438 0 104-36.712 104-82 0-45.287-46.562-82-104-82z" />
     </svg>
+)
+
+// 토스 공식 심볼 (static.toss.im 제공 자산) — 파란 버튼 위 흰색 표기가 브랜드 가이드 표준
+const TossIcon = () => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/brand/toss-symbol.png" alt="" className="w-[18px] h-[18px] brightness-0 invert" />
 )
 
 type Method = {
@@ -36,7 +42,7 @@ const ALL_METHODS: Method[] = [
     { key: "card", label: "카드", billingKeyMethod: "CARD", style: "bg-cur-ink text-white hover:opacity-90", icon: <CreditCard className="w-[18px] h-[18px]" /> },
     { key: "kakaopay", label: "카카오페이", billingKeyMethod: "EASY_PAY", style: "bg-[#FEE500] text-[#191600] hover:brightness-95", icon: <KakaoIcon /> },
     { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: "bg-[#03C75A] text-white hover:brightness-95", icon: <span className="text-[15px] font-black leading-none">N</span> },
-    { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: "bg-[#0064FF] text-white hover:brightness-95", icon: <Wallet className="w-[18px] h-[18px]" /> },
+    { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: "bg-[#0064FF] text-white hover:brightness-95", icon: <TossIcon /> },
 ]
 // 실연동(라이브) 완료된 결제수단만 운영(실서버)에 노출.
 // 카드(KG이니시스) + 카카오페이(CID CA18988263, 2026-07 심사완료) 실연동. 네이버·토스는 아직 진행중이라 숨김.
