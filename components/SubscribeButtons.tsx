@@ -121,7 +121,7 @@ export function SubscribeButtons({
                 channelKey,
                 billingKeyMethod: method.billingKeyMethod,
                 issueId: crypto.randomUUID().replace(/-/g, ""),
-                issueName: plan === "monthly_pro" ? "안전톡톡e Pro 월간구독" : "안전톡톡e 월간구독",
+                issueName: plan === "monthly_pro" ? "안톡 Pro 월간구독" : "안톡 월간구독",
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
                 displayAmount: plan === "monthly_pro" ? 4900 : 1900,
                 currency: "KRW",
@@ -129,7 +129,10 @@ export function SubscribeButtons({
                 // 동작하지 않음(500) → 결제사 페이지로 완전히 이동하는 REDIRECTION을 강제.
                 // (redirectUrl만 넣으면 창 방식이 안 바뀌어 iframe으로 열리다 깨짐)
                 // 카카오·토스는 잘 동작 중인 기본 창 방식 유지. 복귀 처리는 BillingRedirectHandler.
-                ...(method.key === "card" ? { windowType: { pc: "IFRAME" as const, mobile: "REDIRECTION" as const } } : {}),
+                // offerPeriod: 포트원 문서상 이니시스 '모바일' 빌링키 발급 필수 파라미터(월 단위 제공기간).
+                ...(method.key === "card"
+                    ? { windowType: { pc: "IFRAME" as const, mobile: "REDIRECTION" as const }, offerPeriod: { interval: "1m" as const } }
+                    : {}),
                 redirectUrl: window.location.origin + window.location.pathname,
                 customer: {
                     customerId: user.id,

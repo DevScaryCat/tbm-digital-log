@@ -17,14 +17,14 @@ export interface PlanDef {
 export const PLANS: Record<PlanId, PlanDef> = {
   monthly_basic: {
     id: "monthly_basic",
-    name: "안전톡톡e 월간구독",
+    name: "안톡 월간구독",
     amount: 1900,
     currency: "KRW",
     pro: false,
   },
   monthly_pro: {
     id: "monthly_pro",
-    name: "안전톡톡e Pro 월간구독",
+    name: "안톡 Pro 월간구독",
     amount: 4900,
     currency: "KRW",
     pro: true,
