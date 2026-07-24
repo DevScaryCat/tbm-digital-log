@@ -213,7 +213,7 @@ export default function MainPage() {
           <div className="absolute inset-x-0 top-0 h-[70%] bg-gradient-to-b from-cur-primary/10 via-cur-primary/5 to-transparent -z-10" />
           <div className="max-w-5xl mx-auto px-5 sm:px-8 py-20 sm:py-28 lg:py-36 text-center flex flex-col items-center gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <span className="text-[12px] sm:text-[13px] font-semibold text-cur-primary bg-cur-primary/10 px-3 py-1.5 rounded-full">
-              현장 안전관리 AI · 안전톡톡e
+              현장 안전관리 AI · 안톡
             </span>
             <h1 className="text-[34px] sm:text-[56px] lg:text-[68px] font-bold text-cur-ink leading-[1.08] tracking-tight">
               현장의 안전을<br className="hidden sm:block" /> 더 쉽고 똑똑하게
@@ -283,7 +283,7 @@ export default function MainPage() {
       <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
 
         <div className="p-4 bg-cur-card/90 backdrop-blur-sm border-b border-cur-hairline sticky top-0 z-50">
-          <TBMHeader title="안전톡톡e" onLogout={handleLogout} />
+          <TBMHeader title="안톡" onLogout={handleLogout} />
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">

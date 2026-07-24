@@ -35,7 +35,7 @@ export async function sendMail(params: {
   }
   try {
     await getTransport().sendMail({
-      from: `"안전톡톡e" <${process.env.EMAIL_USER}>`,
+      from: `"안톡" <${process.env.EMAIL_USER}>`,
       to: Array.isArray(params.to) ? params.to.join(", ") : params.to,
       subject: params.subject,
       html: params.html,

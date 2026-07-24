@@ -61,6 +61,6 @@ export async function sendOtpSms(phone: string, code: string): Promise<void> {
   await service.send({
     to: phone,
     from,
-    text: `[안전톡톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`,
+    text: `[안톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`,
   })
 }

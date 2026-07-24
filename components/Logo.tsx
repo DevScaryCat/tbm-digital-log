@@ -19,17 +19,15 @@ export function Logo({ size = "md", className }: { size?: LogoSize; className?: 
         alt=""
         className={cn("shrink-0 object-cover shadow-[0_0_24px_rgba(245,78,0,0.18)]", s.box)}
       />
-      <div
+      {/* 워드마크 "안톡" — 크기는 기존 두 줄 조합과 같은 시각적 무게를 갖도록 한 단계 키움 */}
+      <span
         className={cn(
-          "flex flex-col items-start text-left leading-none font-bold tracking-[-0.02em] text-cur-ink",
+          "leading-none font-bold tracking-[-0.02em] text-cur-ink text-[1.28em]",
           s.text
         )}
       >
-        <span className="text-[0.78em] font-semibold text-cur-ink/65">안전</span>
-        <span className="-mt-[0.16em]">
-          톡톡<span className="text-cur-primary ml-[0.12em]">e</span>
-        </span>
-      </div>
+        안톡
+      </span>
     </div>
   )
 }

@@ -324,7 +324,7 @@ class HwpxDoc {
             `<opf:package ${NS} version="" unique-identifier="" id="">` +
             "<opf:metadata>" +
             `<opf:title>${esc(this.title)}</opf:title><opf:language>ko</opf:language>` +
-            '<opf:meta name="creator" content="text">안전톡톡</opf:meta>' +
+            '<opf:meta name="creator" content="text">안톡</opf:meta>' +
             `<opf:meta name="CreatedDate" content="text">${now}</opf:meta>` +
             `<opf:meta name="ModifiedDate" content="text">${now}</opf:meta>` +
             "</opf:metadata>" +

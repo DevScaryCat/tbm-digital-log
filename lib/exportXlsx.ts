@@ -490,7 +490,7 @@ export interface XlsxBuildResult {
 export async function buildMinutesXlsx(items: MinutesDocItem[]): Promise<XlsxBuildResult> {
     const stats: ImageLoadStats = { failures: 0 }
     const wb = new ExcelJS.Workbook()
-    wb.creator = "안전톡톡e"
+    wb.creator = "안톡"
     const used = new Map<string, number>()
     // 일괄 수백 건이 사진·서명 버퍼를 동시에 적재하면 모바일 탭이 OOM으로 죽을 수 있어 문서 단위 순차 처리
     for (const item of items) {
@@ -511,7 +511,7 @@ export async function buildMinutesXlsx(items: MinutesDocItem[]): Promise<XlsxBui
 export async function buildEducationXlsx2(items: EducationDocItem[]): Promise<XlsxBuildResult> {
     const stats: ImageLoadStats = { failures: 0 }
     const wb = new ExcelJS.Workbook()
-    wb.creator = "안전톡톡e"
+    wb.creator = "안톡"
     const used = new Map<string, number>()
     for (const item of items) {
         const ws = wb.addWorksheet(sheetName("education", item.log?.date, used))

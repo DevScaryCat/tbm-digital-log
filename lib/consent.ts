@@ -24,7 +24,7 @@ function normEmail(e: string): string {
 function consentEmailHtml(site: string, link: string): string {
   return `
   <div style="max-width:520px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;color:#26251e;">
-    <p style="font-size:13px;color:#f54e00;font-weight:700;margin:0 0 6px;">안전톡톡e</p>
+    <p style="font-size:13px;color:#f54e00;font-weight:700;margin:0 0 6px;">안톡</p>
     <p style="font-size:16px;font-weight:700;margin:0 0 14px;">안전 보고서 수신 확인</p>
     <p style="font-size:14px;line-height:1.7;color:#444;margin:0 0 8px;">
       <b>${escapeHtml(site)}</b>에서 매월 안전활동(TBM 회의록·안전보건교육일지) 종합 보고서를
@@ -91,10 +91,10 @@ export async function requestConsent(
   const base = (baseUrl || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
   if (!base) return { ok: true, mailed: false, error: "발신 링크 주소를 확인할 수 없습니다." };
   const link = `${base}/consent/${token}`;
-  const site = companyName?.trim() || "안전톡톡e 이용 현장";
+  const site = companyName?.trim() || "안톡 이용 현장";
   const sent = await sendMail({
     to: email,
-    subject: `[안전톡톡e] ${site}의 안전 보고서 수신 확인`,
+    subject: `[안톡] ${site}의 안전 보고서 수신 확인`,
     html: consentEmailHtml(site, link),
   });
   if (!sent.ok) return { ok: true, mailed: false, error: sent.error };
@@ -112,7 +112,7 @@ export async function getConsentByToken(
     .eq("token", token)
     .maybeSingle();
   if (!data) return null;
-  let site = "안전톡톡e 이용 현장";
+  let site = "안톡 이용 현장";
   try {
     const { data: u } = await admin.auth.admin.getUserById((data as ConsentRow).account_user_id);
     site = (u?.user?.user_metadata as any)?.company_name?.trim() || site;

@@ -20,7 +20,7 @@ export function Footer() {
         </div>
 
         <div className="mt-4 text-[12px]">
-          © {new Date().getFullYear()} EHS Friends (안전톡톡e). All rights reserved.
+          © {new Date().getFullYear()} EHS Friends (안톡). All rights reserved.
         </div>
       </div>
     </footer>

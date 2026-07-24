@@ -281,7 +281,7 @@ export default function TutorialPage() {
                         <div className="text-center space-y-3">
                             <h1 className="text-[26px] font-semibold text-cur-ink tracking-[-0.78px] leading-tight">말하면, 서류가 됩니다</h1>
                             <p className="text-[15px] text-cur-body font-medium leading-relaxed">
-                                안전톡톡이 회의록을 어떻게 만들어주는지<br />1분만 보여드릴게요.
+                                안톡이 회의록을 어떻게 만들어주는지<br />1분만 보여드릴게요.
                             </p>
                         </div>
 
@@ -360,7 +360,7 @@ export default function TutorialPage() {
                                 {tourStage === "home" && (
                                     <div className="p-4 space-y-3">
                                         <div className="flex items-center justify-between pb-2.5 border-b border-cur-hairline">
-                                            <span className="text-[14px] font-bold text-cur-ink">안전톡톡e</span>
+                                            <span className="text-[14px] font-bold text-cur-ink">안톡</span>
                                             <span className="w-6 h-6 rounded-full bg-cur-elevated" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[8px] overflow-hidden text-center">

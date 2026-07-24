@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 
   const sent = await sendMail({
     to: recipients,
-    subject: `[안전톡톡e] ${company ? company + " " : ""}TBM 회의록 분석 · AI 분석 보고서 (${content.periodLabel})`,
+    subject: `[안톡] ${company ? company + " " : ""}TBM 회의록 분석 · AI 분석 보고서 (${content.periodLabel})`,
     html,
     attachments,
   });

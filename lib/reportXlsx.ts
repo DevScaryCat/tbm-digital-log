@@ -53,7 +53,7 @@ export async function buildRiskXlsx(
   meta: { company: string; period: string; date: string }
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "안전톡톡e";
+  wb.creator = "안톡";
   // 빈도강도 데이터가 있으면 가능성·중대성·위험성 컬럼 노출, 없으면(상중하법) 등급만.
   const hasFreqSev = items.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
   const ws = wb.addWorksheet("위험성평가표", {
@@ -114,7 +114,7 @@ type EduContent = {
 export async function buildEducationXlsx(content: EduContent): Promise<Buffer> {
   const { stats, types = [], days } = content;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "안전톡톡e";
+  wb.creator = "안톡";
   const ws = wb.addWorksheet("안전보건교육일지 종합", {
     views: [{ state: "frozen", ySplit: 6 }],
     pageSetup: { fitToPage: true, fitToWidth: 1, fitToHeight: 0 },

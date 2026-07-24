@@ -304,7 +304,7 @@ export function renderEducationReportHtml(content: EducationReportContent): stri
   <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
     <div style="border:1px solid #e6e5e0;border-radius:14px;overflow:hidden;background:#fff;">
     <div style="padding:22px 24px 18px;border-bottom:1px solid #eee;">
-      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안전톡톡e · 안전보건교육일지 종합분석</div>
+      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안톡 · 안전보건교육일지 종합분석</div>
       <div style="color:#26251e;font-size:24px;font-weight:700;margin-top:8px;letter-spacing:-0.5px;">${escapeHtml(periodLabel)}</div>
       ${companyName ? `<div style="color:#807d72;font-size:14px;margin-top:3px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
@@ -331,7 +331,7 @@ export function renderEducationReportHtml(content: EducationReportContent): stri
       </table>
 
       <div style="font-size:12px;color:#999;margin-top:24px;text-align:center;line-height:1.6;">
-        본 보고서는 안전톡톡e가 ${escapeHtml(periodLabel)} 안전보건교육일지를 분석해 자동 생성했습니다.<br/>
+        본 보고서는 안톡가 ${escapeHtml(periodLabel)} 안전보건교육일지를 분석해 자동 생성했습니다.<br/>
         날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
       </div>
     </div>
@@ -414,7 +414,7 @@ export async function generateAndSendEducationReport(
   const attachments = await buildEducationAttachments(content, docTitle, date);
   const sent = await sendMail({
     to: valid,
-    subject: `[안전톡톡e] ${companyName ? companyName + " " : ""}안전보건교육일지 종합 보고서 (${content.periodLabel})`,
+    subject: `[안톡] ${companyName ? companyName + " " : ""}안전보건교육일지 종합 보고서 (${content.periodLabel})`,
     html,
     attachments,
   });

@@ -114,7 +114,7 @@ async function run(request: Request) {
           const attachments = await buildReportAttachments(content, docTitle, date);
           const sent = await sendMail({
             to: email,
-            subject: `[안전톡톡e] ${company} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
+            subject: `[안톡] ${company} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
             html,
             attachments,
           });
@@ -132,7 +132,7 @@ async function run(request: Request) {
           const attachments = await buildEducationAttachments(edu, docTitle, date);
           const sent = await sendMail({
             to: email,
-            subject: `[안전톡톡e] ${company} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
+            subject: `[안톡] ${company} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
             html,
             attachments,
           });

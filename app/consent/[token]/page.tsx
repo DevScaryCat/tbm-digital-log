@@ -62,7 +62,7 @@ export default function ConsentPage() {
     return (
         <div className="min-h-screen bg-cur-canvas flex items-center justify-center px-4 font-sans">
             <div className="w-full max-w-sm bg-cur-card rounded-2xl border border-cur-hairline p-6 shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
-                <p className="text-[13px] font-bold text-cur-primary mb-4">안전톡톡e</p>
+                <p className="text-[13px] font-bold text-cur-primary mb-4">안톡</p>
 
                 {loading ? (
                     <div className="py-10 flex justify-center"><Loader2 className="w-7 h-7 text-cur-primary animate-spin" /></div>

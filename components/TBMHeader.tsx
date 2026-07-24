@@ -180,7 +180,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
 
     return (
         <div className="flex flex-col py-1 px-1 rounded-none border-0 gap-3">
-            {title === "안전톡톡e" ? (
+            {title === "안톡" ? (
                 <div className="flex justify-between items-center w-full">
                     <Logo size="sm" />
                     {userProfileDropdown}

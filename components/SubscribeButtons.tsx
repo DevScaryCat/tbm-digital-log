@@ -116,7 +116,7 @@ export function SubscribeButtons({
             const fullName =
                 user.user_metadata?.full_name ||
                 user.user_metadata?.company_name ||
-                "안전톡톡사용자"
+                "안톡 사용자"
             const phoneNumber = user.user_metadata?.phone || "010-0000-0000"
 
             // 모바일(리디렉션 방식) 복귀 후에도 어떤 요청이었는지 알 수 있게 컨텍스트 보관

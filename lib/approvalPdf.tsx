@@ -137,11 +137,11 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
   const topWords = keywords.slice(0, 2).map((k) => k.word);
 
   return (
-    <Document title={docTitle} author="안전톡톡e">
+    <Document title={docTitle} author="안톡">
       <Page size="A4" style={s.page} wrap>
         <View style={s.header}>
           <View style={s.appAbs}><ApprovalGrid /></View>
-          <Text style={s.brand}>안전톡톡e</Text>
+          <Text style={s.brand}>안톡</Text>
           <Text style={s.title}>{docTitle}</Text>
           <Text style={s.company}>{content.periodLabel}</Text>
         </View>
@@ -253,7 +253,7 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
         })() : null}
 
         <Text style={s.foot}>
-          본 결재서류는 안전톡톡e가 {content.periodLabel} TBM 회의록을 분석해 자동 생성했습니다. · 위험요인은 작성된 회의록에서만 집계됩니다.
+          본 결재서류는 안톡가 {content.periodLabel} TBM 회의록을 분석해 자동 생성했습니다. · 위험요인은 작성된 회의록에서만 집계됩니다.
         </Text>
       </Page>
     </Document>
@@ -276,11 +276,11 @@ function EducationDoc({ content, docTitle }: { content: EducationReportContent; 
   const typeLine = types.map((t) => `${t.type} ${t.count}회`).join("  ·  ");
 
   return (
-    <Document title={docTitle} author="안전톡톡e">
+    <Document title={docTitle} author="안톡">
       <Page size="A4" style={s.page} wrap>
         <View style={s.header}>
           <View style={s.appAbs}><ApprovalGrid /></View>
-          <Text style={s.brand}>안전톡톡e</Text>
+          <Text style={s.brand}>안톡</Text>
           <Text style={s.title}>{docTitle}</Text>
           <Text style={s.company}>{content.periodLabel}</Text>
         </View>
@@ -328,7 +328,7 @@ function EducationDoc({ content, docTitle }: { content: EducationReportContent; 
         </View>
 
         <Text style={s.foot}>
-          본 결재서류는 안전톡톡e가 {content.periodLabel} 안전보건교육일지를 분석해 자동 생성했습니다. · 날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
+          본 결재서류는 안톡가 {content.periodLabel} 안전보건교육일지를 분석해 자동 생성했습니다. · 날짜별 요약은 작성된 교육일지 내용을 AI가 정리한 것입니다.
         </Text>
       </Page>
     </Document>
