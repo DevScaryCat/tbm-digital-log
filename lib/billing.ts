@@ -7,7 +7,9 @@ import {
   addOneMonth,
   PLAN,
   getPlan,
+  ORG_SEAT_PRICE,
 } from "@/lib/portone";
+import { cancelOrgSeatMirrors } from "@/lib/org";
 
 export const MAX_FAILED_ATTEMPTS = 3;
 
@@ -98,12 +100,37 @@ function periodPaymentId(sub: SubscriptionRow): string {
 export async function chargeSubscription(
   admin: SupabaseClient,
   sub: SubscriptionRow,
-  opts: { amount?: number; customerEmail?: string } = {}
+  opts: { amount?: number; customerEmail?: string; paymentIdOverride?: string } = {}
 ): Promise<ChargeResult> {
+  // 회사 플랜(org): 스냅샷(sub.amount)이 아니라 청구 시점 좌석 수 × 단가로 재계산.
+  // 감축 예약(pending_seat_count)은 이번 청구부터 적용. pending_plan 경로보다 먼저 판정해야
+  // (org에는 pending_plan을 허용하지 않지만) 잔존 값이 재계산을 가로채지 못한다.
+  let orgRow: { id: string; seat_count: number; pending_seat_count: number | null } | null = null;
+  let orgSeats: number | null = null;
+  if (sub.plan === "org") {
+    const { data } = await admin
+      .from("organizations")
+      .select("id, seat_count, pending_seat_count")
+      .eq("owner_user_id", sub.user_id)
+      .maybeSingle();
+    orgRow = data as any;
+    if (!orgRow) {
+      return { ok: false, paymentId: periodPaymentId(sub), status: "failed", detail: "조직 정보 없음" };
+    }
+    orgSeats = orgRow.pending_seat_count ?? orgRow.seat_count;
+  }
+
   // 예약된 플랜 변경(pending_plan)이 있으면 이번 결제부터 새 플랜 금액으로 청구하고 전환
   const amount =
-    opts.amount ?? (sub.pending_plan ? getPlan(sub.pending_plan).amount : sub.amount ?? PLAN.amount);
-  const paymentId = periodPaymentId(sub);
+    opts.amount ??
+    (orgSeats != null
+      ? orgSeats * ORG_SEAT_PRICE
+      : sub.pending_plan
+        ? getPlan(sub.pending_plan).amount
+        : sub.amount ?? PLAN.amount);
+  // 초회 결제(checkout 등)는 1회성 id를 주입할 수 있다 — 같은 날 해지→재구독 시
+  // 날짜 키 paymentId가 재사용되어 환불 기록을 덮거나 결제가 거절되는 문제 방지 (리뷰 B/하)
+  const paymentId = opts.paymentIdOverride ?? periodPaymentId(sub);
   const now = new Date();
 
   if (!sub.billing_key) {
@@ -127,7 +154,10 @@ export async function chargeSubscription(
   const res = await chargeWithBillingKey({
     paymentId,
     billingKey: sub.billing_key,
-    orderName: getPlan(sub.pending_plan ?? sub.plan).name,
+    orderName:
+      orgSeats != null
+        ? `안톡 회사 플랜 (관리감독자 ${orgSeats}명)`
+        : getPlan(sub.pending_plan ?? sub.plan).name,
     amount,
     customer: { id: sub.user_id, email: opts.customerEmail },
   });
@@ -178,9 +208,13 @@ export async function chargeSubscription(
         ? new Date(sub.current_period_end)
         : now;
     // 예약 변경이 있으면 이번 결제에서 플랜 전환 (없으면 plan/amount 건드리지 않음)
-    const planChange = sub.pending_plan
-      ? { plan: getPlan(sub.pending_plan).id, amount, pending_plan: null }
-      : {};
+    // org는 청구액 재계산 결과를 amount 스냅샷에도 반영(표시용)
+    const planChange =
+      sub.plan === "org"
+        ? { amount }
+        : sub.pending_plan
+          ? { plan: getPlan(sub.pending_plan).id, amount, pending_plan: null }
+          : {};
     // 낙관적 잠금: 우리가 본 current_period_end 그대로일 때만 진행 (동시 실행 이중 진행 방지)
     let q = admin
       .from("subscriptions")
@@ -196,17 +230,41 @@ export async function chargeSubscription(
       ? q.eq("current_period_end", sub.current_period_end)
       : q.is("current_period_end", null);
     await q;
+
+    // org 감축 예약 반영 — 이번 청구를 감축된 좌석 수로 했으므로 확정한다.
+    // (seat_count = pending 값 세팅은 멱등이라 동시 실행에도 안전)
+    if (orgRow && orgRow.pending_seat_count != null) {
+      await admin
+        .from("organizations")
+        .update({ seat_count: orgRow.pending_seat_count, pending_seat_count: null })
+        .eq("id", orgRow.id);
+    }
   } else {
     const attempts = (sub.failed_attempts ?? 0) + 1;
+    const nowCanceled = attempts >= MAX_FAILED_ATTEMPTS;
     await admin
       .from("subscriptions")
       .update({
-        status: attempts >= MAX_FAILED_ATTEMPTS ? "canceled" : "past_due",
+        status: nowCanceled ? "canceled" : "past_due",
         failed_attempts: attempts,
-        ...(attempts >= MAX_FAILED_ATTEMPTS ? { canceled_at: now.toISOString() } : {}),
+        ...(nowCanceled ? { canceled_at: now.toISOString() } : {}),
         updated_at: now.toISOString(),
       })
       .eq("id", sub.id);
+
+    // 회사 플랜이 3회 실패로 해지되면 하위 미러 구독을 즉시 강등 (결정 8: 유예 없음).
+    // 멤버십(org_members)은 남겨 재결제 시 복구 가능하게 한다. cron 말미 reconciliation이 2차 안전망.
+    if (nowCanceled && orgRow) {
+      const { data: members } = await admin
+        .from("org_members")
+        .select("member_user_id")
+        .eq("org_id", orgRow.id)
+        .eq("status", "active");
+      await cancelOrgSeatMirrors(
+        (members ?? []).map((m: any) => m.member_user_id as string),
+        admin
+      );
+    }
   }
 
   return { ok: paid, paymentId, status: paid ? "paid" : "failed", detail: body };

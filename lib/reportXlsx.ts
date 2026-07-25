@@ -1,9 +1,8 @@
 // lib/reportXlsx.ts — 서식 있는 엑셀(.xlsx) 첨부 생성 (exceljs)
 // CSV(원시 row)는 받는 사람이 열면 컬럼이 눌리고 "######"로 깨져 보기 불편 →
-// 컬럼 너비·굵은 헤더·테두리·위험등급 색상을 넣은 진짜 엑셀로 만든다.
+// 컬럼 너비·굵은 헤더·테두리를 넣은 진짜 엑셀로 만든다.
 // exceljs는 Node 전용·무겁기 때문에 첨부 빌더에서 동적 import로만 로드한다.
 import ExcelJS from "exceljs";
-import { normLevel } from "@/lib/riskMatrix";
 
 const INK = "FF26251E";
 const MUTED = "FF807D72";
@@ -15,12 +14,6 @@ const BORDER = {
   bottom: { style: "thin" as const, color: { argb: "FFD9D7CF" } },
   right: { style: "thin" as const, color: { argb: "FFD9D7CF" } },
 };
-
-function levelFill(level: string): string {
-  if (["매우높음", "상", "높음"].includes(level)) return "FFFDECEF"; // 빨강 계열
-  if (["보통", "중"].includes(level)) return "FFFFF1E3"; // 주황 계열
-  return "FFE7F6EE"; // 초록 계열
-}
 
 function styleTitle(cell: ExcelJS.Cell, text: string) {
   cell.value = text;
@@ -43,30 +36,25 @@ function styleHeaderRow(row: ExcelJS.Row) {
 }
 
 type RiskRow = {
-  hazard: string; cause: string; frequency: number; severity: number;
-  risk: number; level: string; measures: string; recurring?: boolean;
+  hazard: string; cause: string; measures: string; recurring?: boolean;
 };
 
-/** 위험성평가표 → 서식 엑셀 Buffer */
+/** 위험요인 분석 → 서식 엑셀 Buffer (등급·점수 없는 정보성 기록) */
 export async function buildRiskXlsx(
   items: RiskRow[],
   meta: { company: string; period: string; date: string }
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "안톡";
-  // 빈도강도 데이터가 있으면 가능성·중대성·위험성 컬럼 노출, 없으면(상중하법) 등급만.
-  const hasFreqSev = items.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
-  const ws = wb.addWorksheet("위험성평가표", {
+  const ws = wb.addWorksheet("위험요인 분석", {
     views: [{ state: "frozen", ySplit: 4 }],
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
-  ws.columns = hasFreqSev
-    ? [{ width: 5 }, { width: 6 }, { width: 30 }, { width: 30 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 }, { width: 44 }]
-    : [{ width: 5 }, { width: 6 }, { width: 32 }, { width: 32 }, { width: 10 }, { width: 48 }];
-  const lastCol = hasFreqSev ? "I" : "F";
+  ws.columns = [{ width: 5 }, { width: 6 }, { width: 34 }, { width: 34 }, { width: 52 }];
+  const lastCol = "E";
 
   ws.mergeCells(`A1:${lastCol}1`);
-  styleTitle(ws.getCell("A1"), "위험성평가표");
+  styleTitle(ws.getCell("A1"), "위험요인 분석");
   ws.getRow(1).height = 26;
 
   ws.mergeCells(`A2:${lastCol}2`);
@@ -74,30 +62,23 @@ export async function buildRiskXlsx(
 
   ws.addRow([]); // row 3 여백
 
-  const header = hasFreqSev
-    ? ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"]
-    : ["No", "반복", "유해·위험요인", "발생 원인", "등급", "감소대책"];
-  styleHeaderRow(ws.addRow(header)); // row 4
+  styleHeaderRow(ws.addRow(["No", "반복", "유해·위험요인", "발생 원인", "감소대책"])); // row 4
 
-  const gradeCol = hasFreqSev ? 8 : 5; // 등급 셀 위치
   items.forEach((it, i) => {
-    const grade = normLevel(it.level);
-    const rowVals = hasFreqSev
-      ? [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, grade, it.measures]
-      : [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, grade, it.measures];
-    const r = ws.addRow(rowVals);
+    const r = ws.addRow([i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.measures]);
     r.eachCell((c) => {
       c.border = BORDER;
       c.alignment = { vertical: "middle", wrapText: true };
       c.font = { size: 10, color: { argb: INK } };
     });
-    (hasFreqSev ? [1, 2, 5, 6, 7, 8] : [1, 2, 5]).forEach((col) => {
+    [1, 2].forEach((col) => {
       r.getCell(col).alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
-    const lv = r.getCell(gradeCol);
-    lv.fill = { type: "pattern", pattern: "solid", fgColor: { argb: levelFill(grade) } };
-    lv.font = { size: 10, bold: true, color: { argb: INK } };
   });
+
+  const noteRow = ws.addRow([]);
+  ws.mergeCells(`A${noteRow.number}:${lastCol}${noteRow.number}`);
+  styleMeta(ws.getCell(`A${noteRow.number}`), "※ 본 표는 TBM 기록에서 정리한 참고용 위험요인 목록으로, 산업안전보건법상 위험성평가를 대체하지 않습니다.");
 
   return Buffer.from(await wb.xlsx.writeBuffer() as ArrayBuffer);
 }

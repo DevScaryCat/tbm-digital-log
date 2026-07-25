@@ -26,6 +26,14 @@ export async function POST(request: Request) {
     if (error || !sub) {
       return NextResponse.json({ error: "구독을 찾을 수 없습니다." }, { status: 404 });
     }
+    // 조직 하위 미러(0원, 빌링키 없음)는 과금 대상이 아니다 — 이 라우트를 반복 호출해
+    // 실패 카운트를 쌓아 미러를 셀프 강등(→개인결제 가드 우회)하는 경로 차단 (리뷰 N)
+    if (sub.plan === "org_seat") {
+      return NextResponse.json(
+        { error: "조직 소속 계정입니다. 결제는 회사 안전관리자가 관리합니다." },
+        { status: 403 }
+      );
+    }
     if (sub.status === "canceled") {
       return NextResponse.json({ error: "해지된 구독입니다." }, { status: 400 });
     }

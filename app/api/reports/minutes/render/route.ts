@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { buildRangeContent, renderReportHtml, ReportContent, RiskItem, sanitizeRiskItems } from "@/lib/monthlyReport";
+import { resolveReportTarget } from "@/lib/org";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,14 +18,19 @@ export async function POST(request: Request) {
   const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
   const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
   const items: RiskItem[] = sanitizeRiskItems(body?.items);
-  const company = (user.user_metadata as { company_name?: string })?.company_name || "";
+
+  const admin = getAdminClient();
+  // 역할 게이트(§4-C): member 403 / owner는 대상 현장 지정 가능
+  const tgt = await resolveReportTarget(user.id, body?.targetUserId, admin);
+  if (!tgt.ok) return NextResponse.json({ error: tgt.error }, { status: tgt.status });
+  const company =
+    tgt.targetSiteName || (user.user_metadata as { company_name?: string })?.company_name || "";
 
   if (!isPro || !from) {
     return NextResponse.json({ html: renderReportHtml(sampleMinutes(company)) });
   }
 
-  const admin = getAdminClient();
-  const content = await buildRangeContent(admin, user.id, company || null, from, to);
+  const content = await buildRangeContent(admin, tgt.targetId, company || null, from, to);
   if (content.stats.total === 0) {
     return NextResponse.json({ html: "", empty: true });
   }

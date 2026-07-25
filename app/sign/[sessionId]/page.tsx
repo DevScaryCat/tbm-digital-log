@@ -236,7 +236,7 @@ export default function SignPage() {
                         <span className="text-[12px] font-bold text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px] shrink-0">선택사항</span>
                     </div>
                     <p className="text-[14px] text-cur-body mb-5 leading-relaxed">
-                        현장 위험요인이나 건의사항이 있으면 남겨주세요 — 회의록의 위험성평가에 자동 반영됩니다.
+                        현장 위험요인이나 건의사항이 있으면 남겨주세요 — 회의록의 위험요인·대책에 자동 반영됩니다.
                         <span className="text-cur-muted"> 없으면 아래 &lsquo;건너뛰고 완료&rsquo;를 누르면 돼요.</span>
                     </p>
                     <SuggestionForm

@@ -127,13 +127,12 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
   const keywords = content.keywords || [];
   const hazards = content.hazards || [];
   const riskItems = content.riskItems || [];
-  // 위·아래 등급 통일: 위험성평가(riskItems)가 있으면 위험성 점수(가능성×중대성)로 상/중/하 산정하고 요약표도 파생.
-  const summaryItems = riskItems.length > 0
-    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: normLevel(it.level), measure: it.measures }))
-    : hazards;
-  const displayHigh = riskItems.length > 0 ? summaryItems.filter((h) => h.level === "상").length : stats.high;
-  const displayMid = riskItems.length > 0 ? summaryItems.filter((h) => h.level === "중").length : stats.mid;
-  const lowCount = summaryItems.filter((h) => h.level === "하").length;
+  // 주요 위험요인 요약·통계는 항상 회의록(hazards/stats)에서 파생.
+  // 위험요인 분석(riskItems)은 등급 없는 정보성 표라 통계에 쓰지 않는다.
+  const summaryItems = hazards;
+  const displayHigh = stats.high;
+  const displayMid = stats.mid;
+  const lowCount = summaryItems.filter((h) => normLevel(h.level) === "하").length;
   const topWords = keywords.slice(0, 2).map((k) => k.word);
 
   return (
@@ -206,51 +205,32 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
           ))}
         </View>
 
-        {/* 위험성평가표 — 빈도강도 데이터가 있으면 가능성×중대성+위험성, 없으면(상중하) 등급만 */}
-        {riskItems.length > 0 ? (() => {
-          const raHasFreqSev = riskItems.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
-          return (
+        {/* 위험요인 분석 — 등급·점수 없는 정보성 표 */}
+        {riskItems.length > 0 ? (
           <>
-            <Text style={s.sectionTitle} minPresenceAhead={72}>위험성평가표</Text>
+            <Text style={s.sectionTitle} minPresenceAhead={72}>위험요인 분석</Text>
             <View style={s.table}>
               <View style={s.th}>
                 <Text style={[s.cell, s.thTxt, { width: 24, textAlign: "center" }]}>No</Text>
                 <Text style={[s.cell, s.thTxt, { flex: 1.3 }]}>유해·위험요인 / 원인</Text>
-                {raHasFreqSev ? (
-                  <>
-                    <Text style={[s.cell, s.thTxt, { width: 50, textAlign: "center" }]}>가능성×중대성</Text>
-                    <Text style={[s.cell, s.thTxt, { width: 56, textAlign: "center" }]}>위험성</Text>
-                  </>
-                ) : (
-                  <Text style={[s.cell, s.thTxt, { width: 44, textAlign: "center" }]}>등급</Text>
-                )}
                 <Text style={[s.cell, s.thTxt, { flex: 1 }]}>감소대책</Text>
               </View>
-              {riskItems.map((it, i) => {
-                const grade = normLevel(it.level);
-                return (
+              {riskItems.map((it, i) => (
                 <View key={i} style={s.tr} wrap={false}>
                   <Text style={[s.cell, { width: 24, textAlign: "center", color: C.muted }]}>{i + 1}</Text>
                   <View style={[s.cell, { flex: 1.3 }]}>
                     <Text style={{ color: C.ink }}>{it.recurring ? "[반복] " : ""}{it.hazard}</Text>
                     {it.cause ? <Text style={{ fontSize: 7.5, color: C.muted }}>{it.cause}</Text> : null}
                   </View>
-                  {raHasFreqSev ? (
-                    <>
-                      <Text style={[s.cell, { width: 50, textAlign: "center" }]}>{it.frequency}×{it.severity}</Text>
-                      <Text style={[s.cell, { width: 56, textAlign: "center", fontWeight: "bold", color: gradeColor(grade) }]}>{it.risk} · {grade}</Text>
-                    </>
-                  ) : (
-                    <View style={[s.cell, { width: 44, alignItems: "center" }]}><Badge level={grade} /></View>
-                  )}
                   <Text style={[s.cell, { flex: 1 }]}>{it.measures || "-"}</Text>
                 </View>
-                );
-              })}
+              ))}
             </View>
+            <Text style={{ fontSize: 7.5, color: C.muted, marginTop: 4 }}>
+              ※ 본 표는 TBM 기록에서 정리한 참고용 위험요인 목록으로, 산업안전보건법상 위험성평가를 대체하지 않습니다.
+            </Text>
           </>
-          );
-        })() : null}
+        ) : null}
 
         <Text style={s.foot}>
           본 결재서류는 안톡가 {content.periodLabel} TBM 회의록을 분석해 자동 생성했습니다. · 위험요인은 작성된 회의록에서만 집계됩니다.

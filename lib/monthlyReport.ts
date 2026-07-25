@@ -27,33 +27,24 @@ export interface HazardRow {
   date: string;
 }
 
-/** 위험성평가 항목 (주요 위험요인 아래 엑셀표) */
+/** 위험요인 분석 항목 (주요 위험요인 아래 표) — 등급 산정 없는 정보성 기록 */
 export interface RiskItem {
   hazard: string;
   cause: string;
-  frequency: number;
-  severity: number;
-  risk: number;
-  level: string; // 매우높음/높음/보통/낮음
   measures: string;
   recurring?: boolean;
 }
 
 /**
  * 클라이언트가 보낸 items를 신뢰하지 않고 타입을 강제한다.
- * frequency/severity/risk는 number 타입이지만 요청 body는 임의 문자열일 수 있어,
- * 그대로 HTML/메일에 삽입되면 마크업 주입이 가능하다(D-11). 숫자는 Number로,
- * 문자열은 String으로 정규화해 API 경계에서 차단한다.
+ * 임의 값이 그대로 HTML/메일에 삽입되면 마크업 주입이 가능하다(D-11).
+ * String으로 정규화해 API 경계에서 차단하고, 등급 계열 필드(level/frequency/severity/risk)는 버린다.
  */
 export function sanitizeRiskItems(input: unknown): RiskItem[] {
   if (!Array.isArray(input)) return [];
   return input.map((x: any) => ({
     hazard: String(x?.hazard ?? ""),
     cause: String(x?.cause ?? ""),
-    frequency: Number(x?.frequency) || 0,
-    severity: Number(x?.severity) || 0,
-    risk: Number(x?.risk) || 0,
-    level: String(x?.level ?? ""),
     measures: String(x?.measures ?? ""),
     recurring: x?.recurring === true,
   }));
@@ -286,25 +277,13 @@ function levelBadge(level: string): string {
   return `<span style="display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:9999px;background:${c.bg};color:${c.fg};white-space:nowrap;">${level}</span>`;
 }
 
-/** 상/중/하 표시 색 (위험성평가표 등급 텍스트용) */
-function gradeColor(g: string): string {
-  return g === "상" ? "#cf2d56" : g === "중" ? "#d4691a" : "#1f8a65";
-}
-
-/** 위험성평가 엑셀표 섹션 (주요 위험요인 아래) */
+/** 위험요인 분석 표 섹션 (주요 위험요인 아래) — 등급·점수 없이 정보성 항목만 */
 function riskTableHtml(items: RiskItem[]): string {
   if (!items || items.length === 0) return "";
   const recurring = items.filter((it) => it.recurring).length;
-  // 빈도강도 데이터(가능성×중대성)가 있으면 해당 컬럼 노출, 없으면(상중하법) 등급 뱃지만.
-  const hasFreqSev = items.some((it) => (Number(it.frequency) || 0) > 0 && (Number(it.severity) || 0) > 0);
   const rows = items
-    .map((it, i) => {
-      const grade = gradeOf(it.level);
-      const gradeCells = hasFreqSev
-        ? `<td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${Number(it.frequency) || 0}×${Number(it.severity) || 0}</td>
-        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;"><b style="color:${gradeColor(grade)};font-size:13px;">${Number(it.risk) || 0} · ${grade}</b></td>`
-        : `<td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;">${levelBadge(grade)}</td>`;
-      return `
+    .map(
+      (it, i) => `
       <tr style="vertical-align:top;">
         <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#999;font-size:12px;">${i + 1}</td>
         <td style="padding:8px 6px;border-bottom:1px solid #eee;">
@@ -312,29 +291,24 @@ function riskTableHtml(items: RiskItem[]): string {
           <span style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(it.hazard)}</span>
           ${it.cause ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(it.cause)}</div>` : ""}
         </td>
-        ${gradeCells}
         <td style="padding:8px 6px;border-bottom:1px solid #eee;font-size:12px;color:#444;">${escapeHtml(it.measures) || "-"}</td>
-      </tr>`;
-    })
+      </tr>`
+    )
     .join("");
-  const headGrade = hasFreqSev
-    ? `<th style="padding:8px 6px;text-align:center;width:60px;">가능성×중대성</th>
-            <th style="padding:8px 6px;text-align:center;width:74px;">위험성</th>`
-    : `<th style="padding:8px 6px;text-align:center;width:64px;">위험성 등급</th>`;
   return `
-      <div style="font-size:15px;font-weight:700;margin:22px 0 10px;">위험성평가표</div>
+      <div style="font-size:15px;font-weight:700;margin:22px 0 10px;">위험요인 분석</div>
       ${recurring ? `<div style="background:#f54e000d;border:1px solid #f54e0033;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#c2410c;">⟳ 반복 위험요인 ${recurring}건 — 여러 TBM에서 반복 등장, 우선 관리 대상</div>` : ""}
       <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e6e5e0;border-radius:8px;overflow:hidden;">
         <thead>
           <tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
             <th style="padding:8px 6px;text-align:center;width:34px;">No</th>
             <th style="padding:8px 6px;text-align:left;">유해·위험요인 / 원인</th>
-            ${headGrade}
             <th style="padding:8px 6px;text-align:left;">감소대책</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
-      </table>`;
+      </table>
+      <div style="font-size:11px;color:#999;margin-top:8px;">※ 본 표는 TBM 기록에서 정리한 참고용 위험요인 목록으로, 산업안전보건법상 위험성평가를 대체하지 않습니다.</div>`;
 }
 
 /** 이메일/공개페이지용 HTML 본문 (월간·위험성평가 공용 단일 템플릿) */
@@ -345,14 +319,10 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   const hazards = content.hazards || [];
   const aiSummary = content.aiSummary || "";
   const riskItems = content.riskItems || [];
-  // 위(주요 위험요인)·아래(위험성평가표) 등급 통일: 위험성평가(riskItems)가 있으면 그 위험성 점수(가능성×중대성)로
-  // 상/중/하를 산정하고, 위 요약표도 riskItems에서 파생 → 같은 항목이 두 표에서 같은 등급을 갖는다.
-  const summaryItems = riskItems.length > 0
-    ? riskItems.map((it) => ({ factor: it.hazard, process: it.cause || "", date: "", level: gradeOf(it.level), measure: it.measures }))
-    : hazards;
-  const displayStats = riskItems.length > 0
-    ? { total: stats.total, high: riskItems.filter((it) => gradeOf(it.level) === "상").length, mid: riskItems.filter((it) => gradeOf(it.level) === "중").length }
-    : stats;
+  // 주요 위험요인 요약·통계는 항상 회의록(hazards/stats)에서. 위험요인 분석(riskItems)은
+  // 등급 없는 정보성 표라 요약·통계 파생에 쓰지 않는다.
+  const summaryItems = hazards;
+  const displayStats = stats;
 
   // 통합(여러 현장 병합) 보고서면 현장별 소계 섹션
   const sites = content.sites || [];
@@ -506,14 +476,14 @@ export interface GenerateResult {
 
 type MailAttachment = { filename: string; content: string | Buffer; contentType?: string };
 
-/** 위험성평가표 → 엑셀(CSV) 문자열. BOM 포함(한글 깨짐 방지). */
+/** 위험요인 분석 → 엑셀(CSV) 문자열. BOM 포함(한글 깨짐 방지). */
 export function buildRiskCsv(
   items: RiskItem[],
   meta: { company: string; period: string; date: string }
 ): string {
-  const header = ["No", "반복", "유해·위험요인", "발생 원인", "가능성", "중대성", "위험성", "등급", "감소대책"];
-  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.frequency, it.severity, it.risk, gradeOf(it.level), it.measures]);
-  const top = [["위험성평가표"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
+  const header = ["No", "반복", "유해·위험요인", "발생 원인", "감소대책"];
+  const rows = items.map((it, i) => [i + 1, it.recurring ? "반복" : "", it.hazard, it.cause, it.measures]);
+  const top = [["위험요인 분석"], ["현장/업체", meta.company || "-", "대상기간", meta.period, "작성일", meta.date], [], header, ...rows];
   return "﻿" + top.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
 }
 
@@ -542,10 +512,10 @@ export async function buildReportAttachments(
     try {
       const { buildRiskXlsx } = await import("@/lib/reportXlsx");
       const xlsx = await buildRiskXlsx(content.riskItems, meta);
-      attachments.push({ filename: `위험성평가표_${date}.xlsx`, content: xlsx, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      attachments.push({ filename: `위험요인분석_${date}.xlsx`, content: xlsx, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     } catch (e) {
-      console.error("위험성평가표 엑셀 생성 실패, CSV로 대체:", e);
-      attachments.push({ filename: `위험성평가표_${date}.csv`, content: buildRiskCsv(content.riskItems, meta), contentType: "text/csv;charset=utf-8" });
+      console.error("위험요인 분석 엑셀 생성 실패, CSV로 대체:", e);
+      attachments.push({ filename: `위험요인분석_${date}.csv`, content: buildRiskCsv(content.riskItems, meta), contentType: "text/csv;charset=utf-8" });
     }
   }
 

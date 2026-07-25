@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
 import { useRequireSubscription } from "@/lib/useSubscription"
+import { useBlockOwner } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, CheckCircle2, ClipboardList } from "lucide-react"
 
@@ -31,6 +32,7 @@ interface CatStat { label: string; color: string; seconds: number; count: number
 export default function EducationProgressPage() {
   const router = useRouter()
   const { checking } = useRequireSubscription()
+  useBlockOwner() // 안전관리자(관리 전용)는 작성 화면 접근 불가 (§4-B)
   const [loading, setLoading] = useState(true)
   const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
   const [regularCats, setRegularCats] = useState<CatStat[]>([])

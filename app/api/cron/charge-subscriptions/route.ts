@@ -42,12 +42,48 @@ async function run(request: Request) {
       return NextResponse.json({ error: "조회 실패" }, { status: 500 });
     }
 
-    const results = { processed: 0, paid: 0, failed: 0 };
+    const results = { processed: 0, paid: 0, failed: 0, mirrorsDemoted: 0 };
     for (const sub of (due || []) as SubscriptionRow[]) {
       results.processed++;
       const r = await chargeSubscription(admin, sub);
       if (r.ok) results.paid++;
       else results.failed++;
+    }
+
+    // ── 강등 reconciliation 스윕 (§2, 검증 F6) ─────────────────────────
+    // 상위(org) 구독이 어떤 경로로 canceled 되었든(3회 실패·수동 해지·재구독 실패),
+    // 하위 미러(org_seat)가 유효 상태로 남아 있으면 영구 무료 Pro가 된다 → 매일 멱등 정리.
+    {
+      const { data: canceledOrgs } = await admin
+        .from("subscriptions")
+        .select("user_id, current_period_end")
+        .eq("plan", "org")
+        .eq("status", "canceled");
+      for (const o of (canceledOrgs as any[]) || []) {
+        // 해지 후 잔여 이용기간이 남아 있으면(무환불 해지) 그 기간까지는 하위도 유지
+        if (o.current_period_end && new Date(o.current_period_end) > new Date()) continue;
+        const { data: org } = await admin
+          .from("organizations")
+          .select("id")
+          .eq("owner_user_id", o.user_id)
+          .maybeSingle();
+        if (!org) continue;
+        const { data: members } = await admin
+          .from("org_members")
+          .select("member_user_id")
+          .eq("org_id", org.id)
+          .eq("status", "active");
+        const ids = ((members as any[]) || []).map((m) => m.member_user_id as string);
+        if (ids.length === 0) continue;
+        const { data: demoted } = await admin
+          .from("subscriptions")
+          .update({ status: "canceled", current_period_end: nowIso, updated_at: nowIso })
+          .in("user_id", ids)
+          .eq("plan", "org_seat")
+          .neq("status", "canceled")
+          .select("user_id");
+        results.mirrorsDemoted += (demoted ?? []).length;
+      }
     }
 
     return NextResponse.json({ success: true, ...results });

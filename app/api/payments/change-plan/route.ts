@@ -18,6 +18,10 @@ export async function POST(request: Request) {
 
     const { plan } = await request.json();
     const selectedPlan = getPlan(plan);
+    // org/org_seat(0원)를 body로 밀어넣어 예약하는 우회 차단 — 조직 플랜은 이 라우트 대상이 아니다
+    if (!selectedPlan.selectable) {
+      return NextResponse.json({ error: "선택할 수 없는 플랜입니다." }, { status: 400 });
+    }
 
     const admin = getAdminClient();
     const { data: existing, error: selErr } = await admin
@@ -42,6 +46,18 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "평생 무료 회원은 플랜 변경이 필요 없습니다." },
         { status: 400 }
+      );
+    }
+    if (existing.plan === "org") {
+      return NextResponse.json(
+        { error: "회사 플랜은 좌석 관리에서 좌석 수로 조정합니다." },
+        { status: 400 }
+      );
+    }
+    if (existing.plan === "org_seat") {
+      return NextResponse.json(
+        { error: "조직 소속 계정입니다. 구독 관리는 회사 안전관리자가 합니다." },
+        { status: 403 }
       );
     }
 

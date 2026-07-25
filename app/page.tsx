@@ -16,6 +16,9 @@ import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } 
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { cn } from "@/lib/utils"
+import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
+import { OwnerHome } from "@/components/OwnerHome"
+import { AttachInviteModal } from "@/components/AttachInviteModal"
 
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
 const toLocalDateStr = (iso: string) => {
@@ -54,6 +57,9 @@ export default function MainPage() {
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const formatModalRef = useRef<HTMLDivElement>(null)
 
+  // 2계층 역할 판정 — owner면 홈을 관제 대시보드로 스왑, pendingAttach면 편입 수락 모달
+  const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
+
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -61,14 +67,20 @@ export default function MainPage() {
         const currentUser = session.user
         setUser(currentUser)
 
-        const meta = currentUser.user_metadata
-        if (!meta?.preferred_export_format || !meta?.worker_type) {
-          if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
-          setNeedsWorkerType(!meta?.worker_type)
-          setShowFormatModal(true)
-        }
+        const ctx = await fetchOrgContext()
+        setOrgCtx(ctx)
 
-        fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
+        // 안전관리자(관리 전용)는 문서 출력·현장 통계가 없다 — 온보딩 모달·통계 로드 생략
+        if (ctx?.kind !== "owner") {
+          const meta = currentUser.user_metadata
+          if (!meta?.preferred_export_format || !meta?.worker_type) {
+            if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
+            setNeedsWorkerType(!meta?.worker_type)
+            setShowFormatModal(true)
+          }
+
+          fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
+        }
       }
       setIsLoading(false)
     }
@@ -187,6 +199,22 @@ export default function MainPage() {
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
+  // 안전관리자 홈 = 관제 대시보드 (작성 허브 대신)
+  if (user && orgCtx?.kind === "owner") {
+    return (
+      <>
+        <OwnerHome />
+        {orgCtx.pendingAttach && (
+          <AttachInviteModal
+            orgName={orgCtx.pendingAttach.orgName}
+            token={orgCtx.pendingAttach.token}
+            onDone={() => setOrgCtx({ ...orgCtx, pendingAttach: null })}
+          />
+        )}
+      </>
+    )
+  }
+
   if (!user) {
     const features = [
       { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
@@ -288,6 +316,44 @@ export default function MainPage() {
 
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
+
+          {/* 조직 편입(attach) 초대 — 기존 계정 앞으로 온 초대가 있으면 수락/거절 모달 */}
+          {user && orgCtx?.pendingAttach && (
+            <AttachInviteModal
+              orgName={orgCtx.pendingAttach.orgName}
+              token={orgCtx.pendingAttach.token}
+              onDone={() => setOrgCtx(orgCtx ? { ...orgCtx, pendingAttach: null } : null)}
+            />
+          )}
+
+          {/* 조직 소속인데 실이메일 미인증 — 월간 보고서 수신 불가 안내 (버튼 최소 원칙의 유일한 잔소리) */}
+          {user && orgCtx?.kind === "member" && !user.user_metadata?.real_email_verified_at && (
+            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25">
+              <span className="text-[18px]" aria-hidden>📮</span>
+              <div className="flex-1 min-w-0 text-[13px] leading-snug">
+                <p className="font-semibold text-cur-ink">이메일 인증이 필요해요</p>
+                <p className="text-cur-muted">인증해야 매달 1일 우리 현장 월간 보고서를 받을 수 있어요.</p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const meta = user.user_metadata || {}
+                  const email = meta.real_email || window.prompt("보고서를 받을 이메일 주소를 입력하세요")
+                  if (!email) return
+                  const { data } = await supabase.auth.getSession()
+                  const res = await fetch("/api/auth/email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token}` },
+                    body: JSON.stringify({ email }),
+                  })
+                  alert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요.")
+                }}
+                className="shrink-0 h-9 px-3 rounded-lg bg-cur-ink text-white text-[12px] font-bold"
+              >
+                인증 메일
+              </button>
+            </div>
+          )}
 
           {/* 튜토리얼 미이수 배너 — 완료·건너뛰기·X 모두 tutorial_seen_at 기록으로 사라진다 */}
           {user && !user.user_metadata?.tutorial_seen_at && (

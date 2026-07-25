@@ -239,9 +239,9 @@ async function fillMinutesSheet(
     if (leaderSig) placeImage(wb, ws, leaderSig, r, 4, 90, 34, 0.55)
     r++
 
-    // 근로자 참여 위험성평가
+    // 근로자 참여 유해·위험요인
     putRow(ws, r++, [
-        { v: "■ 근로자 참여 위험성평가", span: 4, fill: C.orange50, bold: true },
+        { v: "■ 근로자 참여 유해·위험요인", span: 4, fill: C.orange50, bold: true },
     ], 20)
     putRow(ws, r++, [
         { v: "잠재 유해위험요인", span: 2, fill: C.gray200, bold: true, align: "center" },

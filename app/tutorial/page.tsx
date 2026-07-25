@@ -658,7 +658,7 @@ export default function TutorialPage() {
                                         <span className="text-cur-ink font-medium leading-snug">{result.workContent}</span>
                                     </div>
                                     <div className="px-4 py-3 space-y-2.5">
-                                        <p className="text-[12px] font-semibold text-cur-muted uppercase tracking-[0.6px]">위험성평가</p>
+                                        <p className="text-[12px] font-semibold text-cur-muted uppercase tracking-[0.6px]">위험요인 분석</p>
                                         {result.hazards.map((h, i) => (
                                             <div key={i} className="space-y-0.5">
                                                 <div className="flex items-center gap-2">

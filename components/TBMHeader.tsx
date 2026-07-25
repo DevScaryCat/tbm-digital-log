@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, CreditCard, Mail } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, CreditCard, Mail, Users } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth } from "date-fns"
 import { fetchSubscription, planBadge, usageWindow } from "@/lib/useSubscription"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 
 interface TBMHeaderProps {
     title?: string
@@ -20,10 +21,12 @@ interface TBMHeaderProps {
     backHref?: string
 }
 
-// 플랜별 월 한도
+// 플랜별 월 한도 (DB 트리거 enforce_tbm_monthly_limit와 일치)
 const LIMITS: Record<string, { log: number; minutes: number; ra: number }> = {
     monthly_basic: { log: 80, minutes: 10, ra: 0 },
     monthly_pro: { log: 200, minutes: 30, ra: 20 },
+    org_seat: { log: 200, minutes: 30, ra: 20 }, // 조직 하위 현장 = Pro 상당
+    org: { log: 0, minutes: 0, ra: 20 },         // 안전관리자 = 작성 없음, AI 분석은 대상 현장 한도로 차감
 }
 function limitFor(plan: string | null, kind: "log" | "minutes" | "ra"): number {
     // grandfather(영구 무료)도 사용량 한도는 베이직과 동일 (DB 트리거 enforce_tbm_monthly_limit와 일치)
@@ -77,6 +80,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     const [usage, setUsage] = useState<{ log: number; minutes: number; ra: number } | null>(null)
     const [usageStartISO, setUsageStartISO] = useState<string | null>(null)
     const [resetLabel, setResetLabel] = useState("매월 1일 초기화")
+    // 조직 역할 — member는 보고서 설정·구독/결제 메뉴 숨김, owner는 좌석 관리 노출
+    const [orgKind, setOrgKind] = useState<"owner" | "member" | "solo" | null>(null)
 
     useEffect(() => {
         const getUser = async () => {
@@ -90,6 +95,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 const w = usageWindow(sub)
                 setUsageStartISO(w.startISO)
                 setResetLabel(w.resetLabel)
+                fetchOrgContext().then((c) => setOrgKind(c?.kind ?? "solo"))
             }
         }
         getUser()
@@ -161,14 +167,27 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-cur-hairline" />
-                <DropdownMenuItem onClick={() => router.push('/report-settings')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 보고서 설정
-                    <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[9px] font-bold px-1 py-0.5 rounded-[3px] tracking-wide">PRO</span>
-                </DropdownMenuItem>
+                {/* 조직 하위(member)는 결제·보고서 설정을 회사(안전관리자)가 관리 — 메뉴 자체를 숨긴다 (§4-C).
+                    역할 로딩 중(null)에는 보류해 member에게 금지 메뉴가 잠깐 노출·클릭되는 플래시 방지 (리뷰 O) */}
+                {orgKind !== null && orgKind !== "member" && (
+                    <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
+                    </DropdownMenuItem>
+                )}
+                {orgKind === "owner" && (
+                    <DropdownMenuItem onClick={() => router.push('/org/members')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <Users className="mr-2 h-4 w-4 text-cur-muted" /> 좌석·계정 관리
+                    </DropdownMenuItem>
+                )}
+                {orgKind !== null && orgKind !== "member" && (
+                    <>
+                        <DropdownMenuSeparator className="bg-cur-hairline" />
+                        <DropdownMenuItem onClick={() => router.push('/report-settings')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                            <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 보고서 설정
+                            <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[9px] font-bold px-1 py-0.5 rounded-[3px] tracking-wide">PRO</span>
+                        </DropdownMenuItem>
+                    </>
+                )}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                     <LogOut className="mr-2 h-4 w-4" /> 로그아웃

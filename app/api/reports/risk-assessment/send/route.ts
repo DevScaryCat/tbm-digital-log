@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { buildRangeContent, renderReportHtml, buildReportAttachments, RiskItem, ReportContent, sanitizeRiskItems } from "@/lib/monthlyReport";
+import { resolveReportTarget } from "@/lib/org";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -34,19 +35,24 @@ export async function POST(request: Request) {
 
   const admin = getAdminClient();
 
-  // 통합 템플릿: 그 기간 TBM 회의록 종합분석 + 위험성평가 엑셀표
+  // 역할 게이트(§4-C): member는 발송 불가(임의 이메일 발송 차단 — 결정 4), owner는 대상 현장 지정
+  const tgt = await resolveReportTarget(user.id, body?.targetUserId, admin);
+  if (!tgt.ok) return NextResponse.json({ error: tgt.error }, { status: tgt.status });
+  const companyName = tgt.targetSiteName || company;
+
+  // 통합 템플릿: 그 기간 TBM 회의록 종합분석 + 위험요인 분석 표
   const content: ReportContent = from
-    ? await buildRangeContent(admin, user.id, company || null, from, to)
-    : { companyName: company || null, periodLabel: period, stats: { total: 0, high: 0, mid: 0 }, keywords: [], hazards: [], aiSummary: "" };
+    ? await buildRangeContent(admin, tgt.targetId, companyName || null, from, to)
+    : { companyName: companyName || null, periodLabel: period, stats: { total: 0, high: 0, mid: 0 }, keywords: [], hazards: [], aiSummary: "" };
   content.riskItems = items;
 
   const html = renderReportHtml(content);
-  const docTitle = `${company ? company + " " : ""}TBM 회의록 종합분석 · AI 분석 보고서(결재)`;
+  const docTitle = `${companyName ? companyName + " " : ""}TBM 회의록 종합분석 · AI 분석 보고서(결재)`;
   const attachments = await buildReportAttachments(content, docTitle, date);
 
   const sent = await sendMail({
     to: recipients,
-    subject: `[안톡] ${company ? company + " " : ""}TBM 회의록 분석 · AI 분석 보고서 (${content.periodLabel})`,
+    subject: `[안톡] ${companyName ? companyName + " " : ""}TBM 회의록 분석 · AI 분석 보고서 (${content.periodLabel})`,
     html,
     attachments,
   });

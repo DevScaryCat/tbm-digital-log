@@ -15,9 +15,14 @@ export interface SubscriptionRow {
     trial_used?: boolean | null
 }
 
+/** Pro 상당 플랜 여부 — 조직 플랜(org=안전관리자, org_seat=하위 현장) 포함 */
+function isProPlanId(plan?: string | null): boolean {
+    return plan === "monthly_pro" || plan === "org" || plan === "org_seat"
+}
+
 /** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather는 영구 무료 베이직이라 Pro 아님) */
 export function isProActive(sub: SubscriptionRow | null): boolean {
-    return isAllowed(sub) && sub?.plan === "monthly_pro"
+    return isAllowed(sub) && isProPlanId(sub?.plan)
 }
 
 /** 화이트리스트(영구 무료 베이직) 여부 */
@@ -28,8 +33,8 @@ export function isWhitelist(sub: SubscriptionRow | null): boolean {
 /** 메인/헤더에 표시할 플랜 배지. 사용 가능한 구독이 없으면 null */
 export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean; trial: boolean } | null {
     if (!isAllowed(sub)) return null
-    const isPro = sub?.plan === "monthly_pro"
-    const base = isPro ? "Pro" : "베이직"
+    const isPro = isProPlanId(sub?.plan)
+    const base = sub?.plan === "org" ? "회사" : isPro ? "Pro" : "베이직"
     // '체험'은 아직 확정되지 않은 상태에만 표기: 카드 없는 무료체험, 또는 해지(남은 기간 소진 중).
     // 카드가 붙은 체험은 결제일에 자동 청구되는 확정 구독이므로 '체험'을 떼고 Pro/베이직으로 표기.
     const trial = sub?.status === "trialing" ? !sub?.card_info : sub?.status === "canceled"
@@ -48,7 +53,9 @@ export function isAllowed(sub: SubscriptionRow | null): boolean {
     ) {
         return false
     }
-    if (sub.status === "active" || sub.status === "trialing") return true
+    // past_due(결제 재시도 중)는 서버 판정(subscriptionAllows)과 동일하게 허용 —
+    // 재시도 기간에 UI만 먼저 잠기는 서버/클라 불일치 방지
+    if (sub.status === "active" || sub.status === "trialing" || sub.status === "past_due") return true
     // 해지했지만 남은 기간이 있으면 그 기간까지는 허용
     if (
         sub.status === "canceled" &&

@@ -5,6 +5,7 @@ import {
   previousMonth,
   ReportSubscription,
 } from "@/lib/monthlyReport";
+import { getOrgContext } from "@/lib/org";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -15,6 +16,13 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   if (!isPro)
     return NextResponse.json({ error: "월간 보고서는 Pro 플랜 기능입니다." }, { status: 403 });
+  // 역할 게이트(§4-C): 조직 하위는 발송 불가 (isPro만 보면 org_seat가 통과해버림)
+  {
+    const ctx = await getOrgContext(user.id);
+    if (ctx.kind === "member") {
+      return NextResponse.json({ error: "조직 소속 계정입니다. 보고서는 회사 안전관리자가 관리합니다." }, { status: 403 });
+    }
+  }
 
   const body = await request.json().catch(() => ({}));
   const which: "prev" | "current" = body?.which === "current" ? "current" : "prev";

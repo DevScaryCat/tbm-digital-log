@@ -53,7 +53,7 @@ export function MinutesView({ minutes, participants }: { minutes: any; participa
 
                     <tr className="bg-orange-50/50">
                         <td colSpan={4} className="border-l border-r border-black p-2 font-bold text-sm">
-                            ■ 근로자 참여 위험성평가
+                            ■ 근로자 참여 유해·위험요인
                         </td>
                     </tr>
                     <tr className="text-center font-bold bg-gray-200 h-8">

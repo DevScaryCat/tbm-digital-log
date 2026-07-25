@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
+import { useBlockOwner } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, MessageSquareText, Trash2 } from "lucide-react"
 
@@ -14,6 +15,7 @@ type Suggestion = { id: string; content: string; author_name: string | null; is_
 
 export default function SuggestionsPage() {
     useRequireSubscription()
+    useBlockOwner() // 안전관리자(관리 전용)는 작성 화면 접근 불가 (§4-B)
     const [loading, setLoading] = useState(true)
     const [items, setItems] = useState<Suggestion[]>([])
     // 방금 읽음 처리된 항목도 이번 방문 동안은 NEW 배지를 유지해 알아볼 수 있게 한다

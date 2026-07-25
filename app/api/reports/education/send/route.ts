@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { generateAndSendEducationReport } from "@/lib/educationReport";
+import { resolveReportTarget } from "@/lib/org";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,7 +30,17 @@ export async function POST(request: Request) {
   if (invalid) return NextResponse.json({ error: `이메일 형식 오류: ${invalid}` }, { status: 400 });
 
   const admin = getAdminClient();
-  const result = await generateAndSendEducationReport(admin, user.id, recipients, company || null, from, to);
+  // 역할 게이트(§4-C): member 발송 불가, owner는 대상 현장 지정
+  const tgt = await resolveReportTarget(user.id, body?.targetUserId, admin);
+  if (!tgt.ok) return NextResponse.json({ error: tgt.error }, { status: tgt.status });
+  const result = await generateAndSendEducationReport(
+    admin,
+    tgt.targetId,
+    recipients,
+    (tgt.targetSiteName || company) || null,
+    from,
+    to
+  );
 
   // 해당 기간에 교육일지가 없으면 발송 생략 (오류 아님 — 회의록만 있는 기간일 수 있음)
   if (result.status === "no_data") return NextResponse.json({ success: true, sent: 0, skipped: "no_data" });

@@ -5,12 +5,12 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
+import { useBlockOwner } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
 import { ko } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { MATRIX_DIMS, freqSevGrade, type MatrixScale } from "@/lib/riskMatrix"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,10 +67,6 @@ interface Hazard {
     factor: string
     level: string
     measure: string
-    // 빈도강도법일 때만 채워짐 (상중하법이면 undefined)
-    frequency?: number
-    severity?: number
-    risk?: number
 }
 
 interface TBMMinutesData {
@@ -111,6 +107,7 @@ const levelStyle = (level: string) => LEVEL_STYLES[level] ?? LEVEL_STYLES["상�
 export default function TBMMinutesPage() {
     const router = useRouter()
     useRequireSubscription()
+    useBlockOwner() // 안전관리자(관리 전용)는 작성 화면 접근 불가 (§4-B)
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [step, setStep] = useState(1)
@@ -295,10 +292,6 @@ export default function TBMMinutesPage() {
         hazards: [],
         participants: [{ id: 1, name: "", gender: "M", signature: null }],
     })
-    // 위험성평가 방법(AI 응답에서 받음). freq_sev면 위험성 편집을 빈도/강도 입력으로.
-    const [riskMethod, setRiskMethod] = useState<"level3" | "freq_sev">("level3")
-    const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
-
     // 근로자 의견 합류(step 4): 이미 반영한 의견 id — '이전'으로 갔다 와도 중복 추가 방지
     const processedSuggestionIds = useRef(new Set<string>())
     const isMergingRef = useRef(false)
@@ -615,8 +608,6 @@ export default function TBMMinutesPage() {
             const data = await res.json()
 
             if (res.ok) {
-                if (data.riskMethod === "freq_sev" || data.riskMethod === "level3") setRiskMethod(data.riskMethod)
-                if (data.riskMatrix === "3x3" || data.riskMatrix === "5x4" || data.riskMatrix === "5x5") setRiskMatrix(data.riskMatrix)
                 setFormData(prev => ({
                     ...prev,
                     processName: data.processName || prev.processName,
@@ -817,24 +808,10 @@ export default function TBMMinutesPage() {
     const updateParticipant = (id: number, field: keyof Participant, value: Participant[keyof Participant]) => setFormData(prev => ({ ...prev, participants: prev.participants.map(p => p.id === id ? { ...p, [field]: value } as Participant : p) }))
     const removeParticipant = (id: number) => { if (formData.participants.length > 1) setFormData(prev => ({ ...prev, participants: prev.participants.filter(p => p.id !== id) })) }
 
-    const addHazard = () => setFormData(prev => {
-        const g = freqSevGrade(1, 1, riskMatrix)
-        const h: Hazard = riskMethod === "freq_sev"
-            ? { factor: "", measure: "", frequency: 1, severity: 1, risk: g.score, level: g.level }
-            : { factor: "", level: "중", measure: "" }
-        return { ...prev, hazards: [...prev.hazards, h] }
-    })
+    const addHazard = () => setFormData(prev => ({ ...prev, hazards: [...prev.hazards, { factor: "", level: "중", measure: "" }] }))
     const updateHazard = (idx: number, field: string, value: string) => {
         const newHazards = [...formData.hazards];
         newHazards[idx] = { ...newHazards[idx], [field]: value };
-        setFormData(prev => ({ ...prev, hazards: newHazards }));
-    }
-    // 빈도/강도 변경 시 위험도·등급을 다시 산정해 함께 저장
-    const updateHazardFreqSev = (idx: number, field: "frequency" | "severity", value: number) => {
-        const newHazards = [...formData.hazards];
-        const h = { ...newHazards[idx], [field]: value };
-        const { score, level } = freqSevGrade(Number(h.frequency) || 1, Number(h.severity) || 1, riskMatrix);
-        newHazards[idx] = { ...h, risk: score, level };
         setFormData(prev => ({ ...prev, hazards: newHazards }));
     }
     const removeHazard = (idx: number) => {
@@ -1113,7 +1090,7 @@ export default function TBMMinutesPage() {
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] overflow-hidden">
                                 <div className="px-4 py-3 border-b border-cur-hairline flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">근로자 참여 위험성평가</h3>
+                                        <h3 className="text-[15px] font-semibold text-cur-ink tracking-tight">근로자 참여 유해·위험요인</h3>
                                         <span className="text-[12px] font-medium text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px]">{formData.hazards.length}건</span>
                                         {isMergingSuggestions && (
                                             <span className="inline-flex items-center gap-1 text-[12px] text-cur-muted"><Loader2 className="w-3 h-3 animate-spin" /> 근로자 의견 반영 중</span>
@@ -1142,47 +1119,19 @@ export default function TBMMinutesPage() {
                                                 aria-label="잠재 유해위험요인"
                                                 rows={2}
                                             />
-                                            {riskMethod === "freq_sev" ? (
-                                                <div className="space-y-2">
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <select
-                                                            value={hazard.frequency ?? 1}
-                                                            onChange={(e) => updateHazardFreqSev(idx, "frequency", Number(e.target.value))}
-                                                            className={SELECT_CLS}
-                                                            aria-label="빈도"
-                                                        >
-                                                            {Array.from({ length: MATRIX_DIMS[riskMatrix].freqMax }, (_, i) => i + 1).map((n) => (
-                                                                <option key={n} value={n}>빈도 {n}</option>
-                                                            ))}
-                                                        </select>
-                                                        <select
-                                                            value={hazard.severity ?? 1}
-                                                            onChange={(e) => updateHazardFreqSev(idx, "severity", Number(e.target.value))}
-                                                            className={SELECT_CLS}
-                                                            aria-label="강도"
-                                                        >
-                                                            {Array.from({ length: MATRIX_DIMS[riskMatrix].sevMax }, (_, i) => i + 1).map((n) => (
-                                                                <option key={n} value={n}>강도 {n}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <span className={cn("inline-flex items-center text-[12px] font-bold px-2 py-0.5 rounded-[6px]", ls.badge)}>위험도 {hazard.risk ?? ""} · {hazard.level}</span>
-                                                </div>
-                                            ) : (
-                                                <div role="group" aria-label="위험성 등급" className="flex p-0.5 bg-cur-elevated rounded-[8px] gap-0.5">
-                                                    {(["상", "중", "하"] as const).map((lv) => (
-                                                        <button
-                                                            key={lv}
-                                                            type="button"
-                                                            aria-pressed={hazard.level === lv}
-                                                            onClick={() => updateHazard(idx, "level", lv)}
-                                                            className={cn("flex-1 h-11 rounded-[6px] text-[15px] font-semibold transition-colors", hazard.level === lv ? cn("bg-cur-card shadow-sm", levelStyle(lv).seg) : "text-cur-muted")}
-                                                        >
-                                                            {lv}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
+                                            <div role="group" aria-label="위험 정도" className="flex p-0.5 bg-cur-elevated rounded-[8px] gap-0.5">
+                                                {(["상", "중", "하"] as const).map((lv) => (
+                                                    <button
+                                                        key={lv}
+                                                        type="button"
+                                                        aria-pressed={hazard.level === lv}
+                                                        onClick={() => updateHazard(idx, "level", lv)}
+                                                        className={cn("flex-1 h-11 rounded-[6px] text-[15px] font-semibold transition-colors", hazard.level === lv ? cn("bg-cur-card shadow-sm", levelStyle(lv).seg) : "text-cur-muted")}
+                                                    >
+                                                        {lv}
+                                                    </button>
+                                                ))}
+                                            </div>
                                             <div className="flex flex-col gap-1.5">
                                                 <Label className={LABEL_CLS}>↳ 대책 (제거·대체·통제)</Label>
                                                 <textarea

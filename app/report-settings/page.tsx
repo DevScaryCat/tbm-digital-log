@@ -8,6 +8,7 @@ import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/us
 import { TBMHeader } from "@/components/TBMHeader"
 import { ReportSettingsPanel } from "@/components/ReportSettingsPanel"
 import { Loader2 } from "lucide-react"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 
 export default function ReportSettingsPage() {
     const router = useRouter()
@@ -19,6 +20,9 @@ export default function ReportSettingsPage() {
         ;(async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) { router.replace("/login"); return }
+            // 조직 하위(member)는 보고서 설정 없음 — 회사(안전관리자)가 관리 (§4-C, URL 직접 접근 차단)
+            const ctx = await fetchOrgContext()
+            if (ctx?.kind === "member") { router.replace("/"); return }
             setPro(isProActive(await fetchSubscription()))
             setChecking(false)
         })()

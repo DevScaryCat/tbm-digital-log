@@ -62,12 +62,18 @@ export default function PricingPage() {
         ;(async () => {
             const { data } = await supabase.auth.getUser()
             setHasUser(!!data?.user)
+            // 안전관리자 가입 중 이탈 계정: 개인 플랜 퍼널로 새면 개인 구독이 붙는 순간
+            // 회사 플랜 결제가 영구 차단된다 → 회사 플랜 결제(가입 이어서)로 되돌린다 (리뷰 F)
+            if ((data?.user?.user_metadata as any)?.role === "safety_manager") {
+                router.replace("/signup/manager")
+                return
+            }
             const s = await loadSubscription()
             // 구독 중이면 현재 플랜을 기본 선택 (grandfather는 베이직으로 취급)
             if (isAllowed(s) && s?.plan) setSelected(s.plan === "grandfather" ? "monthly_basic" : (s.plan as PlanId))
             setLoading(false)
         })()
-    }, [])
+    }, [router])
 
     const subscribed = isAllowed(sub)
     const isGrandfather = sub?.plan === "grandfather"

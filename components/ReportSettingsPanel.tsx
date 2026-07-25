@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Sparkles } from "lucide-react"
 import { SAMPLE_MINUTES_HTML, SAMPLE_EDU_HTML } from "@/components/reportSampleHtml"
 import { HtmlPreview } from "@/components/HtmlPreview"
-import { MATRIX_SCALES, MATRIX_LABEL, type RiskMethod, type MatrixScale } from "@/lib/riskMatrix"
 
 type ConsentStatus = "pending" | "approved" | "declined"
 type Recipient = { email: string; status: ConsentStatus }
@@ -21,7 +20,7 @@ const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
 }
 
 /**
- * 자동 보고서 설정 본문 — 수신처(승인제)·위험성 평가 방법·미리보기.
+ * 자동 보고서 설정 본문 — 수신처(승인제)·미리보기.
  * 전용 페이지(/report-settings)에서 사용. 보고서는 매월 1일 지난달 종합으로 발송.
  * pro=false면 '예시 화면' 모드: 미리보기는 보이되 저장은 막고 업그레이드를 유도.
  */
@@ -29,8 +28,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const router = useRouter()
     const [recipients, setRecipients] = useState<Recipient[]>([])
     const [newEmail, setNewEmail] = useState("")
-    const [riskMethod, setRiskMethod] = useState<RiskMethod>("level3")
-    const [riskMatrix, setRiskMatrix] = useState<MatrixScale>("3x3")
     const [saving, setSaving] = useState(false)
     const [loaded, setLoaded] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -43,8 +40,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
 
     const applyResponse = (j: any) => {
         if (Array.isArray(j.recipients)) setRecipients(j.recipients)
-        if (j.riskMethod) setRiskMethod(j.riskMethod === "freq_sev" ? "freq_sev" : "level3")
-        if (j.riskMatrix) setRiskMatrix(j.riskMatrix)
     }
 
     useEffect(() => {
@@ -61,7 +56,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
         return () => { cancelled = true }
     }, [])
 
-    // 설정 저장 공용 (수신처 추가/삭제 · 위험성평가 방법)
+    // 설정 저장 공용 (수신처 추가/삭제)
     const post = async (body: Record<string, unknown>): Promise<any | null> => {
         setSaving(true)
         setMsg(null)
@@ -97,12 +92,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
             : { type: "err", text: `재발송 실패: ${j.mailNote || "메일 오류"}` })
     }
     const removeRecipient = async (email: string) => { if (!pro) return; await post({ removeRecipient: email }) }
-    const changeRiskMethod = async (m: RiskMethod) => {
-        if (!pro) { setMsg({ type: "err", text: "빈도강도법은 Pro 플랜에서 설정할 수 있습니다. 베이직은 상중하법으로 제공됩니다." }); return }
-        setRiskMethod(m)
-        await post(m === "freq_sev" ? { riskMethod: m, riskMatrix } : { riskMethod: m })
-    }
-    const changeRiskMatrix = async (mx: MatrixScale) => { if (!pro) { setRiskMatrix(mx); return } setRiskMatrix(mx); await post({ riskMatrix: mx }) }
 
     return (
         <div className="space-y-5">
@@ -125,45 +114,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
 
             {msg && (
                 <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
-            )}
-
-            {/* 위험성 평가 방법 — Pro 전용 토글 (베이직은 상중하 고정) */}
-            {pro && (
-                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
-                    <div className="space-y-1.5">
-                        <Label className="text-[13px]">위험성 평가 방법</Label>
-                        <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                            {([["level3", "상중하법"], ["freq_sev", "빈도·강도법"]] as const).map(([key, label]) => (
-                                <button
-                                    key={key}
-                                    onClick={() => changeRiskMethod(key)}
-                                    disabled={saving}
-                                    className={`flex-1 h-9 rounded-md text-[14px] font-semibold transition-colors ${riskMethod === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    {riskMethod === "freq_sev" && (
-                        <div className="space-y-1.5">
-                            <Label className="text-[13px]">빈도강도 매트릭스</Label>
-                            <select
-                                value={riskMatrix}
-                                onChange={(e) => changeRiskMatrix(e.target.value as MatrixScale)}
-                                disabled={saving}
-                                className="w-full h-11 rounded-lg border border-cur-hairline bg-cur-elevated px-3 text-[14px] text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
-                            >
-                                {MATRIX_SCALES.map((mx) => (
-                                    <option key={mx} value={mx}>{MATRIX_LABEL[mx]}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
-                        설정한 방법은 <b className="text-cur-muted">이후 새로 생성되는</b> TBM 회의록·위험성평가 보고서에 적용됩니다. (기존 보고서는 그대로)
-                    </p>
-                </div>
             )}
 
             {/* 수신처 (승인제) — Pro 전용 */}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { MessageSquareWarning, UserCircle, ArrowLeft } from "lucide-react"
+import { MessageSquareWarning, UserCircle, ArrowLeft, HardHat, MonitorCheck, ChevronRight } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
 
@@ -13,6 +13,8 @@ export default function StartPage() {
     const router = useRouter()
     const [privacyAgreed, setPrivacyAgreed] = useState(false)
     const [loading, setLoading] = useState(false)
+    // 첫 온보딩 역할 선택: 관리감독자(현장 기록) / 안전관리자(여러 현장 관제)
+    const [role, setRole] = useState<null | "supervisor">(null)
 
     useEffect(() => {
         // 이미 로그인돼 있으면 홈으로 (세션 유지 시 재동의·재로그인 방지)
@@ -62,22 +64,57 @@ export default function StartPage() {
                         </label>
                     </div>
 
-                    <Button
-                        onClick={handleKakaoLogin}
-                        disabled={!privacyAgreed || loading}
-                        className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
-                    >
-                        <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오 계정으로 시작
-                    </Button>
+                    {role === null ? (
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => setRole("supervisor")}
+                                disabled={!privacyAgreed}
+                                className="w-full flex items-center gap-3 p-4 rounded-[10px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-30"
+                            >
+                                <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block text-[15px] font-bold text-cur-ink">관리감독자로 시작</span>
+                                    <span className="block text-[12px] text-cur-muted mt-0.5">현장에서 TBM·안전교육을 기록해요</span>
+                                </span>
+                                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                            </button>
+                            <button
+                                onClick={() => router.push("/signup/manager")}
+                                disabled={!privacyAgreed}
+                                className="w-full flex items-center gap-3 p-4 rounded-[10px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-30"
+                            >
+                                <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block text-[15px] font-bold text-cur-ink">안전관리자로 시작</span>
+                                    <span className="block text-[12px] text-cur-muted mt-0.5">여러 현장을 한눈에 관제하고 보고서를 관리해요</span>
+                                </span>
+                                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                            </button>
+                            <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed pt-1">
+                                회사에서 초대 링크를 받았다면 그 링크로 가입하세요.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <Button
+                                onClick={handleKakaoLogin}
+                                disabled={!privacyAgreed || loading}
+                                className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
+                            >
+                                <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오 계정으로 시작
+                            </Button>
 
-                    <Button
-                        onClick={() => router.push("/login")}
-                        disabled={!privacyAgreed}
-                        variant="outline"
-                        className="w-full h-12 bg-cur-elevated border border-cur-hairline hover:bg-cur-elevated/80 text-cur-body text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
-                    >
-                        <UserCircle className="w-5 h-5 mr-2" /> 일반 계정으로 시작
-                    </Button>
+                            <Button
+                                onClick={() => router.push("/login")}
+                                disabled={!privacyAgreed}
+                                variant="outline"
+                                className="w-full h-12 bg-cur-elevated border border-cur-hairline hover:bg-cur-elevated/80 text-cur-body text-[15px] font-semibold rounded-[6px] flex items-center justify-center transition-all disabled:opacity-30"
+                            >
+                                <UserCircle className="w-5 h-5 mr-2" /> 일반 계정으로 시작
+                            </Button>
+                            <button onClick={() => setRole(null)} className="w-full text-[13px] text-cur-muted hover:text-cur-ink transition-colors">← 역할 다시 고르기</button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

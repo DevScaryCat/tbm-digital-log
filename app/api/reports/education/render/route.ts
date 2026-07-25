@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { formatRangeLabelKo } from "@/lib/utils";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
 import { buildEducationRangeContent, renderEducationReportHtml, EducationReportContent } from "@/lib/educationReport";
+import { resolveReportTarget } from "@/lib/org";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,15 +18,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const from = DATE_RE.test(String(body?.from)) ? String(body.from) : "";
   const to = DATE_RE.test(String(body?.to)) ? String(body.to) : from;
-  const company = (user.user_metadata as { company_name?: string })?.company_name || "";
+
+  const admin = getAdminClient();
+  // 역할 게이트(§4-C): member 403 / owner는 대상 현장 지정 가능
+  const tgt = await resolveReportTarget(user.id, body?.targetUserId, admin);
+  if (!tgt.ok) return NextResponse.json({ error: tgt.error }, { status: tgt.status });
+  const company =
+    tgt.targetSiteName || (user.user_metadata as { company_name?: string })?.company_name || "";
 
   if (!isPro || !from) {
     return NextResponse.json({ html: renderEducationReportHtml(sampleEducation(company)) });
   }
 
-  const admin = getAdminClient();
   const periodLabel = formatRangeLabelKo(from, to);
-  const content = await buildEducationRangeContent(admin, user.id, company || null, from, to, periodLabel);
+  const content = await buildEducationRangeContent(admin, tgt.targetId, company || null, from, to, periodLabel);
   if (!content) return NextResponse.json({ html: "", empty: true });
   return NextResponse.json({ html: renderEducationReportHtml(content) });
 }

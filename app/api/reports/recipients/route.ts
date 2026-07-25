@@ -1,40 +1,39 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
-import { normMethod, normMatrix } from "@/lib/riskMatrix";
 import { requestConsent, listAccountConsents } from "@/lib/consent";
+import { getOrgContext } from "@/lib/org";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-async function getRiskSettings(admin: ReturnType<typeof getAdminClient>, userId: string, isPro: boolean) {
-  const { data } = await admin
-    .from("subscriptions")
-    .select("risk_assessment_method, risk_matrix")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return {
-    riskMethod: isPro ? normMethod(data?.risk_assessment_method) : "level3",
-    riskMatrix: normMatrix(data?.risk_matrix),
-  };
-}
-
-// GET: 수신처(승인 상태 포함) + 위험성평가 방법
+// GET: 수신처(승인 상태 포함)
 export async function GET(request: Request) {
   const { user, isPro } = await getUserAndSubscription(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const admin = getAdminClient();
+  // 역할 게이트(§4-C): 조직 하위는 보고서 설정 접근 불가 (owner·solo 전용)
+  const ctx = await getOrgContext(user.id, admin);
+  if (ctx.kind === "member") {
+    return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+  }
   const recipients = await listAccountConsents(admin, user.id);
-  const risk = await getRiskSettings(admin, user.id, isPro);
-  return NextResponse.json({ recipients, ...risk, isPro });
+  return NextResponse.json({ recipients, isPro });
 }
 
-// POST: 수신처 추가(승인요청 메일)/삭제 + 위험성평가 방법 저장 (Pro 전용)
+// POST: 수신처 추가(승인요청 메일)/삭제 (Pro 전용)
 export async function POST(request: Request) {
   const { user, isPro } = await getUserAndSubscription(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   if (!isPro) return NextResponse.json({ error: "보고서 설정은 Pro 플랜 기능입니다." }, { status: 403 });
+  {
+    // 역할 게이트(§4-C): 조직 하위는 수신처 등록 불가 (메뉴 숨김만으론 URL 직접 접근이 뚫림)
+    const ctx = await getOrgContext(user.id);
+    if (ctx.kind === "member") {
+      return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+    }
+  }
 
   const body = await request.json().catch(() => ({}));
   const admin = getAdminClient();
@@ -53,16 +52,7 @@ export async function POST(request: Request) {
     }
   };
 
-  // ① 위험성평가 방법·매트릭스
-  const subUpdate: Record<string, unknown> = {};
-  if (body.riskMethod !== undefined) subUpdate.risk_assessment_method = normMethod(body.riskMethod);
-  if (body.riskMatrix !== undefined) subUpdate.risk_matrix = normMatrix(body.riskMatrix);
-  if (Object.keys(subUpdate).length > 0) {
-    subUpdate.updated_at = new Date().toISOString();
-    await admin.from("subscriptions").update(subUpdate).eq("user_id", user.id);
-  }
-
-  // ② 수신처 추가 → 승인 요청 메일 (수신자가 승인해야 실제 발송)
+  // ① 수신처 추가 → 승인 요청 메일 (수신자가 승인해야 실제 발송)
   if (body.addRecipient !== undefined) {
     const email = String(body.addRecipient).trim();
     if (!EMAIL_RE.test(email)) {
@@ -83,13 +73,13 @@ export async function POST(request: Request) {
     if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
   }
 
-  // ③ 확인 메일 재발송 (대기중 수신처)
+  // ② 확인 메일 재발송 (대기중 수신처)
   if (body.resendRecipient !== undefined) {
     const r = await requestConsent(admin, user.id, String(body.resendRecipient).trim(), await companyNameOf(), baseUrl);
     if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
   }
 
-  // ④ 수신처 삭제
+  // ③ 수신처 삭제
   if (body.removeRecipient !== undefined) {
     await admin
       .from("report_recipient_consents")
@@ -99,6 +89,5 @@ export async function POST(request: Request) {
   }
 
   const recipients = await listAccountConsents(admin, user.id);
-  const risk = await getRiskSettings(admin, user.id, isPro);
-  return NextResponse.json({ success: true, recipients, ...risk, mailed: !mailNote, mailNote });
+  return NextResponse.json({ success: true, recipients, mailed: !mailNote, mailNote });
 }

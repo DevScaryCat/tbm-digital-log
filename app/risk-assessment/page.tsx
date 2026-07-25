@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { formatRangeLabelKo } from "@/lib/utils"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import { HtmlPreview } from "@/components/HtmlPreview"
 import { Button } from "@/components/ui/button"
@@ -16,10 +17,6 @@ import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth,
 interface RiskItem {
     hazard: string
     cause: string
-    frequency: number
-    severity: number
-    risk: number
-    level: string
     measures: string
     recurring?: boolean
 }
@@ -32,11 +29,11 @@ const PRESETS: { key: string; label: string; range: () => DateRange }[] = [
 ]
 
 const SAMPLE_ITEMS: RiskItem[] = [
-    { hazard: "고소작업 중 추락", cause: "여러 날 반복된 비계·고소 작업, 안전대 미체결", frequency: 4, severity: 5, risk: 20, level: "매우높음", measures: "안전대 100% 체결, 작업발판·안전난간 점검, 추락방지망 설치", recurring: true },
-    { hazard: "중량물 취급 중 협착·끼임", cause: "자재 인양·운반 작업 반복", frequency: 3, severity: 4, risk: 12, level: "높음", measures: "신호수 배치, 인양구 결속 확인, 하부 출입통제", recurring: true },
-    { hazard: "전동공구 사용 중 감전", cause: "누전·피복 손상, 우천 시 작업", frequency: 2, severity: 4, risk: 8, level: "보통", measures: "누전차단기 설치, 공구 절연 점검, 젖은 손 사용 금지", recurring: false },
-    { hazard: "정리정돈 미흡으로 전도", cause: "자재·공구 적치, 통로 미확보", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "통로 확보, 적치장 분리, 작업 후 정리정돈", recurring: false },
-    { hazard: "분진·소음 노출", cause: "절단·천공 작업 반복", frequency: 3, severity: 2, risk: 6, level: "보통", measures: "방진마스크·귀마개 착용, 습식 작업, 작업시간 관리", recurring: false },
+    { hazard: "고소작업 중 추락", cause: "여러 날 반복된 비계·고소 작업, 안전대 미체결", measures: "안전대 100% 체결, 작업발판·안전난간 점검, 추락방지망 설치", recurring: true },
+    { hazard: "중량물 취급 중 협착·끼임", cause: "자재 인양·운반 작업 반복", measures: "신호수 배치, 인양구 결속 확인, 하부 출입통제", recurring: true },
+    { hazard: "전동공구 사용 중 감전", cause: "누전·피복 손상, 우천 시 작업", measures: "누전차단기 설치, 공구 절연 점검, 젖은 손 사용 금지", recurring: false },
+    { hazard: "정리정돈 미흡으로 전도", cause: "자재·공구 적치, 통로 미확보", measures: "통로 확보, 적치장 분리, 작업 후 정리정돈", recurring: false },
+    { hazard: "분진·소음 노출", cause: "절단·천공 작업 반복", measures: "방진마스크·귀마개 착용, 습식 작업, 작업시간 관리", recurring: false },
 ]
 
 function Steps({ step }: { step: number }) {
@@ -76,6 +73,11 @@ export default function RiskAssessmentPage() {
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     const [tbmDates, setTbmDates] = useState<string[]>([])
 
+    // 안전관리자(owner) 모드: 대상 현장을 골라 서버가 그 현장 데이터로 분석 (§4-A)
+    const [orgKind, setOrgKind] = useState<"owner" | "member" | "solo">("solo")
+    const [sites, setSites] = useState<{ userId: string; siteName: string }[]>([])
+    const [targetSite, setTargetSite] = useState<{ userId: string; siteName: string } | null>(null)
+
     // 보고서 보내기 (step 3)
     const [reportEmail, setReportEmail] = useState("")
     const [sending, setSending] = useState(false)
@@ -93,12 +95,42 @@ export default function RiskAssessmentPage() {
         ;(async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) { router.replace("/login"); return }
+            // 역할 분기: member는 AI 분석 없음(안전관리자 전용, §4-C) / owner는 현장 선택 모드
+            const ctx = await fetchOrgContext()
+            if (ctx?.kind === "member") { router.replace("/"); return }
+            const kind = ctx?.kind === "owner" ? "owner" : "solo"
+            setOrgKind(kind)
             const s = await fetchSubscription()
             const p = isProActive(s)
             setPro(p)
-            if (!p) setStep(0) // 베이직: 설명 화면 먼저
+            if (!p && kind !== "owner") setStep(0) // 베이직: 설명 화면 먼저
             setCompanyName(user.user_metadata?.company_name || "")
-            await loadTbmDates() // 달력 점 표시는 모두에게
+
+            if (kind === "owner") {
+                // 하위 현장 목록 로드 + (현장 분석에서 넘어온) 대상 현장 복원
+                try {
+                    const { data: sess } = await supabase.auth.getSession()
+                    const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
+                    if (res.ok) {
+                        const j = await res.json()
+                        const active = (j.members ?? []).filter((m: any) => m.status === "active")
+                            .map((m: any) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정" }))
+                        setSites(active)
+                        const saved = sessionStorage.getItem("ra_target")
+                        if (saved) {
+                            sessionStorage.removeItem("ra_target")
+                            const t = JSON.parse(saved)
+                            if (t?.userId && active.some((a: any) => a.userId === t.userId)) setTargetSite(t)
+                        } else if (active.length === 1) {
+                            setTargetSite(active[0])
+                        }
+                    }
+                } catch { /* 무시 */ }
+                setChecking(false)
+                return
+            }
+
+            await loadTbmDates() // 달력 점 표시는 모두에게 (solo)
             setChecking(false)
 
             // 안전문서 달력에서 기간을 골라 넘어온 경우 → 재선택 없이 바로 분석
@@ -117,6 +149,24 @@ export default function RiskAssessmentPage() {
             } catch { /* 무시 */ }
         })()
     }, [router])
+
+    // owner: 대상 현장이 바뀌면 그 현장의 회의록 작성일을 서버에서 로드 (달력 점·건수)
+    useEffect(() => {
+        if (orgKind !== "owner") return
+        if (!targetSite) { setTbmDates([]); return }
+        ;(async () => {
+            try {
+                const { data: sess } = await supabase.auth.getSession()
+                const res = await fetch(`/api/org/site-stats?userId=${encodeURIComponent(targetSite.userId)}`, {
+                    headers: { Authorization: `Bearer ${sess?.session?.access_token}` },
+                })
+                if (res.ok) {
+                    const j = await res.json()
+                    setTbmDates(Array.isArray(j.minuteDates) ? j.minuteDates : [])
+                }
+            } catch { /* 무시 */ }
+        })()
+    }, [orgKind, targetSite])
 
     const loadTbmDates = async () => {
         // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전보건교육일지는 제외
@@ -191,10 +241,31 @@ export default function RiskAssessmentPage() {
                 return
             }
 
-            const content = await buildRangeContext(fromS, toS)
-            if (!content.trim()) { setMsg({ type: "err", text: "선택한 기간에 작성된 TBM이 없습니다." }); return }
             const { data: sessionData } = await supabase.auth.getSession()
             const token = sessionData?.session?.access_token
+
+            // 안전관리자: 대상 현장 지정 → 서버가 그 현장 회의록로 컨텍스트를 빌드 (클라 RLS로는 못 읽음)
+            if (orgKind === "owner") {
+                if (!targetSite) { setMsg({ type: "err", text: "분석할 현장을 먼저 선택해주세요." }); return }
+                const res = await fetch("/api/ai/risk-assessment", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ targetUserId: targetSite.userId, from: fromS, to: toS, workName: `${label} 종합` }),
+                })
+                const json = await res.json()
+                if (!res.ok) { setMsg({ type: "err", text: json.error || "분석 실패" }); return }
+                setItems(json.items as RiskItem[])
+                setPeriodLabel(label)
+                setSendMsg(null)
+                const sessions = Number(json.eduSessions) || 0
+                setEduStats(sessions > 0 ? { sessions, days: 0, headcount: 0, avg: "-" } : null)
+                await loadPreviews(fromS, toS, json.items as RiskItem[])
+                setStep(2)
+                return
+            }
+
+            const content = await buildRangeContext(fromS, toS)
+            if (!content.trim()) { setMsg({ type: "err", text: "선택한 기간에 작성된 TBM이 없습니다." }); return }
             const res = await fetch("/api/ai/risk-assessment", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -222,9 +293,10 @@ export default function RiskAssessmentPage() {
         try {
             const { data: s } = await supabase.auth.getSession()
             const headers = { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` }
+            const targetUserId = orgKind === "owner" ? targetSite?.userId : undefined
             const [mRes, eRes] = await Promise.all([
-                fetch("/api/reports/minutes/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, items: riskItems }) }),
-                fetch("/api/reports/education/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS }) }),
+                fetch("/api/reports/minutes/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, items: riskItems, targetUserId }) }),
+                fetch("/api/reports/education/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, targetUserId }) }),
             ])
             const mj = await mRes.json().catch(() => ({}))
             const ej = await eRes.json().catch(() => ({}))
@@ -252,17 +324,19 @@ export default function RiskAssessmentPage() {
             const fromS = range?.from ? format(range.from, "yyyy-MM-dd") : undefined
             const toS = range?.from ? format(range.to ?? range.from, "yyyy-MM-dd") : undefined
             const hasEdu = !!(eduStats && eduStats.sessions > 0) && !!fromS
+            const targetUserId = orgKind === "owner" ? targetSite?.userId : undefined
+            const sendCompany = orgKind === "owner" ? targetSite?.siteName || companyName : companyName
 
-            // 메일 2개 동시 발송: ① 회의록 분석·위험성평가  ② 안전보건교육일지 종합(교육일지가 있을 때만)
+            // 메일 2개 동시 발송: ① 회의록 분석·위험요인 분석  ② 안전보건교육일지 종합(교육일지가 있을 때만)
             const [r1, r2] = await Promise.all([
                 fetch("/api/reports/risk-assessment/send", {
                     method: "POST", headers,
-                    body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: companyName, recipients, from: fromS, to: toS }),
+                    body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: sendCompany, recipients, from: fromS, to: toS, targetUserId }),
                 }),
                 hasEdu
                     ? fetch("/api/reports/education/send", {
                         method: "POST", headers,
-                        body: JSON.stringify({ company: companyName, recipients, from: fromS, to: toS }),
+                        body: JSON.stringify({ company: sendCompany, recipients, from: fromS, to: toS, targetUserId }),
                     })
                     : Promise.resolve(null),
             ])
@@ -338,7 +412,7 @@ export default function RiskAssessmentPage() {
                                 <h2 className="text-[22px] font-bold">TBM 종합 AI 분석 보고서</h2>
                                 <p className="text-cur-muted text-[14px] leading-relaxed">
                                     기간만 선택하면 그 기간의 TBM을 AI가 분석해<br />
-                                    위험성평가표를 자동으로 만들어줍니다.
+                                    위험요인 분석 자료를 자동으로 만들어줍니다.
                                 </p>
                             </div>
 
@@ -381,6 +455,31 @@ export default function RiskAssessmentPage() {
                     {/* STEP 1: 기간 선택 (프리셋 버튼) */}
                     {!analyzing && step === 1 && (
                         <div className="space-y-4">
+                            {/* 안전관리자: 대상 현장 선택 */}
+                            {orgKind === "owner" && (
+                                <div className="space-y-2">
+                                    <p className="text-[15px] font-semibold text-cur-ink px-1">분석할 현장을 선택하세요</p>
+                                    {sites.length === 0 ? (
+                                        <div className="bg-cur-card border border-cur-hairline rounded-xl p-4 text-[13px] text-cur-muted">
+                                            연결된 현장이 없어요. 좌석 관리에서 현장 계정을 먼저 만들어주세요.
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={targetSite?.userId ?? ""}
+                                            onChange={(e) => {
+                                                const s = sites.find((x) => x.userId === e.target.value) || null
+                                                setTargetSite(s)
+                                            }}
+                                            className="w-full h-12 rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[15px] font-medium text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
+                                        >
+                                            <option value="" disabled>현장 선택</option>
+                                            {sites.map((s) => (
+                                                <option key={s.userId} value={s.userId}>{s.siteName}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                            )}
                             <p className="text-[15px] font-semibold text-cur-ink px-1">보고서를 생성할 기간을 선택하세요</p>
 
                             <div className="grid grid-cols-2 gap-2">

@@ -3,16 +3,23 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const PORTONE_API_BASE = "https://api.portone.io";
 
-export type PlanId = "monthly_basic" | "monthly_pro";
+export type PlanId = "monthly_basic" | "monthly_pro" | "org" | "org_seat";
 
 export interface PlanDef {
   id: PlanId;
   name: string;
   amount: number;
   currency: "KRW";
-  /** Pro 전용 기능(위험성평가 자동생성·월간 보고서) 사용 가능 여부 */
+  /** Pro 전용 기능(AI 분석 보고서·월간 보고서) 사용 가능 여부 */
   pro: boolean;
+  /** 사용자가 결제/플랜변경 UI에서 직접 선택할 수 있는 플랜인지.
+   *  org/org_seat는 조직 플로우 전용 — body의 plan을 그대로 받는 라우트에서
+   *  selectable=false를 거부하지 않으면 0원 org_seat를 아무나 예약할 수 있다. */
+  selectable: boolean;
 }
+
+/** 조직(안전관리자) 좌석 단가 — 관리감독자 1좌석당 월 요금 */
+export const ORG_SEAT_PRICE = 4900;
 
 export const PLANS: Record<PlanId, PlanDef> = {
   monthly_basic: {
@@ -21,6 +28,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
     amount: 1900,
     currency: "KRW",
     pro: false,
+    selectable: true,
   },
   monthly_pro: {
     id: "monthly_pro",
@@ -28,6 +36,25 @@ export const PLANS: Record<PlanId, PlanDef> = {
     amount: 4900,
     currency: "KRW",
     pro: true,
+    selectable: true,
+  },
+  org: {
+    id: "org",
+    // 실제 청구액은 좌석 수 × ORG_SEAT_PRICE로 청구 시점에 재계산 (amount는 단가 표기)
+    name: "안톡 회사 플랜",
+    amount: ORG_SEAT_PRICE,
+    currency: "KRW",
+    pro: true,
+    selectable: false,
+  },
+  org_seat: {
+    id: "org_seat",
+    // 하위 관리감독자 미러 구독 — 청구 없음(0원), Pro 상당 자격
+    name: "안톡 조직 좌석",
+    amount: 0,
+    currency: "KRW",
+    pro: true,
+    selectable: false,
   },
 };
 
@@ -104,16 +131,13 @@ export async function getUserAndSubscription(request: Request) {
   const admin = getAdminClient();
   const { data } = await admin
     .from("subscriptions")
-    .select("status, plan, current_period_end, billing_key, risk_assessment_method, risk_matrix")
+    .select("status, plan, current_period_end, billing_key")
     .eq("user_id", user.id)
     .maybeSingle();
   const allowed = subscriptionAllows(data);
   // Pro 기능은 (구독이 유효하면서) 플랜이 Pro일 때만 허용
   const isPro = allowed && isProPlan(data?.plan);
-  // 위험성평가 방법: Pro가 아니면 서버에서 강제로 상중하(level3)로 고정 (클라 우회 차단)
-  const riskMethod = isPro && data?.risk_assessment_method === "freq_sev" ? "freq_sev" : "level3";
-  const riskMatrix = data?.risk_matrix === "5x4" || data?.risk_matrix === "5x5" ? data.risk_matrix : "3x3";
-  return { user, allowed, isPro, sub: data, riskMethod, riskMatrix };
+  return { user, allowed, isPro, sub: data };
 }
 
 function apiSecret(): string {

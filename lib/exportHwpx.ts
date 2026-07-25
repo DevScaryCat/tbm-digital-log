@@ -668,8 +668,8 @@ async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadSt
         cell({ span: 3, parasXml: leaderParas }),
     ], 650))
 
-    // 근로자 참여 위험성평가
-    rows.push(row([cell({ span: 4, fill: C.orange50, text: "■ 근로자 참여 위험성평가", bold: true })], 400))
+    // 근로자 참여 유해·위험요인
+    rows.push(row([cell({ span: 4, fill: C.orange50, text: "■ 근로자 참여 유해·위험요인", bold: true })], 400))
     rows.push(row([
         cell({ span: 2, fill: C.gray200, text: "잠재 유해위험요인", bold: true, align: "CENTER" }),
         cell({ fill: C.gray200, text: "위험성", bold: true, align: "CENTER" }),

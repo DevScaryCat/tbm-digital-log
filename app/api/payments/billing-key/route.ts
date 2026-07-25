@@ -9,6 +9,7 @@ import {
 } from "@/lib/portone";
 import { chargeSubscription } from "@/lib/billing";
 import { paymentsEnabled } from "@/lib/utils";
+import { phoneAuthEnabled } from "@/lib/phoneAuth";
 
 export const runtime = "nodejs";
 // 카카오페이 빌링키 검증 재시도(백오프 ~9s)를 위해 실행시간 여유 확보
@@ -40,6 +41,10 @@ export async function POST(request: Request) {
     }
     // 신규/재구독 시 선택한 플랜 (모르는 값이면 베이직으로 폴백)
     const selectedPlan = getPlan(plan);
+    // org/org_seat를 body로 밀어넣는 우회 차단 — 회사 플랜 결제는 /api/org/checkout 전용
+    if (!selectedPlan.selectable) {
+      return NextResponse.json({ error: "선택할 수 없는 플랜입니다." }, { status: 400 });
+    }
 
     // 1) 빌링키 발급 검증 (PortOne)
     // 카카오페이 등 간편결제는 발급 직후 GET /billing-keys 가 잠깐 UNAUTHORIZED/미조회로 뜰 수 있다
@@ -89,6 +94,37 @@ export async function POST(request: Request) {
     const now = new Date();
     const admin = getAdminClient();
 
+    // 기존 구독 조회 (체험 사용 여부 + 조직 플랜 가드에 공용)
+    const { data: existing } = await admin
+      .from("subscriptions")
+      .select("trial_used, status, billing_key, plan, current_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // 조직 소속 하위(활성 미러): 개인 결제 등록 시 미러 행이 덮여 자기도 모르게 조직에서
+    // 분리되고 상위는 좌석비를 계속 내는 사고 방지 — 서버에서 차단 (검증 §2)
+    if (existing?.plan === "org_seat" && existing.status !== "canceled") {
+      return NextResponse.json(
+        { error: "조직 소속 계정입니다. 구독·결제는 회사 안전관리자가 관리합니다." },
+        { status: 403 }
+      );
+    }
+    // 안전관리자(org)의 신규/재구독은 좌석 결제 라우트로 — 카드 교체(mode=update)만 여기서 허용
+    if (existing?.plan === "org" && mode !== "update") {
+      return NextResponse.json(
+        { error: "회사 플랜 결제는 좌석 관리 화면에서 진행해주세요." },
+        { status: 400 }
+      );
+    }
+    // 안전관리자로 가입한 계정(role 표시)은 개인 플랜 대신 회사 플랜 결제로 유도 —
+    // 개인 구독이 붙는 순간 org checkout이 영구 차단된다 (리뷰 F)
+    if ((user.user_metadata as any)?.role === "safety_manager" && mode !== "update" && !existing) {
+      return NextResponse.json(
+        { error: "안전관리자 계정입니다. 회사 플랜 결제(가입 이어서 하기)에서 진행해주세요." },
+        { status: 400 }
+      );
+    }
+
     // --- 결제수단 변경: 빌링키/카드정보만 교체 ---
     if (mode === "update") {
       const { error } = await admin
@@ -107,13 +143,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, updated: true });
     }
 
-    // 기존 구독 조회 (체험 사용 여부 + 카드 없는 체험 진행 여부)
-    const { data: existing } = await admin
-      .from("subscriptions")
-      .select("trial_used, status, billing_key, plan, current_period_end")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const trialUsed = existing?.trial_used === true;
+    // 첫 달 무료(카드 등록형 체험)는 휴대폰 인증 게이트가 켜져 있으면 인증된 계정에만 —
+    // 인증 없는 대량 계정 생성(manager 모드 등)으로 체험이 무한 발급되는 우회 차단 (리뷰 E)
+    const phoneVerified = !!(user.user_metadata as any)?.phone_verified_at;
+    const trialUsed = existing?.trial_used === true || (phoneAuthEnabled() && !phoneVerified);
 
     // --- 카드 없는 체험(휴대폰인증 가입) 진행 중에 결제수단 등록 ---
     // 즉시 결제하지 않는다: 체험 종료일에 cron이 첫 과금. 플랜을 바꿔 선택했으면
