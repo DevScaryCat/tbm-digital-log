@@ -16,7 +16,7 @@ export function Footer() {
           <p>상호명: 비트플립(Bitflip.) | 대표자: 문경민</p>
           <p>사업자등록번호: 493-40-01338 | 통신판매업신고번호: 발급 예정</p>
           <p>사업장 소재지: 경기도 고양시 덕양구 꽃마을로 46, 13층 1313호</p>
-          <p>고객센터: 010-6352-2968 | 이메일: devscarycat@icloud.com</p>
+          <p>고객센터: 010-6352-2968 | 이메일: support@bitflip.team</p>
         </div>
 
         <div className="mt-4 text-[12px]">
