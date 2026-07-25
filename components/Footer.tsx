@@ -12,11 +12,25 @@ export function Footer() {
           <Link href="/pricing" className="hover:underline">요금안내</Link>
         </div>
 
-        <div className="text-cur-muted-soft leading-relaxed mt-2">
-          <p>상호명: 비트플립(Bitflip.) | 대표자: 문경민</p>
+        {/* 운영·개발 주체 크레딧 — 아래 통신판매업자(법정) 표기와 분리해 소비자 혼동을 막는다.
+            판매·결제 당사자는 비트플립이고, 서비스 운영·고객대응은 이에이치에스프렌즈가 위탁 수행한다. */}
+        <p className="mt-2 text-cur-body">
+          안톡 &nbsp;·&nbsp; 운영: 주식회사 이에이치에스프렌즈 &nbsp;·&nbsp; 개발·결제: 비트플립(Bitflip.)
+        </p>
+
+        <p className="text-cur-muted-soft leading-relaxed">
+          고객센터: 032-229-1556 <span className="text-cur-muted-soft">(운영사)</span> | 이메일: support@bitflip.team
+        </p>
+
+        {/* 전자상거래법상 통신판매업자 표기 — PG 가맹점 등록 정보와 동일하게 유지할 것
+            (KG이니시스·카카오페이는 사이트 하단 표기와 가맹점 신청 정보가 일치해야 심사를 통과시킨다) */}
+        <div className="text-cur-muted-soft leading-relaxed mt-1">
+          <p>통신판매업자(판매·결제): 비트플립(Bitflip.) | 대표자: 문경민</p>
           <p>사업자등록번호: 493-40-01338 | 통신판매업신고번호: 발급 예정</p>
           <p>사업장 소재지: 경기도 고양시 덕양구 꽃마을로 46, 13층 1313호</p>
-          <p>고객센터: 010-6352-2968 | 이메일: support@bitflip.team</p>
+          {/* 호스팅서비스 제공자 상호는 법정 표시사항 —
+              전자상거래법 제10조①6호 → 시행령 제11조의4 → 시행규칙 제7조① */}
+          <p>호스팅서비스 제공자: Vercel Inc.</p>
         </div>
 
         <div className="mt-4 text-[12px]">

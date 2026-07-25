@@ -109,8 +109,11 @@ export default function PrivacyPolicyPage() {
                                 <div>소셜 로그인(카카오 계정 인증)</div>
                                 <div>솔라피(Solapi)</div>
                                 <div>휴대폰 문자(SMS) 본인인증번호 발송</div>
+                                <div>주식회사 이에이치에스프렌즈</div>
+                                <div>서비스 운영, 고객 문의 대응, 도입·교육 지원</div>
                             </div>
                         </div>
+                        <p className="mt-2 text-cur-muted">위탁 업무의 내용이나 수탁업체가 변경될 경우, 지체 없이 본 개인정보처리방침을 통해 공개합니다.</p>
                     </section>
 
                     <section>
