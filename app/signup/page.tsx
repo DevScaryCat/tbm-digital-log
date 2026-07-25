@@ -17,6 +17,8 @@ import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
+import { Checkbox } from "@/components/ui/checkbox"
+import { hasAgreedTerms, setAgreedTerms } from "@/lib/consentStorage"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
@@ -26,6 +28,8 @@ export default function SignupPage() {
     // 역할 선택(가입 첫 단계): 관리감독자 → 이 위저드 계속 / 안전관리자 → /signup/manager.
     // 역할은 신규 가입에만 해당하므로 /start(로그인 진입)가 아니라 여기서 묻는다.
     const [roleChosen, setRoleChosen] = useState(false)
+    // 약관·개인정보처리방침 동의 — 가입 시점에 받는다. 전에 동의했으면 다시 묻지 않음.
+    const [agreed, setAgreed] = useState(false)
     // 휴대폰 인증 게이트 활성화 여부(서버 env 기준) — 로딩 전엔 null
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
     const [stepIdx, setStepIdx] = useState(0)
@@ -60,8 +64,14 @@ export default function SignupPage() {
             .then((r) => r.json())
             .then((j) => setPhoneEnabled(!!j.enabled))
             .catch(() => setPhoneEnabled(false))
+        if (hasAgreedTerms()) setAgreed(true)
         return () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current) }
     }, [])
+
+    const changeAgreed = (v: boolean) => {
+        setAgreed(v)
+        setAgreedTerms(v)
+    }
 
     const stepKeys: StepKey[] = phoneEnabled
         ? ["account", "site", "phone", "confirm"]
@@ -261,9 +271,24 @@ export default function SignupPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3 pb-10 pt-4">
+                        {/* 약관 동의 — 가입 시점 필수. 동의해야 역할 선택이 열린다. */}
+                        <div className="flex items-start gap-3 bg-cur-elevated rounded-[10px] p-3.5 text-left">
+                            <Checkbox
+                                id="signup-agree"
+                                checked={agreed}
+                                onCheckedChange={(c) => changeAgreed(c === true)}
+                                className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px]"
+                            />
+                            <label htmlFor="signup-agree" className="text-[13px] text-cur-body leading-[1.5] cursor-pointer">
+                                <a href="/privacy" target="_blank" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
+                                <a href="/terms" target="_blank" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
+                            </label>
+                        </div>
+
                         <button
                             onClick={() => setRoleChosen(true)}
-                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                            disabled={!agreed}
+                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
                         >
                             <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">
@@ -274,7 +299,8 @@ export default function SignupPage() {
                         </button>
                         <button
                             onClick={() => router.push("/signup/manager")}
-                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                            disabled={!agreed}
+                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
                         >
                             <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">

@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { MessageSquareWarning, UserCircle, ArrowLeft } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
+import { hasAgreedTerms, setAgreedTerms } from "@/lib/consentStorage"
 
 export default function StartPage() {
     const router = useRouter()
@@ -17,7 +18,14 @@ export default function StartPage() {
     useEffect(() => {
         // 이미 로그인돼 있으면 홈으로 (세션 유지 시 재동의·재로그인 방지)
         supabase.auth.getSession().then(({ data }) => { if (data.session) router.replace("/") })
+        // 전에 동의했으면 다시 묻지 않는다 (동의는 최초 1회)
+        if (hasAgreedTerms()) setPrivacyAgreed(true)
     }, [router])
+
+    const changeAgreed = (agreed: boolean) => {
+        setPrivacyAgreed(agreed)
+        setAgreedTerms(agreed)
+    }
 
     const handleKakaoLogin = async () => {
         setLoading(true)
@@ -53,7 +61,7 @@ export default function StartPage() {
                         <Checkbox
                             id="privacy-agree"
                             checked={privacyAgreed}
-                            onCheckedChange={(checked) => setPrivacyAgreed(checked === true)}
+                            onCheckedChange={(checked) => changeAgreed(checked === true)}
                             className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px]"
                         />
                         <label htmlFor="privacy-agree" className="text-[14px] text-cur-body leading-[1.5] cursor-pointer">

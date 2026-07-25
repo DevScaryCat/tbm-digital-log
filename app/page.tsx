@@ -227,12 +227,22 @@ export default function MainPage() {
         <header className="sticky top-0 z-20 bg-cur-canvas/80 backdrop-blur-sm border-b border-cur-hairline">
           <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
             <Logo size="sm" />
-            <Button
-              onClick={() => router.push("/start")}
-              className="h-10 px-5 bg-cur-ink hover:opacity-90 text-white text-[14px] font-semibold rounded-[8px]"
-            >
-              시작하기
-            </Button>
+            {/* 기존 회원은 /start(약관 동의 게이트)를 거치지 않고 바로 로그인 */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                onClick={() => router.push("/login")}
+                className="h-10 px-4 text-[14px] font-semibold text-cur-body hover:text-cur-ink hover:bg-cur-elevated rounded-[8px]"
+              >
+                로그인
+              </Button>
+              <Button
+                onClick={() => router.push("/start")}
+                className="h-10 px-5 bg-cur-ink hover:opacity-90 text-white text-[14px] font-semibold rounded-[8px]"
+              >
+                시작하기
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -260,7 +270,7 @@ export default function MainPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => router.push("/start")}
+                  onClick={() => router.push("/login")}
                   className="h-12 px-8 border-cur-hairline text-cur-ink hover:bg-cur-elevated text-[16px] font-semibold rounded-[8px]"
                 >
                   로그인
