@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
+import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft, MonitorCheck, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
@@ -22,6 +22,9 @@ const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 �
 
 export default function SignupPage() {
     const router = useRouter()
+    // 역할 선택(가입 첫 단계): 관리감독자 → 이 위저드 계속 / 안전관리자 → /signup/manager.
+    // 역할은 신규 가입에만 해당하므로 /start(로그인 진입)가 아니라 여기서 묻는다.
+    const [roleChosen, setRoleChosen] = useState(false)
     // 휴대폰 인증 게이트 활성화 여부(서버 env 기준) — 로딩 전엔 null
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
     const [stepIdx, setStepIdx] = useState(0)
@@ -238,6 +241,53 @@ export default function SignupPage() {
         return (
             <div className="min-h-screen flex items-center justify-center bg-cur-canvas">
                 <Loader2 className="w-8 h-8 text-cur-muted animate-spin" />
+            </div>
+        )
+    }
+
+    // 가입 첫 단계: 역할 선택 — 관리감독자(현장 기록, 이 위저드) / 안전관리자(관제·좌석 결제)
+    if (!roleChosen) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
+                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <CardHeader className="space-y-3 text-center pb-2 pt-10">
+                        <CardTitle className="text-[28px] font-normal text-cur-ink tracking-[-0.72px]">회원가입</CardTitle>
+                        <CardDescription className="text-[15px] text-cur-muted font-medium">
+                            어떤 역할로 사용하시나요?
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pb-10 pt-4">
+                        <button
+                            onClick={() => setRoleChosen(true)}
+                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                        >
+                            <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[15px] font-bold text-cur-ink">관리감독자</span>
+                                <span className="block text-[12px] text-cur-muted mt-0.5">현장에서 TBM·안전교육을 기록해요</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        </button>
+                        <button
+                            onClick={() => router.push("/signup/manager")}
+                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                        >
+                            <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[15px] font-bold text-cur-ink">안전관리자</span>
+                                <span className="block text-[12px] text-cur-muted mt-0.5">여러 현장을 한눈에 관제하고 보고서를 관리해요</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        </button>
+                        <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed pt-1">
+                            회사에서 초대 링크를 받았다면 그 링크로 가입하세요.
+                        </p>
+                        <p className="text-center text-[14px] text-cur-muted pt-2">
+                            이미 계정이 있으신가요?
+                            <Link href="/login" className="font-semibold text-cur-primary hover:underline ml-1">로그인</Link>
+                        </p>
+                    </CardContent>
+                </Card>
             </div>
         )
     }
