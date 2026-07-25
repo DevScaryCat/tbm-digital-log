@@ -7,10 +7,14 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { AlertCircle, Loader2, HardHat } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
+import { Logo } from "@/components/Logo"
 import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
+
+// 조용한 필드: 면(elevated)으로 구분하고 포커스에서만 카드색+링 — 앱 작성 화면과 동일 문법
+const FIELD_CLS =
+    "h-12 px-4 text-[16px] md:text-[16px] bg-cur-elevated border-0 shadow-none rounded-[10px] text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus-visible:ring-1 focus-visible:ring-cur-primary focus-visible:border-0"
 
 export default function LoginPage() {
     const router = useRouter()
@@ -64,77 +68,80 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-cur-canvas px-5 py-10 font-sans text-cur-ink">
             <InAppBrowserNotice />
-            <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                <CardHeader className="space-y-4 text-center pb-8 pt-10">
-                    <div className="mx-auto bg-cur-elevated w-16 h-16 rounded-[12px] flex items-center justify-center mb-2 border border-cur-hairline">
-                        <HardHat className="w-8 h-8 text-cur-primary" />
+
+            <div className="w-full max-w-sm">
+                <div className="flex flex-col items-center gap-5 mb-7">
+                    <Logo size="md" />
+                    <div className="text-center space-y-1">
+                        <h1 className="text-[22px] font-bold tracking-[-0.02em] text-cur-ink">로그인</h1>
+                        <p className="text-[13px] text-cur-muted">현장 아이디로 로그인하세요</p>
                     </div>
-                    <CardTitle className="text-[28px] font-normal text-cur-ink tracking-[-0.72px]">TBM 일지</CardTitle>
-                    <CardDescription className="text-[15px] text-cur-muted font-medium">
-                        발급받은 현장 아이디로 로그인하세요.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="px-8 pb-10">
-                    <form onSubmit={handleLogin} className="space-y-6">
-                        <div className="space-y-2.5">
-                            <Label htmlFor="userId" className="text-[15px] font-semibold text-cur-ink">아이디</Label>
-                            <Input
-                                id="userId"
-                                type="text"
-                                placeholder="예: site01"
-                                value={userId}
-                                onChange={(e) => setUserId(e.target.value)}
-                                required
-                                className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] focus-visible:ring-1 focus-visible:ring-cur-primary text-cur-ink placeholder:text-cur-muted-soft"
-                                autoComplete="off"
-                            />
-                        </div>
-                        <div className="space-y-2.5">
-                            <Label htmlFor="password" className="text-[15px] font-semibold text-cur-ink">비밀번호</Label>
-                            <Input
-                                id="password"
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                required
-                                className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] focus-visible:ring-1 focus-visible:ring-cur-primary text-cur-ink"
-                            />
-                        </div>
+                </div>
 
-                        <div className="flex items-center gap-3">
-                            <Checkbox
-                                id="rememberMe"
-                                checked={rememberMe}
-                                onCheckedChange={(checked) => setRememberMe(checked === true)}
-                                className="w-5 h-5 rounded-[6px] border-cur-hairline data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary data-[state=checked]:border-cur-primary"
-                            />
-                            <label htmlFor="rememberMe" className="text-[14px] font-medium text-cur-muted cursor-pointer select-none">
-                                아이디 / 비밀번호 저장
-                            </label>
+                <form
+                    onSubmit={handleLogin}
+                    className="bg-cur-card border border-cur-hairline rounded-2xl p-6 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                >
+                    <div className="space-y-1.5">
+                        <Label htmlFor="userId" className="text-[13px] font-medium text-cur-body">아이디</Label>
+                        <Input
+                            id="userId"
+                            type="text"
+                            value={userId}
+                            onChange={(e) => setUserId(e.target.value)}
+                            required
+                            className={FIELD_CLS}
+                            autoComplete="username"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="password" className="text-[13px] font-medium text-cur-body">비밀번호</Label>
+                        <Input
+                            id="password"
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            className={FIELD_CLS}
+                            autoComplete="current-password"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2.5 pt-0.5">
+                        <Checkbox
+                            id="rememberMe"
+                            checked={rememberMe}
+                            onCheckedChange={(checked) => setRememberMe(checked === true)}
+                            className="w-[18px] h-[18px] rounded-[5px] border-cur-hairline-strong data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary data-[state=checked]:border-cur-primary"
+                        />
+                        <label htmlFor="rememberMe" className="text-[13px] font-medium text-cur-muted cursor-pointer select-none">
+                            아이디 저장
+                        </label>
+                    </div>
+
+                    {error && (
+                        <div className="flex items-center gap-2 p-3 text-[13px] font-medium text-cur-error bg-cur-error/[0.06] rounded-[10px]">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            {error}
                         </div>
+                    )}
 
-                        {error && (
-                            <div className="flex items-center gap-2 p-4 text-[14px] font-semibold text-cur-error bg-cur-error/5 rounded-[8px] border border-cur-error/20">
-                                <AlertCircle className="w-5 h-5 shrink-0" />
-                                {error}
-                            </div>
-                        )}
+                    <Button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99]"
+                    >
+                        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "로그인"}
+                    </Button>
+                </form>
 
-                        <Button type="submit" className="w-full h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]" disabled={loading}>
-                            {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "로그인 하기"}
-                        </Button>
-
-                        <div className="mt-8 text-center text-[14px] font-medium text-cur-muted border-t border-cur-hairline pt-6">
-                            아직 현장 계정이 없으신가요?{" "}
-                            <a href="/signup" className="font-semibold text-cur-primary hover:underline ml-1">
-                                회원가입 하기
-                            </a>
-                        </div>
-                    </form>
-                </CardContent>
-            </Card>
+                <p className="text-center text-[13px] text-cur-muted mt-5">
+                    아직 계정이 없으신가요?
+                    <a href="/signup" className="font-semibold text-cur-primary hover:underline ml-1.5">회원가입</a>
+                </p>
+            </div>
         </div>
     )
 }

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
+import { Logo } from "@/components/Logo"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
@@ -235,7 +236,9 @@ export default function SignupPage() {
         )
     }
 
-    const inputCls = "h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] focus-visible:ring-1 focus-visible:ring-cur-primary text-cur-ink placeholder:text-cur-muted-soft"
+    // 조용한 필드: 면(elevated)으로 구분, 포커스에서만 카드색+링 — 로그인·작성 화면과 동일 문법
+    const inputCls = "h-12 px-4 text-[16px] md:text-[16px] bg-cur-elevated border-0 shadow-none rounded-[10px] text-cur-ink placeholder:text-cur-muted-soft focus:bg-cur-card focus-visible:ring-1 focus-visible:ring-cur-primary focus-visible:border-0"
+    const selectCls = "h-12 px-4 text-[16px] bg-cur-elevated border-0 shadow-none rounded-[10px] text-cur-ink focus:ring-1 focus:ring-cur-primary"
 
     if (phoneEnabled === null) {
         return (
@@ -249,9 +252,10 @@ export default function SignupPage() {
     if (!roleChosen) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
-                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                    <CardHeader className="space-y-3 text-center pb-2 pt-10">
-                        <CardTitle className="text-[28px] font-normal text-cur-ink tracking-[-0.72px]">회원가입</CardTitle>
+                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <CardHeader className="space-y-3 text-center pb-2 pt-9">
+                        <div className="mx-auto"><Logo size="md" /></div>
+                        <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">회원가입</CardTitle>
                         <CardDescription className="text-[15px] text-cur-muted font-medium">
                             어떤 역할로 사용하시나요?
                         </CardDescription>
@@ -294,17 +298,15 @@ export default function SignupPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
-            <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                <CardHeader className="space-y-4 text-center pb-4 pt-10">
-                    <div className="mx-auto bg-cur-elevated w-16 h-16 rounded-[12px] flex items-center justify-center mb-2 border border-cur-hairline">
-                        <HardHat className="w-8 h-8 text-cur-primary" />
-                    </div>
-                    <CardTitle className="text-[28px] font-normal text-cur-ink tracking-[-0.72px]">현장 계정 생성</CardTitle>
-                    <CardDescription className="text-[15px] text-cur-muted font-medium">
-                        {stepKey === "account" && "로그인에 사용할 계정을 만들어주세요."}
-                        {stepKey === "site" && "현장 정보를 알려주세요. 맞춤 통계에 활용됩니다."}
-                        {stepKey === "phone" && "본인 확인 후 1개월 무료체험이 시작됩니다."}
-                        {stepKey === "confirm" && "입력하신 내용을 확인해주세요."}
+            <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <CardHeader className="space-y-3 text-center pb-4 pt-9">
+                    <div className="mx-auto"><Logo size="md" /></div>
+                    <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">현장 계정 만들기</CardTitle>
+                    <CardDescription className="text-[13px] text-cur-muted font-medium">
+                        {stepKey === "account" && "로그인에 사용할 계정을 만들어주세요"}
+                        {stepKey === "site" && "현장 정보를 알려주세요 — 맞춤 통계에 활용돼요"}
+                        {stepKey === "phone" && "본인 확인 후 1개월 무료체험이 시작됩니다"}
+                        {stepKey === "confirm" && "입력하신 내용을 확인해주세요"}
                     </CardDescription>
 
                     {/* 단계 표시 */}
@@ -331,15 +333,15 @@ export default function SignupPage() {
                         {stepKey === "account" && (
                             <>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="id" className="text-[15px] font-semibold text-cur-ink">사용할 아이디</Label>
+                                    <Label htmlFor="id" className="text-[13px] font-medium text-cur-body">사용할 아이디</Label>
                                     <Input id="id" type="text" placeholder="예: site01 (영문 소문자/숫자)" value={id} onChange={(e) => setId(e.target.value)} minLength={3} className={inputCls} autoComplete="off" />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="password" className="text-[15px] font-semibold text-cur-ink">비밀번호</Label>
+                                    <Label htmlFor="password" className="text-[13px] font-medium text-cur-body">비밀번호</Label>
                                     <Input id="password" type="password" placeholder="8자 이상 입력" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} className={inputCls} />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="passwordConfirm" className="text-[15px] font-semibold text-cur-ink">비밀번호 확인</Label>
+                                    <Label htmlFor="passwordConfirm" className="text-[13px] font-medium text-cur-body">비밀번호 확인</Label>
                                     <Input id="passwordConfirm" type="password" placeholder="비밀번호 다시 입력" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} minLength={8} className={inputCls} />
                                 </div>
                             </>
@@ -348,18 +350,18 @@ export default function SignupPage() {
                         {stepKey === "site" && (
                             <>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="siteName" className="text-[15px] font-semibold text-cur-ink">현장명 (회사명)</Label>
+                                    <Label htmlFor="siteName" className="text-[13px] font-medium text-cur-body">현장명 (회사명)</Label>
                                     <Input id="siteName" type="text" placeholder="소속 현장명 (또는 업체명)" value={siteName} onChange={(e) => setSiteName(e.target.value)} className={inputCls} />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label className="text-[15px] font-semibold text-cur-ink">업종</Label>
+                                    <Label className="text-[13px] font-medium text-cur-body">업종</Label>
                                     <Select value={industry} onValueChange={(v) => {
                                         setIndustry(v)
                                         // 중분류가 하나뿐인 업종(전기·가스, 부동산 등)은 공종을 자동 선택
                                         const minors = findKsicMajor(v)?.minors ?? []
                                         setWorkCategory(minors.length === 1 ? minors[0].name : "")
                                     }}>
-                                        <SelectTrigger className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] text-cur-ink">
+                                        <SelectTrigger className={selectCls}>
                                             <SelectValue placeholder="업종을 선택해주세요" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
@@ -369,9 +371,9 @@ export default function SignupPage() {
                                 </div>
                                 {industry && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
-                                        <Label className="text-[15px] font-semibold text-cur-ink">공종</Label>
+                                        <Label className="text-[13px] font-medium text-cur-body">공종</Label>
                                         <Select value={workCategory} onValueChange={setWorkCategory}>
-                                            <SelectTrigger className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] text-cur-ink">
+                                            <SelectTrigger className={selectCls}>
                                                 <SelectValue placeholder="주력 공종을 선택해주세요" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
@@ -381,9 +383,9 @@ export default function SignupPage() {
                                     </div>
                                 )}
                                 <div className="space-y-2.5">
-                                    <Label className="text-[15px] font-semibold text-cur-ink">근로자 구분 (교육시간 산정용)</Label>
+                                    <Label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</Label>
                                     <Select value={workerType} onValueChange={setWorkerType}>
-                                        <SelectTrigger className="h-14 text-[16px] bg-cur-card border-cur-hairline rounded-[8px] text-cur-ink">
+                                        <SelectTrigger className={selectCls}>
                                             <SelectValue placeholder="근로자 구분을 선택해주세요" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
@@ -398,25 +400,25 @@ export default function SignupPage() {
                         {stepKey === "phone" && (
                             <>
                                 <div className="space-y-2.5">
-                                    <Label htmlFor="phone" className="text-[15px] font-semibold text-cur-ink">휴대폰 번호</Label>
+                                    <Label htmlFor="phone" className="text-[13px] font-medium text-cur-body">휴대폰 번호</Label>
                                     <div className="flex gap-2">
                                         <Input id="phone" type="tel" inputMode="numeric" placeholder="01012345678" value={phone}
                                             onChange={(e) => setPhone(e.target.value)} disabled={!!verificationId} className={cn(inputCls, "flex-1")} />
                                         <Button type="button" variant="outline" onClick={handleSendCode}
                                             disabled={sending || cooldown > 0 || !!verificationId}
-                                            className="h-14 px-4 border-cur-hairline-strong text-cur-ink rounded-[8px] font-semibold whitespace-nowrap">
+                                            className="h-12 px-4 border-cur-hairline-strong text-cur-ink rounded-[10px] font-semibold whitespace-nowrap">
                                             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : cooldown > 0 ? `재발송 ${cooldown}s` : codeSent ? "재발송" : "인증번호 받기"}
                                         </Button>
                                     </div>
                                 </div>
                                 {codeSent && !verificationId && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
-                                        <Label htmlFor="code" className="text-[15px] font-semibold text-cur-ink">인증번호</Label>
+                                        <Label htmlFor="code" className="text-[13px] font-medium text-cur-body">인증번호</Label>
                                         <div className="flex gap-2">
                                             <Input id="code" type="text" inputMode="numeric" maxLength={6} placeholder="6자리 입력" value={code}
                                                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} className={cn(inputCls, "flex-1 tracking-[0.3em] font-bold")} />
                                             <Button type="button" onClick={handleVerifyCode} disabled={verifying || code.length !== 6}
-                                                className="h-14 px-5 bg-cur-ink hover:bg-cur-ink/80 text-white rounded-[8px] font-semibold">
+                                                className="h-12 px-5 bg-cur-ink hover:bg-cur-ink/80 text-white rounded-[10px] font-semibold">
                                                 {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : "확인"}
                                             </Button>
                                         </div>
@@ -443,7 +445,7 @@ export default function SignupPage() {
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">
                                         <span className="text-[14px] text-cur-muted">{k}</span>
-                                        <span className="text-[15px] font-semibold text-cur-ink">{v}</span>
+                                        <span className="text-[13px] font-medium text-cur-body">{v}</span>
                                     </div>
                                 ))}
                             </div>
@@ -464,16 +466,16 @@ export default function SignupPage() {
 
                         <div className="flex gap-2 mt-2">
                             {stepIdx > 0 && (
-                                <Button type="button" variant="outline" onClick={goBack} disabled={loading} className="h-14 px-4 border-cur-hairline text-cur-ink rounded-[8px] font-medium">
+                                <Button type="button" variant="outline" onClick={goBack} disabled={loading} className="h-12 px-4 border-cur-hairline text-cur-ink rounded-[10px] font-medium">
                                     <ChevronLeft className="w-5 h-5" /> 이전
                                 </Button>
                             )}
                             {stepKey !== "confirm" ? (
-                                <Button type="button" onClick={goNext} disabled={checkingId || !stepFilled} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98] disabled:opacity-40">
+                                <Button type="button" onClick={goNext} disabled={checkingId || !stepFilled} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99] disabled:opacity-40">
                                     {checkingId ? <Loader2 className="h-5 w-5 animate-spin" /> : "다음"}
                                 </Button>
                             ) : (
-                                <Button type="button" onClick={handleSignup} disabled={loading} className="flex-1 h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-medium transition-transform active:scale-[0.98]">
+                                <Button type="button" onClick={handleSignup} disabled={loading} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99]">
                                     {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : phoneEnabled ? "가입하고 무료체험 시작" : "회원가입 하기"}
                                 </Button>
                             )}
