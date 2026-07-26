@@ -1,6 +1,28 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 export function Footer() {
+  // 로그인된 홈("/")은 하단 탭바가 있는 앱 셸이다 — 법정 푸터가 탭바 뒤에 반쯤 가려져
+  // 깨진 것처럼 보이므로 여기서는 숨긴다. 랜딩(비로그인 "/")·요금제·약관 등
+  // 공개 페이지에는 그대로 노출된다 (전자상거래법 표시 의무는 공개 화면에서 이행).
+  const pathname = usePathname();
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) setHasSession(!!data?.session);
+    });
+    const { data: subscr } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (active) setHasSession(!!session);
+    });
+    return () => { active = false; subscr.subscription.unsubscribe(); };
+  }, []);
+  if (pathname === "/" && hasSession) return null;
+
   return (
     <footer className="w-full text-center py-12 px-4 text-[13px] text-cur-muted bg-cur-canvas border-t border-cur-hairline font-sans print:hidden">
       <div className="max-w-2xl mx-auto flex flex-col gap-3">

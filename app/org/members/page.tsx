@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2 } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
-import { suggestIdStems, suggestInitialPassword } from "@/lib/romanize"
+import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
+import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
 
 const inputCls =
     "h-11 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -41,6 +42,8 @@ export default function OrgMembersPage() {
     const [initPw, setInitPw] = useState("")
     const [formErr, setFormErr] = useState<string | null>(null)
     const [createdIds, setCreatedIds] = useState<string[] | null>(null)
+    // 청구 미리보기용 구독 정보 (체험 여부·다음 결제일)
+    const [sub, setSub] = useState<SubscriptionRow | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
     // 초대 링크
@@ -88,6 +91,7 @@ export default function OrgMembersPage() {
             setStems(sugg)
             setStem((cur) => cur || sugg[0] || "site")
             setInitPw((cur) => cur || suggestInitialPassword())
+            setSub(await fetchSubscription())
         })()
     }, [])
 
@@ -95,17 +99,20 @@ export default function OrgMembersPage() {
     // 상한이 없다 — 필요한 만큼 만들고 만든 만큼 낸다
     const seatsLeft = Number.POSITIVE_INFINITY
 
+    // 한글·띄어쓰기를 입력해도 아이디 규칙으로 자동 변환 ("하이 물류" → hai_mulryu)
+    const effStem = sanitizeStem(stem)
+
     const createBulk = async () => {
         setFormErr(null)
         setMsg(null)
-        if (!/^[a-z][a-z0-9_]{1,11}$/.test(stem)) { setFormErr("아이디 시작 문자는 영문 소문자로 시작하는 2~12자예요."); return }
+        if (!STEM_RE.test(effStem)) { setFormErr("아이디로 만들 수 있는 글자가 부족해요. 영문·숫자·한글 2자 이상 입력해주세요."); return }
         if (initPw.length < 8) { setFormErr("초기 비밀번호는 8자 이상이어야 해요."); return }
         setBusy("create")
         try {
             const res = await fetch("/api/org/members/bulk", {
                 method: "POST",
                 headers: await authHeaders(),
-                body: JSON.stringify({ stem, count, password: initPw }),
+                body: JSON.stringify({ stem: effStem, count, password: initPw }),
             })
             const j = await res.json()
             if (!res.ok) { setFormErr(j.error || "발급 실패") ; return }
@@ -254,8 +261,11 @@ export default function OrgMembersPage() {
                     ) : (
                         <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
                             <div className="space-y-2">
-                                <Label className="text-[12px]">아이디 시작 문자</Label>
-                                <Input value={stem} onChange={(e) => setStem(e.target.value.toLowerCase())} placeholder="예: hai" className={inputCls} />
+                                <Label className="text-[12px]">아이디 시작 문자 <span className="text-cur-muted-soft font-normal">— 현장명을 한글로 적어도 돼요</span></Label>
+                                <Input value={stem} onChange={(e) => setStem(e.target.value)} placeholder="예: 하이 물류센터" className={inputCls} />
+                                {stem && effStem && sanitizeStem(stem) !== stem.toLowerCase() && (
+                                    <p className="text-[12px] text-cur-muted">아이디로는 <b className="font-mono text-cur-ink">{effStem}</b> 를 사용해요</p>
+                                )}
                                 {stems.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5">
                                         {stems.map((sg) => (
@@ -277,11 +287,45 @@ export default function OrgMembersPage() {
                                         className="w-9 h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
                                 </div>
                             </div>
-                            {/^[a-z][a-z0-9_]{1,11}$/.test(stem) && (
+                            {STEM_RE.test(effStem) && (
                                 <p className="text-[12px] text-cur-muted bg-cur-elevated rounded-[8px] px-3 py-2 font-mono">
-                                    {Array.from({ length: Math.min(count, 3) }, (_, i) => `${stem}${String(i + 1).padStart(2, "0")}`).join(", ")}{count > 3 ? ` … ${stem}${String(count).padStart(2, "0")}` : ""} 로 만들어져요
+                                    {Array.from({ length: Math.min(count, 3) }, (_, i) => `${effStem}${String(i + 1).padStart(2, "0")}`).join(", ")}{count > 3 ? ` … ${effStem}${String(count).padStart(2, "0")}` : ""} 로 만들어져요
                                 </p>
                             )}
+
+                            {/* 청구 미리보기 — 얼마가 늘고, 언제 결제되는지 (개수 바꿀 때마다 갱신) */}
+                            {(() => {
+                                const currentTotal = (1 + activeCount) * 3900
+                                const newTotal = (1 + activeCount + count) * 3900
+                                const isTrial = sub?.status === "trialing"
+                                const cpe = sub?.current_period_end ? new Date(sub.current_period_end) : null
+                                const nextDate = cpe ? cpe.toLocaleDateString("ko-KR") : null
+                                let prorated: number | null = null
+                                if (!isTrial && cpe && cpe.getTime() > Date.now()) {
+                                    const startMs = new Date(cpe).setMonth(cpe.getMonth() - 1)
+                                    const total = Math.max(864e5, cpe.getTime() - startMs)
+                                    const remaining = Math.min(total, Math.max(0, cpe.getTime() - Date.now()))
+                                    prorated = Math.max(100, Math.floor((3900 * count * remaining) / total))
+                                }
+                                return (
+                                    <div className="rounded-[8px] bg-cur-primary/[0.06] border border-cur-primary/25 px-3.5 py-3 space-y-1">
+                                        <div className="flex items-baseline justify-between">
+                                            <span className="text-[13px] text-cur-body">월 요금</span>
+                                            <span className="text-[14px] font-bold text-cur-ink">
+                                                {currentTotal.toLocaleString()} → {newTotal.toLocaleString()}원
+                                                <span className="text-cur-primary ml-1">(+{(count * 3900).toLocaleString()})</span>
+                                            </span>
+                                        </div>
+                                        <p className="text-[12px] text-cur-muted leading-relaxed">
+                                            {isTrial
+                                                ? `무료체험 중이라 오늘은 결제되지 않아요. 체험이 끝나는 ${nextDate ?? "종료일"}부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`
+                                                : prorated != null
+                                                  ? `오늘 약 ${prorated.toLocaleString()}원(이번 달 남은 기간 일할)이 결제되고, ${nextDate}부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`
+                                                  : `다음 결제일부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`}
+                                        </p>
+                                    </div>
+                                )
+                            })()}
                             <div className="space-y-1">
                                 <Label className="text-[12px]">공용 초기 비밀번호</Label>
                                 <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />
@@ -292,7 +336,7 @@ export default function OrgMembersPage() {
                             )}
                             <div className="flex gap-2">
                                 <Button onClick={() => { setShowCreate(false); setFormErr(null) }} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={createBulk} disabled={busy === "create" || !stem || !initPw} className="flex-1 h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-1 h-11 rounded-lg bg-cur-primary text-white font-bold">
                                     {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : `${count}개 만들기`}
                                 </Button>
                             </div>

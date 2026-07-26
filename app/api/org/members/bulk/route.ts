@@ -59,8 +59,8 @@ export async function POST(request: Request) {
     const stem = String(body.stem ?? "").trim().toLowerCase();
     const count = Math.floor(Number(body.count));
     const password = String(body.password ?? "");
-    if (!/^[a-z][a-z0-9_]{1,11}$/.test(stem)) {
-      return NextResponse.json({ error: "아이디 시작 문자는 영문 소문자로 시작하는 2~12자로 입력해주세요." }, { status: 400 });
+    if (!/^[a-z0-9][a-z0-9_]{1,11}$/.test(stem)) {
+      return NextResponse.json({ error: "아이디 시작 문자는 영문·숫자 2~12자로 입력해주세요." }, { status: 400 });
     }
     if (!Number.isFinite(count) || count < 1 || count > MAX_BULK) {
       return NextResponse.json({ error: `한 번에 1~${MAX_BULK}개까지 만들 수 있어요.` }, { status: 400 });
