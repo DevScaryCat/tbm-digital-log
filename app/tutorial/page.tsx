@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabaseClient"
-import { AlertCircle, Check, ChevronLeft, ChevronRight, ClipboardCheck, FileText, Hand, Loader2, Mic, Printer, QrCode, Square, Users } from "lucide-react"
+import { AlertCircle, BookOpen, Building2, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, Printer, QrCode, Save, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
 
@@ -33,9 +33,24 @@ interface CustomWindow extends Window {
     webkitSpeechRecognition?: new () => SpeechRecognition
 }
 
-// 투어에서 "지금 누를 버튼"을 알려주는 깜빡이 링
-const PulseRing = ({ className }: { className?: string }) => (
-    <span aria-hidden className={cn("absolute -inset-1 rounded-[12px] ring-2 ring-cur-primary animate-pulse pointer-events-none", className)} />
+// 투어에서 "지금 누를 버튼"을 알려주는 어포던스 — 외곽 링(맥동) + 튀는 '눌러보세요' 배지.
+// 대상 버튼 자체는 실제 앱과 동일한 hover/active/그림자를 가져서 링이 없어도 눌리게 생겨야 한다.
+const TapHint = ({ round = false }: { round?: boolean }) => (
+    <>
+        <span
+            aria-hidden
+            className={cn(
+                "absolute -inset-[5px] border-2 border-cur-primary pointer-events-none animate-pulse",
+                round ? "rounded-full" : "rounded-[15px]"
+            )}
+        />
+        <span
+            aria-hidden
+            className="absolute -top-3 -right-1.5 z-10 flex items-center gap-1 rounded-full bg-cur-primary text-cur-on-primary text-[10px] font-bold pl-1.5 pr-2 py-[3px] shadow-[0_4px_12px_rgba(245,78,0,0.35)] animate-bounce pointer-events-none"
+        >
+            <Hand className="w-3 h-3" /> 눌러보세요
+        </span>
+    </>
 )
 
 interface ResultData {
@@ -73,13 +88,13 @@ type TourStage = "home" | "info" | "record" | "recording" | "ai" | "sign" | "rev
 const TOUR_DOT: Record<TourStage, number> = { home: 0, info: 1, record: 2, recording: 3, ai: 3, sign: 4, review: 5 }
 const TOUR_DOT_COUNT = 6
 const TOUR_GUIDE: Record<TourStage, string> = {
-    home: "홈에서 'TBM 회의록 작성'을 눌러보세요",
-    info: "날짜·시간은 자동으로 채워져요. 확인만 하고 다음",
-    record: "녹음 시작을 누르고, 평소 하던 조회 그대로 말하면 돼요",
-    recording: "말하는 내용이 실시간으로 글자가 돼요. 다 끝나면 AI 요약",
+    home: "홈에서 'TBM 회의록 작성' 카드를 눌러보세요",
+    info: "날짜·시간은 자동으로 채워져요. '다음 단계'를 눌러보세요",
+    record: "가운데 주황 버튼을 누르고, 평소 하던 조회 그대로 말하면 돼요",
+    recording: "말이 끝나면 'AI 요약' 버튼이 주황으로 켜져요",
     ai: "AI가 회의 내용을 회의록으로 정리하는 중이에요",
     sign: "근로자들은 각자 폰으로 QR만 찍으면 서명돼요",
-    review: "AI가 다 채워놨어요. 훑어보고 저장하면 끝",
+    review: "AI가 다 채워놨어요. '완료 및 저장'을 눌러보세요",
 }
 
 export default function TutorialPage() {
@@ -353,114 +368,200 @@ export default function TutorialPage() {
                             <p className="text-[14px] font-medium text-cur-ink leading-snug">{TOUR_GUIDE[tourStage]}</p>
                         </div>
 
-                        {/* 실제 앱을 본뜬 연습 화면 */}
+                        {/* 실제 앱을 본뜬 연습 화면 — 마크업·색·그림자를 실제 화면에서 그대로 복제 */}
                         <div className="rounded-[16px] bg-cur-canvas p-2.5">
                             <div className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
 
                                 {tourStage === "home" && (
-                                    <div className="p-4 space-y-3">
-                                        <div className="flex items-center justify-between pb-2.5 border-b border-cur-hairline">
-                                            <span className="text-[14px] font-bold text-cur-ink">안톡</span>
-                                            <span className="w-6 h-6 rounded-full bg-cur-elevated" />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[8px] overflow-hidden text-center">
-                                            <div className="bg-cur-card py-2.5">
-                                                <p className="text-[10px] text-cur-muted font-semibold">TBM 회의록</p>
-                                                <p className="text-[16px] leading-tight font-bold text-cur-ink font-mono">3</p>
+                                    <div>
+                                        <div className="p-4 space-y-4">
+                                            {/* 홈 헤더 — 로고 + 사용자 메뉴 (실제 TBMHeader 축소판) */}
+                                            <div className="flex items-center justify-between">
+                                                <span className="flex items-center gap-1.5">
+                                                    <span className="w-6 h-6 rounded-[7px] bg-cur-primary flex items-center justify-center"><HardHat className="w-3.5 h-3.5 text-cur-on-primary" /></span>
+                                                    <span className="text-[15px] font-bold text-cur-ink">안톡</span>
+                                                </span>
+                                                <span className="text-[12px] font-medium text-cur-body bg-cur-elevated rounded-[8px] px-2.5 py-1">김반장</span>
                                             </div>
-                                            <div className="bg-cur-card py-2.5">
-                                                <p className="text-[10px] text-cur-muted font-semibold">교육일지</p>
-                                                <p className="text-[16px] leading-tight font-bold text-cur-ink font-mono">5</p>
+                                            {/* 활동 현황 — 실제 홈 그리드와 동일 구성 */}
+                                            <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+                                                <div className="bg-cur-card py-3">
+                                                    <p className="text-[10px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">TBM 회의록</p>
+                                                    <p className="text-[22px] leading-none font-bold text-cur-ink font-mono">3</p>
+                                                </div>
+                                                <div className="bg-cur-card py-3">
+                                                    <p className="text-[10px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">교육일지</p>
+                                                    <p className="text-[22px] leading-none font-bold text-cur-ink font-mono">5</p>
+                                                </div>
+                                            </div>
+                                            {/* 작성 카드 — 실제 홈 카드와 동일 마크업 + 탭 어포던스 */}
+                                            <button
+                                                type="button"
+                                                onClick={() => setTourStage("info")}
+                                                className="relative w-full border border-cur-hairline bg-cur-card hover:border-cur-primary/40 active:bg-cur-elevated/40 transition-all rounded-[12px] text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                            >
+                                                <TapHint />
+                                                <span className="p-4 flex items-center justify-between">
+                                                    <span className="flex items-center gap-3.5 min-w-0">
+                                                        <span className="bg-cur-elevated w-11 h-11 shrink-0 rounded-[8px] flex items-center justify-center"><Users className="w-[22px] h-[22px] text-cur-ink" /></span>
+                                                        <span className="min-w-0">
+                                                            <span className="block text-[15px] font-semibold text-cur-ink">TBM 회의록 작성</span>
+                                                            <span className="block text-[12px] text-cur-muted mt-0.5 truncate">현장과의 더 많은 소통으로 위험을 통제하세요</span>
+                                                        </span>
+                                                    </span>
+                                                    <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted" />
+                                                </span>
+                                            </button>
+                                            <div aria-hidden className="w-full border border-cur-hairline bg-cur-card rounded-[12px] opacity-45">
+                                                <span className="p-4 flex items-center justify-between">
+                                                    <span className="flex items-center gap-3.5 min-w-0">
+                                                        <span className="bg-cur-elevated w-11 h-11 shrink-0 rounded-[8px] flex items-center justify-center"><HardHat className="w-[22px] h-[22px] text-cur-ink" /></span>
+                                                        <span className="min-w-0">
+                                                            <span className="block text-[15px] font-semibold text-cur-ink">안전보건교육일지 작성</span>
+                                                            <span className="block text-[12px] text-cur-muted mt-0.5 truncate">TBM·정기교육 등을 AI로 기록 관리</span>
+                                                        </span>
+                                                    </span>
+                                                    <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted" />
+                                                </span>
                                             </div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTourStage("info")}
-                                            className="relative w-full flex items-center justify-between gap-3 p-3.5 rounded-[10px] border border-cur-hairline bg-cur-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                                        >
-                                            <PulseRing className="rounded-[12px]" />
-                                            <span className="flex items-center gap-3 min-w-0">
-                                                <span className="w-9 h-9 shrink-0 rounded-[8px] bg-cur-elevated flex items-center justify-center"><Users className="w-[18px] h-[18px] text-cur-ink" /></span>
-                                                <span className="text-[14px] font-semibold text-cur-ink truncate">TBM 회의록 작성</span>
+                                        {/* 하단 2탭 — 실제 셸 (표시 전용) */}
+                                        <div className="grid grid-cols-2 border-t border-cur-hairline" aria-hidden>
+                                            <span className="relative h-11 flex flex-col items-center justify-center gap-0.5 text-cur-primary">
+                                                <span className="absolute top-0 w-8 h-[2px] bg-cur-primary rounded-full" />
+                                                <HardHat className="w-4 h-4" /><span className="text-[9px] font-bold leading-none">TBM</span>
                                             </span>
-                                            <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted" />
-                                        </button>
-                                        <div aria-hidden className="w-full flex items-center justify-between gap-3 p-3.5 rounded-[10px] border border-cur-hairline bg-cur-card opacity-50">
-                                            <span className="flex items-center gap-3 min-w-0">
-                                                <span className="w-9 h-9 shrink-0 rounded-[8px] bg-cur-elevated flex items-center justify-center"><FileText className="w-[18px] h-[18px] text-cur-ink" /></span>
-                                                <span className="text-[14px] font-semibold text-cur-ink truncate">안전보건교육일지 작성</span>
+                                            <span className="h-11 flex flex-col items-center justify-center gap-0.5 text-cur-muted">
+                                                <Building2 className="w-4 h-4" /><span className="text-[9px] font-medium leading-none">현장관리</span>
                                             </span>
-                                            <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted" />
                                         </div>
                                     </div>
                                 )}
 
                                 {tourStage === "info" && (
-                                    <div className="p-4 space-y-3">
-                                        <p className="text-[13px] font-bold text-cur-ink">① 기본 정보</p>
-                                        <div className="space-y-2">
-                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
-                                                <p className="text-[11px] text-cur-muted font-medium">회의 일시</p>
-                                                <p className="text-[13px] font-medium text-cur-ink">오늘 07:30 <span className="text-cur-muted-soft">(자동 입력)</span></p>
-                                            </div>
-                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
-                                                <p className="text-[11px] text-cur-muted font-medium">공정명</p>
-                                                <p className="text-[13px] font-medium text-cur-ink">{sample.processName}</p>
-                                            </div>
-                                            <div className="rounded-[8px] bg-cur-canvas px-3 py-2.5">
-                                                <p className="text-[11px] text-cur-muted font-medium">작업명</p>
-                                                <p className="text-[13px] font-medium text-cur-ink">{sample.workName}</p>
+                                    <div>
+                                        <div className="p-4 space-y-3 bg-cur-canvas-soft">
+                                            {/* 실제 위저드 1단계 헤더 */}
+                                            <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                                <span className="bg-cur-primary text-cur-on-primary w-6 h-6 rounded-[7px] flex items-center justify-center text-[12px] font-bold shadow-sm">1</span> 날짜와 장소
+                                            </h3>
+                                            <div className="space-y-3 bg-cur-card p-3.5 rounded-[12px] border border-cur-hairline">
+                                                <div className="space-y-1">
+                                                    <p className="text-[11px] font-semibold text-cur-muted">날짜</p>
+                                                    <p className="flex items-center gap-2 h-10 px-3 rounded-[8px] bg-cur-elevated text-[13px] font-medium text-cur-ink">
+                                                        <CalendarIcon className="w-4 h-4 text-cur-muted" /> 오늘 <span className="text-cur-muted-soft font-normal">(자동 입력)</span>
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <p className="text-[11px] font-semibold text-cur-muted">장소</p>
+                                                    <p className="h-10 px-3 flex items-center rounded-[8px] bg-cur-elevated text-[13px] font-medium text-cur-ink">{sample.processName} 작업장</p>
+                                                </div>
+                                                <div className="pt-2.5 border-t border-cur-hairline-soft flex items-center gap-2">
+                                                    <Clock className="w-3.5 h-3.5 text-cur-muted shrink-0" />
+                                                    <span className="text-[12px] text-cur-muted">시작·종료 시간은 녹음할 때 자동 기록됩니다</span>
+                                                </div>
                                             </div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTourStage("record")}
-                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
-                                        >
-                                            <PulseRing className="rounded-[10px]" />
-                                            다음 단계
-                                        </button>
+                                        {/* 하단 버튼 바 — 실제 위저드와 동일 (이전=아웃라인, 다음=잉크) */}
+                                        <div className="border-t border-cur-hairline bg-cur-card p-3 flex gap-2">
+                                            <span aria-hidden className="flex-1 h-12 rounded-[10px] border border-cur-hairline text-cur-ink text-[13px] font-semibold flex items-center justify-center opacity-40">이전</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTourStage("record")}
+                                                className="relative flex-[2] h-12 rounded-[10px] bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary text-[14px] font-bold shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                            >
+                                                <TapHint />
+                                                다음 단계
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
                                 {tourStage === "record" && (
-                                    <div className="px-4 py-8 flex flex-col items-center gap-4">
-                                        <p className="text-[12px] font-semibold text-cur-muted uppercase tracking-[0.6px]">② 녹음</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => { setTypedLen(0); setTourStage("recording") }}
-                                            className="relative w-24 h-24 rounded-full bg-cur-primary text-cur-on-primary flex flex-col items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2 transition-transform active:scale-[0.97]"
-                                        >
-                                            <PulseRing className="-inset-1.5 rounded-full" />
-                                            <Mic className="w-7 h-7" />
-                                            <span className="text-[12px] font-bold mt-1">녹음 시작</span>
-                                        </button>
+                                    <div>
+                                        <div className="p-4 space-y-3 bg-cur-canvas-soft">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                                <span className="bg-cur-primary text-cur-on-primary w-6 h-6 rounded-[7px] flex items-center justify-center text-[12px] font-bold shadow-sm">2</span> 회의 녹음
+                                            </h3>
+                                            {/* 대본 아코디언 — 실제 화면 요소 */}
+                                            <div aria-hidden className="rounded-[12px] border border-cur-hairline bg-cur-card">
+                                                <span className="h-10 w-full flex items-center justify-between px-3.5 text-[12px] font-medium text-cur-body">
+                                                    <span className="flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5 text-cur-muted" /> 진행 순서·대본 보기</span>
+                                                    <ChevronDown className="w-3.5 h-3.5 text-cur-muted-soft" />
+                                                </span>
+                                            </div>
+                                            {/* 원형 녹음 버튼 — 실제 버튼과 동일한 크기감·주황 그림자 */}
+                                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] py-7 flex flex-col items-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setTypedLen(0); setTourStage("recording") }}
+                                                    className="relative w-28 h-28 rounded-full bg-cur-primary hover:bg-cur-primary-active shadow-[0_12px_32px_rgba(245,78,0,0.25)] flex flex-col items-center justify-center gap-1.5 transition-transform active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                                >
+                                                    <TapHint round />
+                                                    <Mic className="w-9 h-9 text-cur-on-primary" />
+                                                    <span className="text-[14px] font-bold text-cur-on-primary">녹음 시작</span>
+                                                </button>
+                                                <p className="mt-4 text-[12px] text-cur-body text-center px-6">누르고 평소처럼 회의하세요 — AI가 회의록으로 정리합니다</p>
+                                            </div>
+                                        </div>
+                                        <div className="border-t border-cur-hairline bg-cur-card p-3 flex gap-2" aria-hidden>
+                                            <span className="flex-1 h-12 rounded-[10px] border border-cur-hairline text-cur-ink text-[13px] font-semibold flex items-center justify-center opacity-40">이전</span>
+                                            <span className="flex-[2] h-12 rounded-[10px] bg-cur-ink text-cur-on-primary text-[14px] font-bold flex items-center justify-center opacity-40">AI 요약</span>
+                                        </div>
                                     </div>
                                 )}
 
                                 {tourStage === "recording" && (
-                                    <div className="p-4 space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <span className="flex items-center gap-1.5 text-[12px] font-bold text-cur-error">
-                                                <span className="w-2 h-2 rounded-full bg-cur-error animate-pulse" /> 녹음 중
-                                            </span>
-                                            <span className="text-[12px] font-mono text-cur-muted">0:{String(Math.min(59, Math.floor(typedLen / 50))).padStart(2, "0")}</span>
+                                    <div>
+                                        <div className="p-4 space-y-3 bg-cur-canvas-soft">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                                <span className="bg-cur-primary text-cur-on-primary w-6 h-6 rounded-[7px] flex items-center justify-center text-[12px] font-bold shadow-sm">2</span> 회의 녹음
+                                            </h3>
+                                            {/* 녹음 상태 카드 — 실제 화면의 녹음 중/완료 상태 */}
+                                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] py-4 px-4 flex flex-col items-center">
+                                                {typedLen >= sample.script.length ? (
+                                                    <div className="flex flex-col items-center">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <CheckCircle2 className="w-4 h-4 text-cur-success shrink-0" />
+                                                            <span className="text-[13px] font-semibold text-cur-ink">녹음 완료</span>
+                                                            <span className="text-[12px] text-cur-muted font-mono">1회 · 0:23</span>
+                                                        </div>
+                                                        <p className="text-[12px] text-cur-muted mt-1">회의를 마쳤으면 아래 &lsquo;AI 요약&rsquo;을 누르세요</p>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-cur-error">
+                                                            <span className="w-2 h-2 rounded-full bg-cur-error animate-pulse" /> 녹음 중
+                                                        </span>
+                                                        <div className="text-[28px] font-bold tabular-nums leading-none mt-1 text-cur-ink">0:{String(Math.min(59, Math.floor(typedLen / 50))).padStart(2, "0")}</div>
+                                                        <div className="text-[11px] text-cur-muted mt-0.5">/ 20:00</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                            {/* 인식되는 말 */}
+                                            <div className="rounded-[12px] border border-cur-hairline bg-cur-card p-3.5">
+                                                <p className="text-[11px] font-semibold text-cur-muted mb-1.5">이렇게 말하고 있어요</p>
+                                                <p className="text-[12.5px] leading-relaxed text-cur-ink min-h-[96px]">{sample.script.slice(0, typedLen)}</p>
+                                            </div>
                                         </div>
-                                        <div className="rounded-[8px] bg-cur-canvas p-3 min-h-[110px]">
-                                            <p className="text-[13px] leading-relaxed text-cur-ink">{sample.script.slice(0, typedLen)}</p>
+                                        {/* 하단 버튼 바 — 녹음이 끝나면 실제 앱처럼 'AI 요약'이 주황으로 켜진다 */}
+                                        <div className="border-t border-cur-hairline bg-cur-card p-3 flex gap-2">
+                                            <span aria-hidden className="flex-1 h-12 rounded-[10px] border border-cur-hairline text-cur-ink text-[13px] font-semibold flex items-center justify-center opacity-40">이전</span>
+                                            <button
+                                                type="button"
+                                                disabled={typedLen < sample.script.length}
+                                                onClick={() => setTourStage("ai")}
+                                                className={cn(
+                                                    "relative flex-[2] h-12 rounded-[10px] text-[14px] font-bold transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2",
+                                                    typedLen >= sample.script.length
+                                                        ? "bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary shadow-[0_4px_12px_rgba(245,78,0,0.2)] cursor-pointer"
+                                                        : "bg-cur-ink text-cur-on-primary opacity-40 cursor-default"
+                                                )}
+                                            >
+                                                {typedLen >= sample.script.length && <TapHint />}
+                                                AI 요약
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            disabled={typedLen < sample.script.length}
-                                            onClick={() => setTourStage("ai")}
-                                            className={cn(
-                                                "relative w-full h-11 rounded-[8px] text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2",
-                                                typedLen >= sample.script.length ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-muted-soft"
-                                            )}
-                                        >
-                                            {typedLen >= sample.script.length && <PulseRing className="rounded-[10px]" />}
-                                            AI 요약
-                                        </button>
                                     </div>
                                 )}
 
@@ -472,49 +573,66 @@ export default function TutorialPage() {
                                 )}
 
                                 {tourStage === "sign" && (
-                                    <div className="p-4 space-y-3">
-                                        <p className="text-[13px] font-bold text-cur-ink">③ 참석자 서명</p>
-                                        <div className="flex flex-col items-center gap-2 rounded-[8px] border border-dashed border-cur-hairline-strong py-5 px-3">
-                                            <QrCode className="w-16 h-16 text-cur-ink" />
-                                            <p className="text-[12px] text-cur-muted text-center">근로자가 스마트폰 카메라로 찍으면<br />바로 서명 화면이 열려요</p>
+                                    <div>
+                                        <div className="p-4 space-y-3 bg-cur-canvas-soft">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                                <span className="bg-cur-primary text-cur-on-primary w-6 h-6 rounded-[7px] flex items-center justify-center text-[12px] font-bold shadow-sm">3</span> 참석자 서명
+                                            </h3>
+                                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-4 space-y-3">
+                                                <div className="flex flex-col items-center gap-2 rounded-[8px] border border-dashed border-cur-hairline-strong py-4 px-3">
+                                                    <QrCode className="w-14 h-14 text-cur-ink" />
+                                                    <p className="text-[12px] text-cur-muted text-center">근로자가 스마트폰 카메라로 찍으면<br />바로 서명 화면이 열려요</p>
+                                                </div>
+                                                <p className="flex items-center gap-1.5 text-[12px] font-semibold text-cur-success">
+                                                    <Check className="w-4 h-4" /> 서명 3명 완료
+                                                </p>
+                                            </div>
                                         </div>
-                                        <p className="flex items-center gap-1.5 text-[12px] font-semibold text-cur-success">
-                                            <Check className="w-4 h-4" /> 서명 3명 완료
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTourStage("review")}
-                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
-                                        >
-                                            <PulseRing className="rounded-[10px]" />
-                                            다음 단계
-                                        </button>
+                                        <div className="border-t border-cur-hairline bg-cur-card p-3 flex gap-2">
+                                            <span aria-hidden className="flex-1 h-12 rounded-[10px] border border-cur-hairline text-cur-ink text-[13px] font-semibold flex items-center justify-center opacity-40">이전</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setTourStage("review")}
+                                                className="relative flex-[2] h-12 rounded-[10px] bg-cur-ink hover:bg-cur-ink/90 text-cur-on-primary text-[14px] font-bold shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
+                                            >
+                                                <TapHint />
+                                                다음 단계
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
                                 {tourStage === "review" && (
-                                    <div className="p-4 space-y-3">
-                                        <p className="text-[13px] font-bold text-cur-ink">④ 검토</p>
-                                        <div className="space-y-2">
-                                            {sample.hazards.slice(0, 2).map((h, i) => (
-                                                <div key={i} className={cn("border-l-2 bg-cur-canvas rounded-r-[8px] px-3 py-2", LEVEL_BORDER[h.level] ?? LEVEL_BORDER["중"])}>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className={cn("shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-[5px]", LEVEL_BADGE[h.level] ?? LEVEL_BADGE["중"])}>{h.level}</span>
-                                                        <span className="text-[12px] font-semibold text-cur-ink leading-snug">{h.factor}</span>
+                                    <div>
+                                        <div className="p-4 space-y-3 bg-cur-canvas-soft">
+                                            <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                                <span className="bg-cur-primary text-cur-on-primary w-6 h-6 rounded-[7px] flex items-center justify-center text-[12px] font-bold shadow-sm">4</span> 검토
+                                            </h3>
+                                            <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-3.5 space-y-2">
+                                                {sample.hazards.slice(0, 2).map((h, i) => (
+                                                    <div key={i} className={cn("border-l-2 bg-cur-canvas rounded-r-[8px] px-3 py-2", LEVEL_BORDER[h.level] ?? LEVEL_BORDER["중"])}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={cn("shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-[5px]", LEVEL_BADGE[h.level] ?? LEVEL_BADGE["중"])}>{h.level}</span>
+                                                            <span className="text-[12px] font-semibold text-cur-ink leading-snug">{h.factor}</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-cur-body mt-1 leading-snug">{h.measure}</p>
                                                     </div>
-                                                    <p className="text-[11px] text-cur-body mt-1 leading-snug">{h.measure}</p>
-                                                </div>
-                                            ))}
-                                            <p className="text-[11px] text-cur-muted-soft px-1">…위험요인과 대책까지 자동으로 채워져요</p>
+                                                ))}
+                                                <p className="text-[11px] text-cur-muted-soft px-1">…위험요인과 대책까지 자동으로 채워져요</p>
+                                            </div>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={showSampleResult}
-                                            className="relative w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2"
-                                        >
-                                            <PulseRing className="rounded-[10px]" />
-                                            완료 및 저장
-                                        </button>
+                                        {/* 실제 앱과 동일 — 마지막 커밋 행동만 주황 */}
+                                        <div className="border-t border-cur-hairline bg-cur-card p-3 flex gap-2">
+                                            <span aria-hidden className="flex-1 h-12 rounded-[10px] border border-cur-hairline text-cur-ink text-[13px] font-semibold flex items-center justify-center opacity-40">이전</span>
+                                            <button
+                                                type="button"
+                                                onClick={showSampleResult}
+                                                className="relative flex-[2] h-12 rounded-[10px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold shadow-[0_4px_12px_rgba(245,78,0,0.2)] transition-transform active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-offset-2 inline-flex items-center justify-center gap-1.5"
+                                            >
+                                                <TapHint />
+                                                <Save className="w-4 h-4" /> 완료 및 저장
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
