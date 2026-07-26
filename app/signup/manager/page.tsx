@@ -217,6 +217,17 @@ export default function ManagerSignupPage() {
                         <Button onClick={goStep3} disabled={loading || !orgName.trim()} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 disabled:opacity-40">
                             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "결제하고 시작하기"}
                         </Button>
+                        {/* 이 단계까지는 계정이 아직 만들어지지 않아 되돌아가도 안전하다.
+                            이미 로그인된 상태로 재개한 경우(existingSession)엔 돌아갈 계정 단계가 없다. */}
+                        {!existingSession && (
+                            <button
+                                onClick={() => { setError(null); setStep(1) }}
+                                disabled={loading}
+                                className="w-full text-[13px] text-cur-muted hover:text-cur-ink transition-colors disabled:opacity-40"
+                            >
+                                ← 계정 정보 다시 입력
+                            </button>
+                        )}
                     </div>
                 )}
 
