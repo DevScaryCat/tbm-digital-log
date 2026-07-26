@@ -267,7 +267,10 @@ export default function SignupPage() {
                         <div className="mx-auto"><Logo size="md" /></div>
                         <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">회원가입</CardTitle>
                         <CardDescription className="text-[15px] text-cur-muted font-medium">
-                            어떤 역할로 사용하시나요?
+                            어떻게 사용하실 건가요?
+                            <span className="block text-[13px] text-cur-muted-soft mt-1 font-normal">
+                                현장 한 곳만 쓰신다면 관리감독자를 선택하세요
+                            </span>
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3 pb-10 pt-4">
@@ -293,7 +296,12 @@ export default function SignupPage() {
                             <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">
                                 <span className="block text-[15px] font-bold text-cur-ink">관리감독자</span>
-                                <span className="block text-[12px] text-cur-muted mt-0.5">현장에서 TBM·안전교육을 기록해요</span>
+                                <span className="block text-[13px] text-cur-body mt-1 leading-snug">
+                                    현장에서 TBM·안전보건교육일지를 직접 작성해요
+                                </span>
+                                <span className="block text-[12px] text-cur-muted-soft mt-1.5">
+                                    현장 1곳 · 첫 달 무료, 이후 월 1,900원부터
+                                </span>
                             </span>
                             <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                         </button>
@@ -305,7 +313,12 @@ export default function SignupPage() {
                             <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">
                                 <span className="block text-[15px] font-bold text-cur-ink">안전관리자</span>
-                                <span className="block text-[12px] text-cur-muted mt-0.5">여러 현장을 한눈에 관제하고 보고서를 관리해요</span>
+                                <span className="block text-[13px] text-cur-body mt-1 leading-snug">
+                                    현장마다 관리감독자 계정을 만들어 주고, 여러 현장의 기록과 보고서를 한 곳에서 관리해요
+                                </span>
+                                <span className="block text-[12px] text-cur-muted-soft mt-1.5">
+                                    직접 작성은 하지 않아요 · 관리감독자 1명당 월 4,900원
+                                </span>
                             </span>
                             <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                         </button>

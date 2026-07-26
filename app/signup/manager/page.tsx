@@ -178,7 +178,14 @@ export default function ManagerSignupPage() {
                             <Label className="text-[14px] font-semibold text-cur-ink">비밀번호 확인</Label>
                             <Input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} placeholder="한 번 더 입력" className={inputCls} />
                         </div>
-                        <Button onClick={goStep2} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">다음</Button>
+                        {/* 빈 칸이면 비활성 (검증 실패 사유는 클릭 시 메시지로 — 기존 가입 위저드와 동일 규칙) */}
+                        <Button
+                            onClick={goStep2}
+                            disabled={!loginId.trim() || !password || !password2}
+                            className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 disabled:opacity-40"
+                        >
+                            다음
+                        </Button>
                         <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
                             안전관리자 계정은 관리 전용이라 TBM 작성 기능이 없어요.<br />현장 기록은 관리감독자 계정에서 합니다.
                         </p>
@@ -207,7 +214,7 @@ export default function ManagerSignupPage() {
                             <span className="text-[13px] text-cur-muted">월 이용요금</span>
                             <span className="text-[18px] font-bold text-cur-ink">{total.toLocaleString()}원<span className="text-[12px] font-medium text-cur-muted ml-1">/ 월 (VAT 포함)</span></span>
                         </div>
-                        <Button onClick={goStep3} disabled={loading} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                        <Button onClick={goStep3} disabled={loading || !orgName.trim()} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 disabled:opacity-40">
                             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "결제하고 시작하기"}
                         </Button>
                     </div>
