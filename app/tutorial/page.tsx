@@ -11,6 +11,19 @@ import { supabase } from "@/lib/supabaseClient"
 import { AlertCircle, BookOpen, Building2, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, Printer, QrCode, Save, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
+import { MinutesView } from "@/components/MinutesView"
+import { ReportView } from "@/components/ReportView"
+
+// 실제 문서 서식을 축소해 엿보기 창으로 — 손으로 그린 요약이 아니라 앱이 진짜로
+// 출력하는 A4 양식(210mm) 그대로다. 상단 일부만 보여주고 아래는 페이드 처리.
+const FormPeek = ({ children, height = 320 }: { children: React.ReactNode; height?: number }) => (
+    <div aria-hidden className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden select-none pointer-events-none" style={{ height }}>
+        <div className="origin-top-left scale-[0.37] sm:scale-[0.48]" style={{ width: "210mm" }}>
+            {children}
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-cur-card to-transparent" />
+    </div>
+)
 
 // tbm-minutes와 동일한 최소 Web Speech API 타입
 interface SpeechRecognitionEvent {
@@ -753,82 +766,45 @@ export default function TutorialPage() {
                                 ))}
                             </div>
 
-                            {/* 완성 문서 미리보기 — 결과물 양식이 궁금한 사용자를 위해 예시 경로에서도 보여준다 */}
+                            {/* 완성 문서 — 앱이 실제로 출력하는 서식(MinutesView/ReportView)을 그대로 축소해 보여준다 */}
                             <div className="space-y-2">
-                                <p className="text-[13px] font-semibold text-cur-ink">
-                                    {source === "record" ? "방금 읽으신 내용이 이렇게 문서가 됐어요" : "완성되면 이런 문서가 나와요"}
-                                    <span className="font-medium text-cur-muted-soft"> · 저장되지 않아요</span>
-                                </p>
-                                <div className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden shadow-[0_10px_28px_rgba(0,0,0,0.08)]">
-                                <p aria-hidden className="pointer-events-none select-none absolute inset-0 flex items-center justify-center text-[64px] font-bold text-cur-ink/[0.04] -rotate-12 tracking-widest">예시</p>
-                                <div className="px-4 pt-4 pb-3 text-center border-b-4 border-double border-cur-hairline-strong">
-                                    <p className="text-[16px] font-bold text-cur-ink tracking-[0.2em] -mr-[0.2em]">TBM 회의록</p>
-                                </div>
-                                <div className="divide-y divide-cur-hairline text-[13px]">
-                                    <div className="flex px-4 py-2.5">
-                                        <span className="w-16 shrink-0 text-cur-muted font-medium">공정명</span>
-                                        <span className="text-cur-ink font-medium">{result.processName}</span>
-                                    </div>
-                                    <div className="flex px-4 py-2.5">
-                                        <span className="w-16 shrink-0 text-cur-muted font-medium">작업명</span>
-                                        <span className="text-cur-ink font-medium">{result.workName}</span>
-                                    </div>
-                                    <div className="flex px-4 py-2.5">
-                                        <span className="w-16 shrink-0 text-cur-muted font-medium">작업내용</span>
-                                        <span className="text-cur-ink font-medium leading-snug">{result.workContent}</span>
-                                    </div>
-                                    <div className="px-4 py-3 space-y-2.5">
-                                        <p className="text-[12px] font-semibold text-cur-muted uppercase tracking-[0.6px]">위험요인 분석</p>
-                                        {result.hazards.map((h, i) => (
-                                            <div key={i} className="space-y-0.5">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={cn("shrink-0 text-[11px] font-bold px-1.5 py-0.5 rounded-[6px]", LEVEL_BADGE[h.level] ?? LEVEL_BADGE["중"])}>{h.level}</span>
-                                                    <span className="text-cur-ink font-medium leading-snug">{h.factor}</span>
-                                                </div>
-                                                <p className="text-cur-body pl-[34px] leading-snug">→ {h.measure}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {result.instructions && (
-                                        <div className="flex px-4 py-2.5">
-                                            <span className="w-16 shrink-0 text-cur-muted font-medium">협의사항</span>
-                                            <span className="text-cur-ink font-medium leading-snug">{result.instructions}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex px-4 py-2.5 items-center">
-                                        <span className="w-16 shrink-0 text-cur-muted font-medium">참석자</span>
-                                        <span className="text-cur-muted-soft font-medium">근로자들이 QR코드로 서명해요</span>
-                                    </div>
-                                </div>
-                                </div>
+                                <p className="text-[13px] font-semibold text-cur-ink">TBM 회의록 양식은 이렇게 나와요</p>
+                                <FormPeek>
+                                    <MinutesView
+                                        minutes={{
+                                            date: new Date().toISOString().slice(0, 10),
+                                            start_time: "07:30", end_time: "07:40",
+                                            location: `${result.processName} 작업장`,
+                                            process_name: result.processName,
+                                            work_name: result.workName,
+                                            work_content: result.workContent,
+                                            leader_title: "관리감독자", leader_name: "김반장",
+                                            hazards: result.hazards.map((h) => ({ factor: h.factor, level: h.level, measure: h.measure })),
+                                            instructions: result.instructions,
+                                        }}
+                                        participants={[]}
+                                    />
+                                </FormPeek>
+                            </div>
 
-                                {/* 안전보건교육일지 — 같은 녹음이 교육일지 양식으로도 정리된다 */}
-                                <div className="relative rounded-[12px] border border-cur-hairline-strong bg-cur-card overflow-hidden shadow-[0_10px_28px_rgba(0,0,0,0.08)] mt-3">
-                                    <p aria-hidden className="pointer-events-none select-none absolute inset-0 flex items-center justify-center text-[64px] font-bold text-cur-ink/[0.04] -rotate-12 tracking-widest">예시</p>
-                                    <div className="px-4 pt-4 pb-3 text-center border-b-4 border-double border-cur-hairline-strong">
-                                        <p className="text-[16px] font-bold text-cur-ink tracking-[0.2em] -mr-[0.2em]">안전보건교육일지</p>
-                                    </div>
-                                    <div className="divide-y divide-cur-hairline text-[13px]">
-                                        <div className="flex px-4 py-2.5">
-                                            <span className="w-16 shrink-0 text-cur-muted font-medium">교육구분</span>
-                                            <span className="text-cur-ink font-medium">정기 안전보건교육 (TBM)</span>
-                                        </div>
-                                        <div className="flex px-4 py-2.5">
-                                            <span className="w-16 shrink-0 text-cur-muted font-medium">교육시간</span>
-                                            <span className="text-cur-ink font-medium">07:30 ~ 07:40 (10분) <span className="text-cur-muted-soft">· 자동 기록</span></span>
-                                        </div>
-                                        <div className="flex px-4 py-2.5">
-                                            <span className="w-16 shrink-0 text-cur-muted font-medium">교육내용</span>
-                                            <span className="text-cur-ink font-medium leading-snug">{result.workContent}</span>
-                                        </div>
-                                        <div className="flex px-4 py-2.5 items-center">
-                                            <span className="w-16 shrink-0 text-cur-muted font-medium">참석자</span>
-                                            <span className="text-cur-muted-soft font-medium">서명 명단이 자동으로 붙어요</span>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div className="space-y-2">
+                                <p className="text-[13px] font-semibold text-cur-ink">안전보건교육일지 양식은 이렇게 나와요</p>
+                                <FormPeek height={300}>
+                                    <ReportView
+                                        log={{
+                                            date: new Date().toISOString().slice(0, 10),
+                                            start_time: "07:30", end_time: "07:40",
+                                            education_type: "정기 안전교육",
+                                            location: `${result.processName} 작업장`,
+                                            company_name: "안톡 건설",
+                                            education_content: result.workContent,
+                                            instructor_name: "김반장",
+                                        }}
+                                        participants={[]}
+                                    />
+                                </FormPeek>
                                 <p className="text-[12px] text-cur-muted-soft leading-relaxed">
-                                    같은 녹음 하나로 회의록과 교육일지가 함께 만들어지고, 한글·워드·엑셀·PDF로 저장할 수 있어요.
+                                    같은 녹음 하나로 두 문서가 함께 만들어지고, 한글·워드·엑셀·PDF로 저장할 수 있어요.
                                 </p>
                             </div>
 
