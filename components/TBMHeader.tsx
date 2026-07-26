@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, CreditCard, Mail, Users } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { startOfMonth } from "date-fns"
 import { fetchSubscription, planBadge, usageWindow } from "@/lib/useSubscription"
@@ -21,24 +21,27 @@ interface TBMHeaderProps {
     backHref?: string
 }
 
-// 플랜별 월 한도 (DB 트리거 enforce_tbm_monthly_limit와 일치)
+// 월 한도 — DB 트리거 enforce_tbm_monthly_limit와 반드시 같은 집합/같은 숫자여야 한다.
+// 유료 단일 티어(monthly_pro·org_seat·구 org) = 200/30/20, legacy(구 베이직·영구무료) = 80/10/0.
+const PAID = { log: 200, minutes: 30, ra: 20 }
+const LEGACY = { log: 80, minutes: 10, ra: 0 }
 const LIMITS: Record<string, { log: number; minutes: number; ra: number }> = {
-    monthly_basic: { log: 80, minutes: 10, ra: 0 },
-    monthly_pro: { log: 200, minutes: 30, ra: 20 },
-    org_seat: { log: 200, minutes: 30, ra: 20 }, // 조직 하위 현장 = Pro 상당
-    org: { log: 0, minutes: 0, ra: 20 },         // 안전관리자 = 작성 없음, AI 분석은 대상 현장 한도로 차감
+    monthly_pro: PAID,
+    org_seat: PAID,
+    org: PAID,
+    monthly_basic: LEGACY,
+    grandfather: LEGACY,
 }
 function limitFor(plan: string | null, kind: "log" | "minutes" | "ra"): number {
-    // grandfather(영구 무료)도 사용량 한도는 베이직과 동일 (DB 트리거 enforce_tbm_monthly_limit와 일치)
-    return (LIMITS[plan ?? "monthly_basic"] ?? LIMITS.monthly_basic)[kind]
+    return (LIMITS[plan ?? "monthly_pro"] ?? PAID)[kind]
 }
 function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }) {
-    // Pro 전용(베이직 위험성평가)
+    // legacy 플랜에서 AI 분석처럼 한도가 0인 항목
     if (limit === 0) {
         return (
             <div className="flex justify-between text-[12px]">
                 <span className="text-cur-muted">{label}</span>
-                <span className="text-cur-muted-soft font-medium">Pro 전용</span>
+                <span className="text-cur-muted-soft font-medium">미포함</span>
             </div>
         )
     }
@@ -126,10 +129,10 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
 
     const userProfileDropdown = (
         <div className="flex items-center gap-2">
-            {badge && (
+            {badge && orgKind !== "member" && (
                 <button
-                    // 안전관리자는 요금제 화면이 아니라 좌석·계정 관리로 (거기가 요금 관리 지점)
-                    onClick={() => router.push(orgKind === "owner" ? "/org/members" : "/pricing")}
+                    // 구독이 살아 있으면 결제 화면, 없으면 요금제 안내로
+                    onClick={() => router.push(badge.trial ? "/pricing" : "/account")}
                     className={`text-[10px] font-bold px-2 py-1 rounded-[4px] tracking-wide ${
                         badge.isPro
                             ? "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active"
@@ -146,8 +149,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                {/* 안전관리자는 작성 기능이 없어 회의록·일지 사용량이 무의미하다 (한도 0 → "Pro 전용"으로 표시됨) */}
-                {usage && orgKind !== "owner" && (
+                {usage && (
                     <>
                         <div className="px-3 py-2.5 space-y-2.5">
                             <div className="flex items-center justify-between">
@@ -169,27 +171,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
                 </DropdownMenuItem>
-                {/* 조직 하위(member)는 결제·보고서 설정을 회사(안전관리자)가 관리 — 메뉴 자체를 숨긴다 (§4-C).
-                    역할 로딩 중(null)에는 보류해 member에게 금지 메뉴가 잠깐 노출·클릭되는 플래시 방지 (리뷰 O) */}
-                {orgKind !== null && orgKind !== "member" && (
-                    <DropdownMenuItem onClick={() => router.push('/account')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                        <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> 구독 및 결제
-                    </DropdownMenuItem>
-                )}
-                {orgKind === "owner" && (
-                    <DropdownMenuItem onClick={() => router.push('/org/members')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                        <Users className="mr-2 h-4 w-4 text-cur-muted" /> 좌석·계정 관리
-                    </DropdownMenuItem>
-                )}
-                {orgKind !== null && orgKind !== "member" && (
-                    <>
-                        <DropdownMenuSeparator className="bg-cur-hairline" />
-                        <DropdownMenuItem onClick={() => router.push('/report-settings')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                            <Mail className="mr-2 h-4 w-4 text-cur-muted" /> 보고서 설정
-                            <span className="ml-auto bg-cur-primary/15 text-cur-primary text-[9px] font-bold px-1 py-0.5 rounded-[3px] tracking-wide">PRO</span>
-                        </DropdownMenuItem>
-                    </>
-                )}
+                {/* 구독·결제, 보고서 설정, 현장 계정 관리는 전부 '회사관리' 탭으로 이관했다.
+                    드롭다운은 계정 자체에 관한 것만 남긴다 — 메뉴가 두 군데로 갈리면 어느 쪽이
+                    최신인지 알 수 없어진다. */}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                     <LogOut className="mr-2 h-4 w-4" /> 로그아웃

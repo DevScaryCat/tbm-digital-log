@@ -21,34 +21,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "모든 필드를 입력해주세요." }, { status: 400 });
     }
 
-    // ── 안전관리자(owner) 가입 — 계정만 생성, 조직·구독은 /api/org/checkout에서 ─
-    // 무료체험이 없는 경로라 휴대폰 인증 게이트도 걸지 않는다.
-    if (mode === "manager") {
-      if (!/^[a-z0-9_]{3,20}$/.test(id)) {
-        return NextResponse.json({ error: "아이디는 영문 소문자·숫자·밑줄 3~20자로 입력해주세요." }, { status: 400 });
-      }
-      if (typeof password !== "string" || password.length < 8) {
-        return NextResponse.json({ error: "비밀번호는 8자 이상 입력해주세요." }, { status: 400 });
-      }
-      const orgNameStr = String(siteName).trim().slice(0, 60);
-      const { data: mgr, error: mgrErr } = await supabaseAdmin.auth.admin.createUser({
-        email: `${id}@tbm.com`,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: orgNameStr,
-          company_name: orgNameStr,
-          role: "safety_manager", // 표시용 — 분기 키는 DB(organizations.owner_user_id)
-        },
-      });
-      if (mgrErr) {
-        if (mgrErr.message.includes("already registered") || mgrErr.status === 422) {
-          return NextResponse.json({ error: "이미 존재하는 아이디입니다." }, { status: 400 });
-        }
-        return NextResponse.json({ error: mgrErr.message }, { status: 400 });
-      }
-      return NextResponse.json({ success: true, manager: true, userId: mgr?.user?.id });
-    }
 
     // ── 조직 초대 가입(관리감독자, 시나리오 1) — 초대 토큰 검증 ─────────
     // 초대 경로는 개인 구독 upsert·휴대폰 무료체험(trial_redemptions)을 만들지 않고(§3 3-skip),

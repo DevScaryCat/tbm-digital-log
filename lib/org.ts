@@ -86,12 +86,15 @@ export async function getOrgContext(userId: string, adminClient?: SupabaseClient
   return { kind: "solo", pendingAttach };
 }
 
-/** owner가 대상 하위 현장에 접근할 권한이 있는지 (상위 화면 서버 라우트 공용 검증) */
+/** 감독자가 대상 현장에 접근할 권한이 있는지 (회사관리 화면 서버 라우트 공용 검증).
+ *  감독자 본인도 하나의 현장이므로 self는 항상 허용한다 — 빼면 회사관리에서
+ *  자기 현장 카드를 눌렀을 때만 403이 나는 구멍이 생긴다. */
 export async function assertOwnerOfMember(
   ownerUserId: string,
   memberUserId: string,
   adminClient?: SupabaseClient
 ): Promise<boolean> {
+  if (ownerUserId === memberUserId) return true;
   const ctx = await getOrgContext(ownerUserId, adminClient);
   return ctx.kind === "owner" && (ctx.memberIds ?? []).includes(memberUserId);
 }
@@ -182,8 +185,8 @@ export async function getVerifiedRealEmail(user: User | null): Promise<string | 
   return email && verified ? email : null;
 }
 
-/** 작성계(STT·회의록·요약 등) 라우트용 경량 가드 — 안전관리자는 작성 기능이 없다 (§4-B).
- *  트리거 0 한도는 INSERT 시점에만 걸려 AI 비용이 먼저 새므로 라우트 입구에서 차단한다. */
+/** 이 계정이 회사를 소유(=감독자)하는지. 통합 이후 '작성 차단' 용도가 아니라
+ *  회사관리 화면·과금 계정 수 계산의 판정용으로만 쓴다. */
 export async function isOrgOwner(userId: string, adminClient?: SupabaseClient): Promise<boolean> {
   const admin = adminClient ?? getAdminClient();
   const { data } = await admin
@@ -218,11 +221,10 @@ export async function resolveReportTarget(
     };
   }
   const target = typeof targetUserId === "string" && targetUserId ? targetUserId : null;
-  // owner는 대상 현장 지정이 필수 — 본인(관리 전용, 데이터 없음)을 대상으로 하면
-  // AI 한도 카운트가 항상 0인 계정으로 무제한 호출이 가능해진다 (리뷰 J)
-  if (ctx.kind === "owner" && (!target || target === userId)) {
-    return { ok: false, status: 400, error: "분석·발송할 현장을 선택해주세요." };
-  }
+  // 감독자 본인도 현장 하나다 — 대상 미지정이면 본인 현장을 대상으로 삼는다.
+  // (구 구현은 여기서 400을 냈다. 관리 전용 계정 시절엔 본인에게 데이터가 없어서
+  //  AI 한도가 영원히 0으로 남는 무제한 호출 구멍을 막으려던 것인데, 이제 본인도
+  //  자기 행을 쓰므로 한도가 정상적으로 카운트된다.)
   if (target && target !== userId) {
     if (ctx.kind !== "owner" || !(ctx.memberIds ?? []).includes(target)) {
       return { ok: false, status: 403, error: "우리 조직의 현장 계정이 아닙니다." };

@@ -10,47 +10,56 @@ export interface PlanDef {
   name: string;
   amount: number;
   currency: "KRW";
-  /** Pro 전용 기능(AI 분석 보고서·월간 보고서) 사용 가능 여부 */
+  /** 유료 단일 티어의 기능(AI 분석 보고서·월간 보고서) 사용 가능 여부.
+   *  legacy(monthly_basic)와 grandfather만 false — DB 트리거 enforce_tbm_monthly_limit의
+   *  200/30/20 대 80/10/0 분기와 반드시 같은 집합이어야 한다. */
   pro: boolean;
-  /** 사용자가 결제/플랜변경 UI에서 직접 선택할 수 있는 플랜인지.
-   *  org/org_seat는 조직 플로우 전용 — body의 plan을 그대로 받는 라우트에서
+  /** 사용자가 결제 UI에서 직접 선택할 수 있는 플랜인지.
+   *  org_seat는 조직 플로우 전용 — body의 plan을 그대로 받는 라우트에서
    *  selectable=false를 거부하지 않으면 0원 org_seat를 아무나 예약할 수 있다. */
   selectable: boolean;
 }
 
-/** 조직(안전관리자) 좌석 단가 — 관리감독자 1좌석당 월 요금 */
-export const ORG_SEAT_PRICE = 4900;
+/** 계정 1개당 월 요금. 감독자는 본인을 포함한 계정 수만큼 낸다 (본인 1 + 소속 현장 N). */
+export const SEAT_PRICE = 3900;
+
+/** @deprecated 구 이름 — SEAT_PRICE를 쓸 것 */
+export const ORG_SEAT_PRICE = SEAT_PRICE;
 
 export const PLANS: Record<PlanId, PlanDef> = {
-  monthly_basic: {
-    id: "monthly_basic",
-    name: "안톡 월간구독",
-    amount: 1900,
-    currency: "KRW",
-    pro: false,
-    selectable: true,
-  },
+  // 유료 단일 티어. 감독자든 혼자 쓰는 사람이든 전부 이 플랜이고,
+  // 실제 청구액만 "계정 수 × SEAT_PRICE"로 청구 시점에 재계산된다(billing.ts resolveBillableAmount).
   monthly_pro: {
     id: "monthly_pro",
-    name: "안톡 Pro 월간구독",
-    amount: 4900,
+    name: "안톡 월간구독",
+    amount: SEAT_PRICE,
     currency: "KRW",
     pro: true,
     selectable: true,
   },
+  // legacy — 구 베이직(1,900원). 신규 가입 불가, 기존 가입자만 기존 가격·기존 한도로 유지.
+  monthly_basic: {
+    id: "monthly_basic",
+    name: "안톡 월간구독 (구 베이직)",
+    amount: 1900,
+    currency: "KRW",
+    pro: false,
+    selectable: false,
+  },
+  // legacy — 구 회사 플랜. 단일 티어 통합으로 신규 발급되지 않지만,
+  // 남아있는 행이 getPlan() 폴백으로 1,900원 베이직이 되어버리지 않도록 정의는 유지한다.
   org: {
     id: "org",
-    // 실제 청구액은 좌석 수 × ORG_SEAT_PRICE로 청구 시점에 재계산 (amount는 단가 표기)
-    name: "안톡 회사 플랜",
-    amount: ORG_SEAT_PRICE,
+    name: "안톡 월간구독",
+    amount: SEAT_PRICE,
     currency: "KRW",
     pro: true,
     selectable: false,
   },
   org_seat: {
     id: "org_seat",
-    // 하위 관리감독자 미러 구독 — 청구 없음(0원), Pro 상당 자격
-    name: "안톡 조직 좌석",
+    // 소속 현장 미러 구독 — 감독자가 대신 내므로 본인 청구 없음(0원), 자격은 유료 티어와 동일
+    name: "안톡 소속 현장",
     amount: 0,
     currency: "KRW",
     pro: true,
@@ -58,19 +67,21 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
 };
 
-/** 플랜 식별자로 정의를 조회. 모르는 값이면 베이직으로 폴백. */
+/** 플랜 식별자로 정의를 조회. 모르는 값이면 유료 단일 티어로 폴백.
+ *  (구 구현은 베이직으로 폴백해서, 모르는 값이 조용히 1,900원·기능 축소로 강등됐다) */
 export function getPlan(planId?: string | null): PlanDef {
   if (planId && planId in PLANS) return PLANS[planId as PlanId];
-  return PLANS.monthly_basic;
+  return PLANS.monthly_pro;
 }
 
-/** 해당 플랜이 Pro 기능을 허용하는지 (grandfather=영구 무료 '베이직'이므로 Pro 아님) */
+/** 해당 플랜이 유료 티어 기능을 허용하는지 (grandfather=영구 무료 '베이직'이므로 false) */
 export function isProPlan(planId?: string | null): boolean {
+  if (planId === "grandfather") return false;
   return getPlan(planId).pro;
 }
 
 /** 기본 플랜(하위 호환용 별칭) */
-export const PLAN = PLANS.monthly_basic;
+export const PLAN = PLANS.monthly_pro;
 
 /** 서비스 롤 Supabase 클라이언트 (RLS 우회, 서버 전용) */
 export function getAdminClient(): SupabaseClient {

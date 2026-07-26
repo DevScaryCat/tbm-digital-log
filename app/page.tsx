@@ -17,8 +17,9 @@ import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { cn } from "@/lib/utils"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
-import { OwnerHome } from "@/components/OwnerHome"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
+import { BottomTabs, readLastTab, writeLastTab, type TabKey } from "@/components/BottomTabs"
+import { CompanyPanel } from "@/components/CompanyPanel"
 
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
 const toLocalDateStr = (iso: string) => {
@@ -57,8 +58,10 @@ export default function MainPage() {
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const formatModalRef = useRef<HTMLDivElement>(null)
 
-  // 2계층 역할 판정 — owner면 홈을 관제 대시보드로 스왑, pendingAttach면 편입 수락 모달
+  // 역할 판정 — pendingAttach면 편입 수락 모달, 회사 소유 여부로 첫 탭을 고른다
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
+  const [tab, setTab] = useState<TabKey>("tbm")
+  const [tabReady, setTabReady] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -67,25 +70,36 @@ export default function MainPage() {
         const currentUser = session.user
         setUser(currentUser)
 
+        // 감독자도 TBM을 쓴다 — 역할과 무관하게 온보딩·통계를 동일하게 로드한다.
+        // (관리 전용 시절엔 여기서 감독자를 건너뛰어, 출력 형식이 없어 hwpx/docx 설정이
+        //  무시되고 PDF로 강제되는 구멍이 있었다)
+        const meta = currentUser.user_metadata
+        if (!meta?.preferred_export_format || !meta?.worker_type) {
+          if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
+          setNeedsWorkerType(!meta?.worker_type)
+          setShowFormatModal(true)
+        }
+        fetchUserStats(currentUser.id, meta?.worker_type || "현장 근로자 (비사무직)")
+
         const ctx = await fetchOrgContext()
         setOrgCtx(ctx)
 
-        // 안전관리자(관리 전용)는 문서 출력·현장 통계가 없다 — 온보딩 모달·통계 로드 생략
-        if (ctx?.kind !== "owner") {
-          const meta = currentUser.user_metadata
-          if (!meta?.preferred_export_format || !meta?.worker_type) {
-            if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
-            setNeedsWorkerType(!meta?.worker_type)
-            setShowFormatModal(true)
-          }
-
-          fetchUserStats(currentUser.id, currentUser.user_metadata?.worker_type || "현장 근로자 (비사무직)")
-        }
+        // 첫 탭: 마지막으로 본 탭을 기억한다. 기억이 없고 아직 현장을 하나도 안 만든
+        // 감독자라면 회사관리부터 열어 '현장 만들기'로 유도한다.
+        const last = readLastTab()
+        const freshOwnerWithNoSites = ctx?.kind === "owner" && (ctx.org?.seatCount ?? 1) <= 1
+        setTab(last ?? (freshOwnerWithNoSites ? "company" : "tbm"))
+        setTabReady(true)
       }
       setIsLoading(false)
     }
     checkSession()
   }, [])
+
+  const selectTab = (t: TabKey) => {
+    setTab(t)
+    writeLastTab(t)
+  }
 
   // 모달이 뜨면 대화상자로 초점 이동 (배경 카드들이 tabIndex를 가져 오버레이 뒤로 초점이 새는 것 방지)
   useEffect(() => {
@@ -199,22 +213,6 @@ export default function MainPage() {
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-  // 안전관리자 홈 = 관제 대시보드 (작성 허브 대신)
-  if (user && orgCtx?.kind === "owner") {
-    return (
-      <>
-        <OwnerHome />
-        {orgCtx.pendingAttach && (
-          <AttachInviteModal
-            orgName={orgCtx.pendingAttach.orgName}
-            token={orgCtx.pendingAttach.token}
-            onDone={() => setOrgCtx({ ...orgCtx, pendingAttach: null })}
-          />
-        )}
-      </>
-    )
-  }
-
   if (!user) {
     const features = [
       { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
@@ -276,7 +274,7 @@ export default function MainPage() {
                   로그인
                 </Button>
               </div>
-              <p className="text-[13px] text-cur-muted-soft">첫 달 무료 체험 · 이후 월 1,900원 (Pro 4,900원)</p>
+              <p className="text-[13px] text-cur-muted-soft">첫 달 무료 체험 · 이후 계정 1개당 월 3,900원</p>
             </div>
           </div>
         </section>
@@ -302,7 +300,7 @@ export default function MainPage() {
               첫 달 무료로 시작하세요
             </h2>
             <p className="text-white/70 text-[15px] sm:text-[16px] max-w-xl">
-              복잡한 설치 없이 카카오/일반 계정으로 바로 시작. 첫 달은 무료 체험이고, 이후 월 1,900원(Pro 4,900원)이에요. 언제든 해지할 수 있습니다.
+              복잡한 설치 없이 카카오/일반 계정으로 바로 시작. 첫 달은 무료 체험이고, 이후 계정 1개당 월 3,900원이에요. 현장이 여러 곳이면 계정을 추가한 만큼만 더 내면 됩니다. 언제든 해지할 수 있습니다.
             </p>
             <Button
               onClick={() => router.push("/start")}
@@ -324,17 +322,26 @@ export default function MainPage() {
           <TBMHeader title="안톡" onLogout={handleLogout} />
         </div>
 
+        {/* 조직 편입(attach) 초대 — 기존 계정 앞으로 온 초대가 있으면 수락/거절 모달 (탭 무관) */}
+        {user && orgCtx?.pendingAttach && (
+          <AttachInviteModal
+            orgName={orgCtx.pendingAttach.orgName}
+            token={orgCtx.pendingAttach.token}
+            onDone={() => setOrgCtx(orgCtx ? { ...orgCtx, pendingAttach: null } : null)}
+          />
+        )}
+
+        {/* ── 회사관리 탭 ─────────────────────────────────────────── */}
+        {tab === "company" && (
+          <div className="flex-1 p-4 sm:p-6">
+            <CompanyPanel />
+          </div>
+        )}
+
+        {/* ── TBM 탭 ──────────────────────────────────────────────── */}
+        {tab === "tbm" && (<>
         <div className="p-4 sm:p-6 space-y-5">
           <NoticeBanner />
-
-          {/* 조직 편입(attach) 초대 — 기존 계정 앞으로 온 초대가 있으면 수락/거절 모달 */}
-          {user && orgCtx?.pendingAttach && (
-            <AttachInviteModal
-              orgName={orgCtx.pendingAttach.orgName}
-              token={orgCtx.pendingAttach.token}
-              onDone={() => setOrgCtx(orgCtx ? { ...orgCtx, pendingAttach: null } : null)}
-            />
-          )}
 
           {/* 조직 소속인데 실이메일 미인증 — 월간 보고서 수신 불가 안내 (버튼 최소 원칙의 유일한 잔소리) */}
           {user && orgCtx?.kind === "member" && !user.user_metadata?.real_email_verified_at && (
@@ -557,7 +564,11 @@ export default function MainPage() {
           </div>
 
         </div>
+        </>)}
       </div>
+
+      {/* 하단 탭 — TBM(작성) / 회사관리. 마지막으로 본 탭이 다음 진입의 기본값 */}
+      <BottomTabs value={tab} onChange={selectTab} loading={!tabReady} companyDot={!!orgCtx?.pendingAttach} />
 
       {/* 출력 형식 최초 설정 모달 — preferred_export_format이 없을 때 1회 표시 */}
       {showFormatModal && (

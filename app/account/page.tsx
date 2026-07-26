@@ -107,8 +107,14 @@ export default function AccountPage() {
     const cardlessTrialExpired = cardlessTrial && !active
     // 카드가 붙은 체험 = 결제일 자동청구 확정 구독 → 상태 헤더를 '무료체험 중'이 아니라 '이용 중'으로
     const committedTrial = sub?.status === "trialing" && !!sub?.card_info
+    // 단일 요금제 — 표시 금액은 실제 청구 스냅샷(sub.amount)을 쓴다.
+    // 감독자는 계정 수만큼 곱해지므로 고정 문구를 박으면 실제 청구액과 어긋난다.
     const planLabel =
-        sub?.plan === "monthly_pro" ? "Pro 플랜 (4,900원/월)" : "베이직 플랜 (1,900원/월)"
+        sub?.plan === "grandfather"
+            ? "영구 무료"
+            : sub?.plan === "org_seat"
+              ? "소속 현장 (회사에서 결제)"
+              : `월 ${(sub?.amount ?? 3900).toLocaleString()}원`
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
@@ -203,7 +209,7 @@ export default function AccountPage() {
                                     )}
                                     {sub?.pending_plan && sub.pending_plan !== sub.plan && (
                                         <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-3 py-2 text-[13px] text-cur-primary">
-                                            다음 결제일부터 {sub.pending_plan === "monthly_pro" ? "Pro 플랜(4,900원)으로 업그레이드" : "베이직 플랜(1,900원)으로 다운그레이드"} 예정
+                                            다음 결제일부터 요금제가 변경될 예정입니다
                                         </div>
                                     )}
                                 </div>
@@ -226,7 +232,6 @@ export default function AccountPage() {
                                 {showRegister ? (
                                     <div className="space-y-3">
                                         <SubscribeButtons
-                                            plan={sub?.plan === "monthly_basic" ? "monthly_basic" : "monthly_pro"}
                                             onSuccess={async () => {
                                                 setShowRegister(false)
                                                 await load()
@@ -261,18 +266,10 @@ export default function AccountPage() {
                                     </p>
                                 </div>
                                 <SubscribeButtons
-                                    plan={sub?.plan === "monthly_basic" ? "monthly_basic" : "monthly_pro"}
                                     onSuccess={load}
                                     ctaSuffix="로 이어서 이용"
                                     successText="결제가 완료되어 이어서 이용하실 수 있습니다."
                                 />
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => router.push("/pricing")}
-                                    className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
-                                >
-                                    플랜(베이직/Pro) 다시 선택하기
-                                </Button>
                             </div>
                         )}
 
@@ -290,7 +287,6 @@ export default function AccountPage() {
                                         <p className="text-[13px] text-cur-muted text-center">변경할 결제수단을 선택하세요</p>
                                         <SubscribeButtons
                                             mode="update"
-                                            plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"}
                                             currentMethod={currentMethodKey}
                                             onSuccess={async () => {
                                                 setChangingMethod(false)
@@ -318,13 +314,6 @@ export default function AccountPage() {
                                                 onClick={() => setChangingMethod(true)}
                                                 chevron
                                             />
-                                            <SettingsRow
-                                                icon={<ArrowLeftRight className="w-[18px] h-[18px]" />}
-                                                label="플랜 변경"
-                                                value={sub?.plan === "monthly_pro" ? "Pro" : "베이직"}
-                                                onClick={() => router.push("/pricing")}
-                                                chevron
-                                            />
                                         </SettingsCard>
                                         <button
                                             onClick={handleCancel}
@@ -343,29 +332,29 @@ export default function AccountPage() {
                                             ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
                                             : "구독하고 모든 기능을 이용하세요."}
                                     </p>
-                                    {/* 재구독은 기존 플랜 유지 → 선택 플랜에 맞는 금액이 안내되도록 plan 전달 */}
-                                    <SubscribeButtons onSuccess={load} plan={sub?.plan === "monthly_pro" ? "monthly_pro" : "monthly_basic"} />
+                                    <SubscribeButtons onSuccess={load} />
                                 </div>
                             )
                         )}
 
                         {/* 월간 보고서 수신처·발송주기 설정은 /report-settings 로 이관 (중복 제거) */}
 
-                        {/* 베이직/화이트리스트 → Pro 업그레이드 권유 */}
+                        {/* legacy 요금제(구 베이직·영구무료) 안내 — AI 분석·월간 보고서가 빠져 있다 */}
                         {active && !pro && (
                             <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
                                 <div className="flex items-center gap-2">
                                     <Sparkles className="w-5 h-5 text-cur-primary" />
-                                    <h2 className="text-[16px] font-bold text-cur-ink">Pro로 업그레이드</h2>
+                                    <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
                                 </div>
                                 <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    AI 분석 보고서 자동 생성과 월간 안전 보고서 자동 발송까지. 월 4,900원으로 이용하세요.
+                                    지금 요금제에는 AI 분석 보고서와 월간 안전 보고서 자동 발송이 포함돼 있지 않아요.
+                                    계정 1개당 월 3,900원으로 전부 이용할 수 있습니다.
                                 </p>
                                 <Button
                                     onClick={() => router.push("/pricing")}
-                                    className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                                    className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
                                 >
-                                    Pro 플랜 보기
+                                    요금제 보기
                                 </Button>
                             </div>
                         )}

@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
-import { useBlockOwner } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
@@ -107,7 +106,6 @@ const levelStyle = (level: string) => LEVEL_STYLES[level] ?? LEVEL_STYLES["상�
 export default function TBMMinutesPage() {
     const router = useRouter()
     useRequireSubscription()
-    useBlockOwner() // 안전관리자(관리 전용)는 작성 화면 접근 불가 (§4-B)
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
     const [step, setStep] = useState(1)

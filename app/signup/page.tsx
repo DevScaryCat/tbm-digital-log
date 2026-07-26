@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
+import { writeLastTab } from "@/components/BottomTabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { hasAgreedTerms, setAgreedTerms } from "@/lib/consentStorage"
 
@@ -25,8 +26,9 @@ const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 �
 
 export default function SignupPage() {
     const router = useRouter()
-    // 역할 선택(가입 첫 단계): 관리감독자 → 이 위저드 계속 / 안전관리자 → /signup/manager.
-    // 역할은 신규 가입에만 해당하므로 /start(로그인 진입)가 아니라 여기서 묻는다.
+    // 사용 형태 선택(가입 첫 단계). 두 선택지 모두 같은 계정을 만들고, 가입 후 열리는
+    // 탭만 달라진다 — 회사를 만드는 시점은 "첫 현장 계정을 발급할 때"다.
+    // 신규 가입에만 해당하므로 /start(로그인 진입)가 아니라 여기서 묻는다.
     const [roleChosen, setRoleChosen] = useState(false)
     // 약관·개인정보처리방침 동의 — 가입 시점에 받는다. 전에 동의했으면 다시 묻지 않음.
     const [agreed, setAgreed] = useState(false)
@@ -288,35 +290,39 @@ export default function SignupPage() {
                             </label>
                         </div>
 
+                        {/* 두 선택지는 같은 계정을 만든다 — 가입 직후 어느 탭이 열리는지만 다르다.
+                            나중에 마음이 바뀌어도 회사관리 탭에서 현장을 추가하면 그만이라, 여기서
+                            잘못 골라도 막히는 게 없다. */}
                         <button
-                            onClick={() => setRoleChosen(true)}
+                            onClick={() => { writeLastTab("tbm"); setRoleChosen(true) }}
                             disabled={!agreed}
                             className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
                         >
                             <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">
-                                <span className="block text-[15px] font-bold text-cur-ink">관리감독자</span>
+                                <span className="block text-[15px] font-bold text-cur-ink">현장 한 곳만 쓸게요</span>
                                 <span className="block text-[13px] text-cur-body mt-1 leading-snug">
-                                    현장에서 TBM·안전보건교육일지를 직접 작성해요
+                                    내 현장에서 TBM·안전보건교육일지를 직접 작성해요
                                 </span>
                             </span>
                             <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                         </button>
                         <button
-                            onClick={() => router.push("/signup/manager")}
+                            onClick={() => { writeLastTab("company"); setRoleChosen(true) }}
                             disabled={!agreed}
                             className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
                         >
                             <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
                             <span className="flex-1 min-w-0">
-                                <span className="block text-[15px] font-bold text-cur-ink">안전관리자</span>
+                                <span className="block text-[15px] font-bold text-cur-ink">여러 현장을 관리할게요</span>
                                 <span className="block text-[13px] text-cur-body mt-1 leading-snug">
-                                    현장마다 관리감독자 계정을 만들어 주고, 여러 현장의 기록과 보고서를 한 곳에서 관리해요
+                                    내 현장도 쓰면서, 다른 현장 계정을 만들어 주고 기록을 한 곳에서 봐요
                                 </span>
                             </span>
                             <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                         </button>
                         <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed pt-1">
+                            지금 안 정해도 괜찮아요. 나중에 언제든 현장을 추가할 수 있어요.<br />
                             회사에서 초대 링크를 받았다면 그 링크로 가입하세요.
                         </p>
                         <p className="text-center text-[14px] text-cur-muted pt-2">

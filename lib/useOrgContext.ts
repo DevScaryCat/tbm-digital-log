@@ -3,7 +3,6 @@
 // 클라이언트 역할 판정 훅 — /api/org/context를 세션당 1회 캐시.
 // 홈 스왑(owner), 헤더 메뉴 분기(member), attach 수락 모달이 소비한다.
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 
 export interface ClientOrgContext {
@@ -62,19 +61,8 @@ export function clearOrgContextCache() {
     inflight = null
 }
 
-/** 작성계 화면(일지·회의록·교육진행도·제안함) 상단에서 호출 — 안전관리자(관리 전용)는 홈으로 (§4-B) */
-export function useBlockOwner() {
-    const router = useRouter()
-    useEffect(() => {
-        let active = true
-        fetchOrgContext().then((c) => {
-            if (active && c?.kind === "owner") router.replace("/")
-        })
-        return () => {
-            active = false
-        }
-    }, [router])
-}
+// useBlockOwner는 제거됨 — 단일 역할 통합으로 감독자도 TBM·일지·교육·제안함을 쓴다.
+// (구조상 남겨두면 회사를 만든 순간 본인 작성 화면이 잠기는 버그가 된다)
 
 export function useOrgContext(): { ctx: ClientOrgContext | null; loading: boolean } {
     const [ctx, setCtx] = useState<ClientOrgContext | null>(cache)

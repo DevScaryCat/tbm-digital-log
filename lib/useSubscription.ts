@@ -13,11 +13,21 @@ export interface SubscriptionRow {
     current_period_end?: string | null
     trial_end?: string | null
     trial_used?: boolean | null
+    /** 마지막으로 확정된 청구 금액 스냅샷 (감독자는 계정 수만큼 곱해진 값) */
+    amount?: number | null
 }
 
 /** Pro 상당 플랜 여부 — 조직 플랜(org=안전관리자, org_seat=하위 현장) 포함 */
 function isProPlanId(plan?: string | null): boolean {
     return plan === "monthly_pro" || plan === "org" || plan === "org_seat"
+}
+
+/** 화면에 띄울 플랜 이름 — 단일 요금제라 티어 이름이 없다 */
+function planLabel(plan?: string | null): string {
+    if (plan === "grandfather") return "무료"
+    if (plan === "monthly_basic") return "베이직"
+    if (plan === "org_seat") return "소속 현장"
+    return "안톡"
 }
 
 /** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather는 영구 무료 베이직이라 Pro 아님) */
@@ -34,7 +44,7 @@ export function isWhitelist(sub: SubscriptionRow | null): boolean {
 export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean; trial: boolean } | null {
     if (!isAllowed(sub)) return null
     const isPro = isProPlanId(sub?.plan)
-    const base = sub?.plan === "org" ? "안전관리자" : isPro ? "Pro" : "베이직"
+    const base = planLabel(sub?.plan)
     // '체험'은 아직 확정되지 않은 상태에만 표기: 카드 없는 무료체험, 또는 해지(남은 기간 소진 중).
     // 카드가 붙은 체험은 결제일에 자동 청구되는 확정 구독이므로 '체험'을 떼고 Pro/베이직으로 표기.
     const trial = sub?.status === "trialing" ? !sub?.card_info : sub?.status === "canceled"
@@ -87,7 +97,7 @@ export function usageWindow(sub: SubscriptionRow | null): { startISO: string; re
 export async function fetchSubscription(): Promise<SubscriptionRow | null> {
     const { data } = await supabase
         .from("subscriptions")
-        .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used")
+        .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used, amount")
         .maybeSingle()
     return (data as SubscriptionRow) || null
 }

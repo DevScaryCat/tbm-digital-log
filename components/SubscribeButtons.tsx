@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Loader2, CreditCard } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
+
+// 단일 요금제 단가 — 서버 lib/portone.ts SEAT_PRICE와 같은 값이어야 한다.
+// (클라이언트 번들에 서버 모듈을 끌어오지 않으려고 상수만 복제한다)
+const SEAT_PRICE = 3900
 import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
 
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID
@@ -62,14 +66,14 @@ export function SubscribeButtons({
     ctaSuffix = "로 시작하기",
     successText = "구독이 시작되었습니다! 첫 달은 무료입니다.",
     mode = "subscribe",
-    plan = "monthly_basic",
+    plan = "monthly_pro",
     currentMethod = null,
 }: {
     onSuccess?: () => void
     ctaSuffix?: string
     successText?: string
     mode?: "subscribe" | "update"
-    plan?: "monthly_basic" | "monthly_pro"
+    plan?: "monthly_pro"
     // 현재 적용된 결제수단 key (update 모드에서 '사용 중'으로 비활성 표시). card/kakaopay/naverpay/tosspay
     currentMethod?: string | null
 }) {
@@ -127,9 +131,9 @@ export function SubscribeButtons({
                 channelKey,
                 billingKeyMethod: method.billingKeyMethod,
                 issueId: crypto.randomUUID().replace(/-/g, ""),
-                issueName: plan === "monthly_pro" ? "안톡 Pro 월간구독" : "안톡 월간구독",
+                issueName: "안톡 월간구독",
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
-                displayAmount: plan === "monthly_pro" ? 4900 : 1900,
+                displayAmount: SEAT_PRICE,
                 currency: "KRW",
                 // 카드(이니시스) 모바일: 이니시스 모바일 빌링 페이지는 iframe 레이어 안에서
                 // 동작하지 않음(500) → 결제사 페이지로 완전히 이동하는 REDIRECTION을 강제.
@@ -247,7 +251,7 @@ export function SubscribeButtons({
                 ) : (
                     <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
                 )}
-                <p>· 이용요금: {plan === "monthly_pro" ? "Pro 월 4,900원(VAT 포함)" : "월 1,900원(VAT 포함)"}.</p>
+                <p>· 이용요금: 계정 1개당 월 {SEAT_PRICE.toLocaleString()}원(VAT 포함). 현장 계정을 추가하면 그만큼 더해집니다.</p>
                 {mode !== "update" && (
                     <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
                 )}

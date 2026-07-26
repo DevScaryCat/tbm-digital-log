@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription } from "@/lib/portone";
 import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
-import { isOrgOwner } from "@/lib/org";
 
 export const runtime = "nodejs";
 
@@ -21,10 +20,6 @@ export async function POST(request: Request) {
     const { user, allowed } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
-    // 안전관리자(관리 전용)는 작성 기능이 없다 — AI 비용이 새기 전에 입구 차단 (§4-B)
-    if (await isOrgOwner(user.id)) {
-      return NextResponse.json({ error: "안전관리자 계정은 현장 기록 작성 기능을 사용하지 않습니다." }, { status: 403 });
-    }
     const { suggestions } = await request.json().catch(() => ({}));
 
     if (

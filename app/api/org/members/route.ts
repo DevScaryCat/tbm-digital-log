@@ -4,32 +4,60 @@
 // PATCH : 비밀번호 리셋 (담당자 교체 대응)
 // DELETE: detach (좌석 해제 — 미러 구독 즉시 강등, 계정·데이터는 보존)
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows, isProPlan } from "@/lib/portone";
 import { getOrgContext, listOrgMembers, detachOrgMember } from "@/lib/org";
+import { chargeProratedAccount } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
-async function requireOwner(request: Request, opts: { requireValidSub?: boolean } = {}) {
+async function requireOwner(
+  request: Request,
+  opts: { requireValidSub?: boolean; createOrgIfMissing?: boolean } = {}
+) {
   const user = await getUserFromRequest(request);
   if (!user) return { error: NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 }) };
   const admin = getAdminClient();
-  const ctx = await getOrgContext(user.id, admin);
-  if (ctx.kind !== "owner" || !ctx.org) {
-    return { error: NextResponse.json({ error: "안전관리자 계정만 접근할 수 있습니다." }, { status: 403 }) };
+  let ctx = await getOrgContext(user.id, admin);
+
+  // 회사는 '첫 현장 계정을 만드는 순간' 생긴다 — 별도의 안전관리자 가입 절차가 없다.
+  // 이미 다른 회사에 소속된 계정(member)은 스스로 회사를 만들 수 없다.
+  if (opts.createOrgIfMissing && ctx.kind === "solo" && !ctx.orgLapsed) {
+    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const name = String(meta.company_name ?? "").trim() || String(meta.full_name ?? "").trim() || "우리 회사";
+    const { error: orgErr } = await admin
+      .from("organizations")
+      .upsert({ owner_user_id: user.id, name, seat_count: 1, pending_seat_count: null }, { onConflict: "owner_user_id" });
+    if (orgErr) {
+      console.error("org lazy-create error:", orgErr);
+      return { error: NextResponse.json({ error: "회사 생성에 실패했습니다." }, { status: 500 }) };
+    }
+    ctx = await getOrgContext(user.id, admin);
   }
-  // 좌석 발급 등 쓰기 작업은 구독 유효성까지 요구 — 첫 결제 실패/해지 상태의 owner가
-  // 무료 org_seat 미러를 계속 만들어내는 경로 차단 (리뷰 C)
+
+  if (ctx.kind !== "owner" || !ctx.org) {
+    return {
+      error: NextResponse.json(
+        { error: "소속 현장 계정은 회사 관리를 할 수 없습니다. 회사 감독자에게 문의하세요." },
+        { status: 403 }
+      ),
+    };
+  }
+  // 계정 발급 등 쓰기 작업은 구독 유효성까지 요구 — 결제 실패/해지 상태의 감독자가
+  // 무료 미러 구독을 계속 만들어내는 경로 차단 (리뷰 C).
+  // plan 문자열이 아니라 "유료 자격이 살아있는가"로 판정한다(단일 요금제).
+  let sub: { id: string; user_id: string; billing_key: string | null; current_period_end: string | null } | null = null;
   if (opts.requireValidSub) {
-    const { data: sub } = await admin
+    const { data } = await admin
       .from("subscriptions")
-      .select("status, plan, current_period_end, billing_key")
+      .select("id, user_id, status, plan, current_period_end, billing_key")
       .eq("user_id", user.id)
       .maybeSingle();
-    if (!sub || sub.plan !== "org" || !subscriptionAllows(sub)) {
-      return { error: NextResponse.json({ error: "회사 플랜 구독이 유효하지 않습니다. 결제를 먼저 완료해주세요." }, { status: 402 }) };
+    if (!data || !subscriptionAllows(data) || !isProPlan((data as any).plan)) {
+      return { error: NextResponse.json({ error: "구독이 유효하지 않습니다. 결제를 먼저 완료해주세요." }, { status: 402 }) };
     }
+    sub = data as any;
   }
-  return { user, admin, ctx, org: ctx.org };
+  return { user, admin, ctx, org: ctx.org, sub };
 }
 
 export async function GET(request: Request) {
@@ -44,9 +72,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const r = await requireOwner(request, { requireValidSub: true });
+  const r = await requireOwner(request, { requireValidSub: true, createOrgIfMissing: true });
   if ("error" in r) return r.error;
-  const { admin, org } = r;
+  const { admin, org, user } = r;
   try {
     const { loginId, password, siteName, managerName } = await request.json();
     const id = String(loginId ?? "").trim().toLowerCase();
@@ -84,9 +112,17 @@ export async function POST(request: Request) {
       p_member: created.user.id,
     });
     if (claimErr || claim !== "ok") {
-      await admin.auth.admin.deleteUser(created.user.id); // 좌석 실패 시 방금 만든 계정 롤백
-      const msg = claim === "no_seat" ? "남은 좌석이 없습니다. 좌석을 추가해주세요." : "좌석 배정에 실패했습니다.";
+      await admin.auth.admin.deleteUser(created.user.id); // 실패 시 방금 만든 계정 롤백
+      const msg = claim === "other_org" ? "이미 다른 회사에 소속된 계정입니다." : "현장 배정에 실패했습니다.";
       return NextResponse.json({ error: msg }, { status: 409 });
+    }
+
+    // 잔여기간 일할 청구 — 좌석 선구매가 없으므로 계정 발급 시점에 바로 받는다.
+    // 결제가 실패하면 방금 만든 계정을 되돌린다(청구 없이 남는 무료 계정 방지).
+    const charge = await chargeProratedAccount(admin, r.sub!, { customerEmail: user.email ?? undefined });
+    if (!charge.ok) {
+      await admin.auth.admin.deleteUser(created.user.id);
+      return NextResponse.json({ error: charge.error ?? "결제에 실패했습니다." }, { status: 402 });
     }
 
     // 미러 구독 (org_seat, 0원) — 이 행이 있어야 4겹 게이트를 통과한다
@@ -109,7 +145,14 @@ export async function POST(request: Request) {
     );
     if (subErr) console.error("member mirror sub upsert error:", subErr);
 
-    return NextResponse.json({ success: true, userId: created.user.id, loginId: id });
+    // 표시용 계정 수 동기화 — memberIds는 방금 추가한 현장 이전 스냅샷이라 +1, 감독자 본인까지 +1
+    const accountCount = (r.ctx.memberIds ?? []).length + 2;
+    await admin
+      .from("organizations")
+      .update({ seat_count: accountCount, pending_seat_count: null })
+      .eq("id", org.id);
+
+    return NextResponse.json({ success: true, userId: created.user.id, loginId: id, charged: charge.charged });
   } catch (e) {
     console.error("member create error:", e);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });

@@ -1,6 +1,7 @@
 "use client"
 
-// 좌석·계정 관리 (안전관리자 전용) — 하위 현장 계정 발급/초대/편입/해제 + 좌석 증감.
+// 현장 계정 관리 (감독자 전용) — 계정 발급/초대/편입/해제.
+// 좌석 선구매는 없앴다 — 계정을 만들면 그 자리에서 일할 청구되고, 다음 주기부터 계정 수만큼 청구된다.
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
@@ -78,7 +79,8 @@ export default function OrgMembersPage() {
     }, [])
 
     const activeCount = members.filter((m) => m.status === "active").length
-    const seatsLeft = Math.max(0, seatCount - activeCount)
+    // 상한이 없다 — 필요한 만큼 만들고 만든 만큼 낸다
+    const seatsLeft = Number.POSITIVE_INFINITY
 
     const createMember = async () => {
         setMsg(null)
@@ -153,7 +155,7 @@ export default function OrgMembersPage() {
     }
 
     const detach = async (userId: string, siteName: string) => {
-        if (!window.confirm(`[${siteName}] 현장을 좌석에서 해제할까요?\n계정과 기록은 남지만, 해제 즉시 그 계정은 회사 이용권을 잃습니다.`)) return
+        if (!window.confirm(`[${siteName}] 현장을 해제할까요?\n계정과 기록은 남지만, 해제 즉시 그 계정은 회사 이용권을 잃고 다음 결제부터 요금에서 빠집니다.`)) return
         setBusy(userId)
         setMsg(null)
         try {
@@ -169,64 +171,25 @@ export default function OrgMembersPage() {
         }
     }
 
-    const changeSeats = async (action: "increase" | "decrease" | "cancel_decrease") => {
-        setMsg(null)
-        let body: Record<string, unknown> = { action }
-        if (action === "increase") {
-            const n = Number(window.prompt("몇 좌석을 추가할까요? (잔여 기간 일할 요금이 즉시 결제됩니다)", "1"))
-            if (!Number.isFinite(n) || n < 1) return
-            body = { action, add: Math.floor(n) }
-        }
-        if (action === "decrease") {
-            const n = Number(window.prompt(`몇 좌석으로 줄일까요? (현재 ${seatCount}석 · 다음 결제일부터 적용)`, String(Math.max(1, seatCount - 1))))
-            if (!Number.isFinite(n) || n < 1) return
-            body = { action, to: Math.floor(n) }
-        }
-        setBusy("seats")
-        try {
-            const res = await fetch("/api/org/seats", { method: "POST", headers: await authHeaders(), body: JSON.stringify(body) })
-            const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "좌석 변경 실패" }); return }
-            if (action === "increase") setMsg({ type: "ok", text: `좌석을 추가했어요 (일할 ${Number(j.charged).toLocaleString()}원 결제).` })
-            if (action === "decrease") setMsg({ type: "ok", text: "다음 결제일부터 좌석이 줄어들어요." })
-            if (action === "cancel_decrease") setMsg({ type: "ok", text: "좌석 축소 예약을 취소했어요." })
-            await load()
-        } finally {
-            setBusy(null)
-        }
-    }
 
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
             <div className="max-w-lg mx-auto px-4 pt-4">
-                <TBMHeader title="좌석·계정 관리" backHref="/" />
+                <TBMHeader title="현장 계정 관리" backHref="/" />
             </div>
             <main className="max-w-lg mx-auto px-5 py-6 space-y-5 pb-16">
                 {msg && (
                     <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
                 )}
 
-                {/* 좌석 현황 */}
-                <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-[13px] text-cur-muted">좌석</p>
-                            <p className="text-[20px] font-bold text-cur-ink">{activeCount} / {seatCount} 사용</p>
-                            {pendingSeat != null && (
-                                <p className="text-[12px] text-cur-muted mt-0.5">
-                                    다음 결제일부터 {pendingSeat}석으로 변경 예약
-                                    <button onClick={() => changeSeats("cancel_decrease")} className="ml-2 text-cur-primary font-semibold">취소</button>
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            <Button onClick={() => changeSeats("increase")} disabled={busy === "seats"} className="h-10 px-3 rounded-lg bg-cur-ink text-white text-[13px] font-bold">좌석 추가</Button>
-                            {seatCount > 1 && (
-                                <Button onClick={() => changeSeats("decrease")} disabled={busy === "seats"} variant="outline" className="h-10 px-3 rounded-lg border-cur-hairline text-cur-muted text-[13px] font-semibold">축소</Button>
-                            )}
-                        </div>
-                    </div>
-                    <p className="text-[12px] text-cur-muted-soft">좌석당 월 4,900원. 추가는 즉시(잔여기간 일할 결제), 축소는 다음 결제일부터 적용돼요.</p>
+                {/* 계정 현황 — 선구매 좌석이 없으므로 '몇 개 쓰는 중 / 얼마' 만 보여준다 */}
+                <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-1">
+                    <p className="text-[13px] text-cur-muted">현장 계정</p>
+                    <p className="text-[20px] font-bold text-cur-ink">{activeCount + 1}개 사용 중</p>
+                    <p className="text-[12px] text-cur-muted-soft leading-relaxed pt-1">
+                        내 계정 1개 + 현장 {activeCount}개 · 월 {((activeCount + 1) * 3900).toLocaleString()}원<br />
+                        계정을 추가하면 잔여기간 요금이 즉시 결제되고, 해제하면 다음 결제일부터 빠져요.
+                    </p>
                 </section>
 
                 {/* 현장 계정 추가 (3경로) */}
@@ -312,7 +275,7 @@ export default function OrgMembersPage() {
                                             <button onClick={() => resetPassword(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="비밀번호 변경" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">
                                                 <KeyRound className="w-4 h-4" />
                                             </button>
-                                            <button onClick={() => detach(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="좌석 해제" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-error hover:bg-cur-error/5 transition-colors">
+                                            <button onClick={() => detach(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="현장 해제" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-error hover:bg-cur-error/5 transition-colors">
                                                 <UserMinus className="w-4 h-4" />
                                             </button>
                                         </>

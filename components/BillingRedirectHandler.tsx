@@ -30,7 +30,6 @@ export function BillingRedirectHandler() {
         const ctxRaw = sessionStorage.getItem(REDIRECT_CTX_KEY)
         sessionStorage.removeItem(REDIRECT_CTX_KEY)
         // org 결제 복귀 마커 — sessionStorage가 유실돼도 URL로 org 결제였음을 안다
-        const isOrgReturn = sp.get("occtx") === "1"
         // PG 파라미터가 붙은 URL은 새로고침 시 중복 처리 위험 — 즉시 정리
         window.history.replaceState(null, "", window.location.pathname)
 
@@ -49,10 +48,6 @@ export function BillingRedirectHandler() {
                           plan?: string
                           mode?: string
                           method?: string
-                          // 안전관리자 회사 플랜 결제(좌석제) 복귀 — /api/org/checkout으로 라우팅
-                          orgCheckout?: boolean
-                          seatCount?: number
-                          orgName?: string
                       })
                     : null
             } catch {
@@ -60,44 +55,27 @@ export function BillingRedirectHandler() {
             }
         })()
 
-        // org 결제 복귀인데 컨텍스트(좌석·회사명)가 유실됨 — 기본값으로 개인 플랜을
-        // 등록해버리면 안 되므로(리뷰 O/의심) 아무 것도 등록하지 않고 재시도 안내
-        if (isOrgReturn && !ctx?.orgCheckout) {
-            setMsg({ type: "err", text: "결제 복귀 정보가 유실됐어요. 결제창을 다시 열어 진행해주세요. (카드가 등록됐다면 결제는 되지 않았으니 안심하세요)" })
-            return
-        }
-
         ;(async () => {
             setProcessing(true)
             try {
                 const { data: sessionData } = await supabase.auth.getSession()
                 const token = sessionData?.session?.access_token
-                const res = ctx?.orgCheckout
-                    ? await fetch("/api/org/checkout", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({
-                              billingKey,
-                              seatCount: ctx?.seatCount ?? 1,
-                              orgName: ctx?.orgName ?? "",
-                          }),
-                      })
-                    : await fetch("/api/payments/billing-key", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                          body: JSON.stringify({
-                              billingKey,
-                              method: ctx?.method ?? "card",
-                              mode: ctx?.mode ?? "subscribe",
-                              plan: ctx?.plan ?? "monthly_basic",
-                          }),
-                      })
+                const res = await fetch("/api/payments/billing-key", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({
+                        billingKey,
+                        method: ctx?.method ?? "card",
+                        mode: ctx?.mode ?? "subscribe",
+                        plan: ctx?.plan ?? "monthly_pro",
+                    }),
+                })
                 const json = await res.json()
                 if (!res.ok) {
                     setMsg({ type: "err", text: json.error || "구독 처리 실패" })
                     return
                 }
-                setMsg({ type: "ok", text: ctx?.orgCheckout ? "결제가 완료되었습니다! 화면을 새로 불러옵니다…" : "결제수단 등록이 완료되었습니다! 화면을 새로 불러옵니다…" })
+                setMsg({ type: "ok", text: "결제수단 등록이 완료되었습니다! 화면을 새로 불러옵니다…" })
                 // 구독 상태를 다시 불러오도록 정리된 URL로 새로고침
                 setTimeout(() => window.location.reload(), 1200)
             } catch (e) {

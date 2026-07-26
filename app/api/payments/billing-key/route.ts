@@ -118,12 +118,6 @@ export async function POST(request: Request) {
     }
     // 안전관리자로 가입한 계정(role 표시)은 개인 플랜 대신 회사 플랜 결제로 유도 —
     // 개인 구독이 붙는 순간 org checkout이 영구 차단된다 (리뷰 F)
-    if ((user.user_metadata as any)?.role === "safety_manager" && mode !== "update" && !existing) {
-      return NextResponse.json(
-        { error: "안전관리자 계정입니다. 회사 플랜 결제(가입 이어서 하기)에서 진행해주세요." },
-        { status: 400 }
-      );
-    }
 
     // --- 결제수단 변경: 빌링키/카드정보만 교체 ---
     if (mode === "update") {

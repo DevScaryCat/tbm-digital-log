@@ -1,9 +1,14 @@
-// app/api/org/overview/route.ts — 관제 대시보드 데이터 (안전관리자 전용)
-// 하위 현장별: 오늘 TBM 실시 여부(회의록·일지), 이번 달 건수, 최근 활동일.
+// app/api/org/overview/route.ts — 회사관리 탭 데이터
+// 현장별(감독자 본인 포함): 오늘 TBM 실시 여부(회의록·일지), 이번 달 건수, 최근 활동일.
 // RLS는 열지 않는다 — service role + 멤버십 검증(§4-A 서버 경유 원칙).
+//
+// 통합 모델에서 이 라우트는 세 역할 전부에 응답한다:
+//   owner  — 본인 현장 + 소속 현장 전부
+//   solo   — 아직 회사가 없는 계정. 본인 현장 1곳만, canManage=true (첫 현장을 추가하면 회사가 생긴다)
+//   member — 소속 현장. 소속 회사의 전체 현황을 같은 모양으로 보되 canManage=false (읽기 전용)
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
-import { getOrgContext, listOrgMembers } from "@/lib/org";
+import { getOrgContext, listOrgMembers, type OrgMemberSummary } from "@/lib/org";
 
 export const runtime = "nodejs";
 
@@ -13,19 +18,54 @@ function kstToday(): string {
   }).format(new Date());
 }
 
+/** user_metadata에서 현장 표시명을 뽑는다. 감독자의 company_name은 '회사명'이라 현장명으로 쓰면 안 된다. */
+function siteLabel(meta: Record<string, any>, isOwner: boolean): string {
+  const explicit = String(meta.site_name ?? "").trim();
+  if (explicit) return explicit;
+  if (isOwner) return "본사 현장";
+  return String(meta.company_name ?? "").trim() || "현장명 미설정";
+}
+
 export async function GET(request: Request) {
   const user = await getUserFromRequest(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const admin = getAdminClient();
   const ctx = await getOrgContext(user.id, admin);
-  if (ctx.kind !== "owner" || !ctx.org) {
-    return NextResponse.json({ error: "안전관리자 계정만 접근할 수 있습니다." }, { status: 403 });
+
+  // 소속 현장(member)은 자기 회사의 감독자 시점 데이터를 읽기 전용으로 본다.
+  const orgId = ctx.org?.id ?? null;
+  const ownerUserId = ctx.org?.ownerUserId ?? (ctx.kind === "solo" ? user.id : null);
+  const canManage = ctx.kind === "owner" || ctx.kind === "solo";
+
+  let members: OrgMemberSummary[] = [];
+  if (orgId) members = await listOrgMembers(orgId, admin);
+
+  // 감독자 본인도 하나의 현장 — 목록 맨 앞에 둔다.
+  const ownerMeta = ownerUserId
+    ? ownerUserId === user.id
+      ? ((user.user_metadata ?? {}) as Record<string, any>)
+      : await admin.auth.admin
+          .getUserById(ownerUserId)
+          .then((r) => (r.data?.user?.user_metadata ?? {}) as Record<string, any>)
+          .catch(() => ({} as Record<string, any>))
+    : ({} as Record<string, any>);
+
+  const roster: { userId: string; siteName: string; managerName: string; status: "active" | "detached"; isOwner: boolean }[] = [];
+  if (ownerUserId) {
+    roster.push({
+      userId: ownerUserId,
+      siteName: siteLabel(ownerMeta, true),
+      managerName: String(ownerMeta.full_name ?? ""),
+      status: "active",
+      isOwner: true,
+    });
+  }
+  for (const m of members) {
+    roster.push({ userId: m.userId, siteName: m.siteName || "현장명 미설정", managerName: m.managerName, status: m.status, isOwner: false });
   }
 
-  const members = await listOrgMembers(ctx.org.id, admin);
-  const activeIds = members.filter((m) => m.status === "active").map((m) => m.userId);
-
+  const activeIds = roster.filter((r) => r.status === "active").map((r) => r.userId);
   const today = kstToday();
   const monthStart = `${today.slice(0, 7)}-01`;
 
@@ -55,13 +95,15 @@ export async function GET(request: Request) {
     if (!s.lastDate || r.date > s.lastDate) s.lastDate = r.date;
   }
 
-  const sites = members.map((m) => {
+  const sites = roster.map((m) => {
     const s = byUser.get(m.userId);
     return {
       userId: m.userId,
-      siteName: m.siteName || "현장명 미설정",
+      siteName: m.siteName,
       managerName: m.managerName,
       status: m.status,
+      isOwner: m.isOwner,
+      isSelf: m.userId === user.id,
       todayDone: !!s && (s.todayMinutes > 0 || s.todayLogs > 0),
       todayMinutes: s?.todayMinutes ?? 0,
       todayLogs: s?.todayLogs ?? 0,
@@ -72,10 +114,13 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({
-    orgName: ctx.org.name,
-    seatCount: ctx.org.seatCount,
-    pendingSeatCount: ctx.org.pendingSeatCount,
-    activeCount: activeIds.length,
+    kind: ctx.kind,
+    canManage,
+    orgName: ctx.org?.name ?? "",
+    // 과금 계정 수 = 감독자 본인 + 활성 소속 현장
+    accountCount: activeIds.length,
+    // 소속 현장만의 수 (감독자 본인 제외) — "아직 현장이 없어요" 판정용
+    memberCount: Math.max(0, activeIds.length - (ownerUserId ? 1 : 0)),
     todayDoneCount: sites.filter((s) => s.status === "active" && s.todayDone).length,
     today,
     sites,
