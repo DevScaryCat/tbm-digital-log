@@ -64,8 +64,6 @@ export default function MainPage() {
   const [tabReady, setTabReady] = useState(false)
   // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
   const [showUsageStep, setShowUsageStep] = useState(false)
-  // '여러 현장'을 고르고 넘어온 직후엔 현장관리 탭의 셋업 카드를 펼친 채 연다
-  const [autoSetup, setAutoSetup] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -187,10 +185,12 @@ export default function MainPage() {
   }
 
   // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
+  // '여러 현장'은 전용 셋업 페이지로 보낸다 — 탭 안에 셋업을 끼워 넣으면
+  // 현장 목록·추가 버튼과 역할이 겹쳐 난잡해진다 (홈은 돌아왔을 때 현장관리 탭)
   const chooseUsage = (t: TabKey) => {
     setShowUsageStep(false)
-    if (t === "company") setAutoSetup(true)
     writeLastTab(t)
+    if (t === "company") { router.push("/org/setup"); return }
     setTab(t)
   }
 
@@ -351,7 +351,7 @@ export default function MainPage() {
         {/* ── 현장관리 탭 ─────────────────────────────────────────── */}
         {tab === "company" && (
           <div className="flex-1 p-4 sm:p-6">
-            <CompanyPanel autoSetup={autoSetup} />
+            <CompanyPanel />
           </div>
         )}
 
