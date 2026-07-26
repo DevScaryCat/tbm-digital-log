@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
-import { PLANS } from "@/lib/portone";
+import { PLANS , subscriptionAllows, isProPlan} from "@/lib/portone";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 
 export async function POST(request: Request) {
@@ -43,19 +43,15 @@ export async function POST(request: Request) {
       const ownerId = (inv as any).organizations?.owner_user_id as string;
       const { data: ownerSub } = await supabaseAdmin
         .from("subscriptions")
-        .select("status, current_period_end, billing_key")
+        .select("status, plan, current_period_end, billing_key")
         .eq("user_id", ownerId)
         .maybeSingle();
-      const ownerOk =
-        ownerSub &&
-        (ownerSub.status === "active" ||
-          ownerSub.status === "past_due" ||
-          (ownerSub.status === "canceled" &&
-            ownerSub.current_period_end &&
-            new Date(ownerSub.current_period_end) > new Date()));
+      // subscriptionAllows로 판정 — 수제 status 나열은 trialing(무료체험 감독자)을 빠뜨려
+      // 체험 중 초대 링크 가입이 전부 400으로 죽었다. 체험 중 현장 추가는 무청구가 맞다.
+      const ownerOk = ownerSub && subscriptionAllows(ownerSub) && isProPlan((ownerSub as any).plan);
       if (!ownerOk) {
         return NextResponse.json(
-          { error: "조직의 구독이 유효하지 않습니다. 안전관리자에게 문의하세요." },
+          { error: "회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." },
           { status: 400 },
         );
       }

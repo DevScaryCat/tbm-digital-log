@@ -55,7 +55,9 @@ export async function GET(request: Request) {
   if (ownerUserId) {
     roster.push({
       userId: ownerUserId,
-      siteName: siteLabel(ownerMeta, true),
+      // solo의 company_name은 가입 위저드의 '현장명(회사명)' 입력값이라 그대로 현장명이다.
+      // '본사 현장' 폴백은 진짜 회사를 소유한 owner에게만 적용한다.
+      siteName: siteLabel(ownerMeta, ctx.kind === "owner"),
       managerName: String(ownerMeta.full_name ?? ""),
       status: "active",
       isOwner: true,

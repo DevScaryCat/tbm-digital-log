@@ -181,8 +181,8 @@ export default function AnalyticsDashboardPage() {
                     {!pro && (
                         <div className="rounded-[12px] bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-2">
                             <p className="text-[13px] text-cur-primary font-semibold flex items-center gap-1.5"><Sparkles className="w-4 h-4" /> 예시 화면입니다</p>
-                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. Pro 구독 시 내가 작성한 TBM 회의록을 월별로 분석해 핵심 위험 키워드와 AI 총평을 보여드립니다.</p>
-                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90">Pro 플랜 보기</Button>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. 구독하면 내가 작성한 TBM 회의록을 월별로 분석해 핵심 위험 키워드와 AI 총평을 보여드립니다.</p>
+                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90">요금제 보기</Button>
                         </div>
                     )}
 

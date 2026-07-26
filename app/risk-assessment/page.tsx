@@ -107,14 +107,23 @@ export default function RiskAssessmentPage() {
             setCompanyName(user.user_metadata?.company_name || "")
 
             if (kind === "owner") {
-                // 하위 현장 목록 로드 + (현장 분석에서 넘어온) 대상 현장 복원
+                // 현장 목록 = 감독자 본인 현장 + 소속 현장. 본인을 빼면 회사관리의
+                // '내 현장 → AI 분석' 경로가 조용히 버려지고, 하위 0곳이면 완전 막다른 길이 된다.
                 try {
                     const { data: sess } = await supabase.auth.getSession()
                     const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
                     if (res.ok) {
                         const j = await res.json()
-                        const active = (j.members ?? []).filter((m: any) => m.status === "active")
-                            .map((m: any) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정" }))
+                        const meta = user.user_metadata ?? {}
+                        const selfSite = {
+                            userId: user.id,
+                            siteName: `${String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "내 현장"} (내 현장)`,
+                        }
+                        const active = [
+                            selfSite,
+                            ...(j.members ?? []).filter((m: any) => m.status === "active")
+                                .map((m: any) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정" })),
+                        ]
                         setSites(active)
                         const saved = sessionStorage.getItem("ra_target")
                         if (saved) {
@@ -461,7 +470,7 @@ export default function RiskAssessmentPage() {
                                     <p className="text-[15px] font-semibold text-cur-ink px-1">분석할 현장을 선택하세요</p>
                                     {sites.length === 0 ? (
                                         <div className="bg-cur-card border border-cur-hairline rounded-xl p-4 text-[13px] text-cur-muted">
-                                            연결된 현장이 없어요. 좌석 관리에서 현장 계정을 먼저 만들어주세요.
+                                            연결된 현장이 없어요. 현장 계정 관리에서 현장 계정을 먼저 만들어주세요.
                                         </div>
                                     ) : (
                                         <select

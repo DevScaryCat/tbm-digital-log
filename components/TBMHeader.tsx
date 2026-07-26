@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { LogOut, User, Home, ChevronLeft } from "lucide-react"
 import { Logo } from "@/components/Logo"
-import { startOfMonth } from "date-fns"
-import { fetchSubscription, planBadge, usageWindow } from "@/lib/useSubscription"
+import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 
 interface TBMHeaderProps {
@@ -95,9 +94,14 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 const sub = await fetchSubscription()
                 setBadge(planBadge(sub))
                 setPlan(sub?.plan ?? null)
-                const w = usageWindow(sub)
-                setUsageStartISO(w.startISO)
-                setResetLabel(w.resetLabel)
+                // 한도 창은 DB 트리거 enforce_tbm_monthly_limit·AI 분석 API와 동일한
+                // KST 달력월이어야 한다. 결제주기 창(usageWindow)으로 세면 헤더는 여유라는데
+                // 트리거가 P0001로 저장을 거부하는 어긋남이 생긴다.
+                const kstYmd = new Intl.DateTimeFormat("en-CA", {
+                    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+                }).format(new Date())
+                setUsageStartISO(new Date(`${kstYmd.slice(0, 7)}-01T00:00:00+09:00`).toISOString())
+                setResetLabel("매월 1일 초기화")
                 fetchOrgContext().then((c) => setOrgKind(c?.kind ?? "solo"))
             }
         }
@@ -108,8 +112,11 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     // 미리 조회하지 않고 메뉴를 처음 열 때 1회 조회한다(페이지당 불필요한 count 쿼리 제거).
     const loadUsage = async () => {
         if (usage) return
-        // 결제/체험 기준 창 시작(없으면 달력 월). DB 트리거와 동일 규칙(usageWindow).
-        const startISO = usageStartISO ?? startOfMonth(new Date()).toISOString()
+        // KST 달력월 시작 — DB 트리거와 동일 규칙
+        const kstYmd = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date())
+        const startISO = usageStartISO ?? new Date(`${kstYmd.slice(0, 7)}-01T00:00:00+09:00`).toISOString()
         const [logs, mins, ras] = await Promise.all([
             supabase.from("tbm_logs").select("id", { count: "exact", head: true }).gte("created_at", startISO),
             supabase.from("tbm_minutes").select("id", { count: "exact", head: true }).gte("created_at", startISO),

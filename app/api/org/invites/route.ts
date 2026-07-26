@@ -30,12 +30,12 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
     const admin = getAdminClient();
-    const ctx = await getOrgContext(user.id, admin);
-    if (ctx.kind !== "owner" || !ctx.org) {
-      return NextResponse.json({ error: "안전관리자 계정만 초대할 수 있습니다." }, { status: 403 });
+    let ctx = await getOrgContext(user.id, admin);
+    if (ctx.kind === "member") {
+      return NextResponse.json({ error: "소속 현장 계정은 초대할 수 없습니다. 회사 감독자에게 문의하세요." }, { status: 403 });
     }
-    // 구독이 유효하지 않은 owner는 신규 좌석 발급·편입 불가 — 해지 후에도 하루치 무료
-    // 미러가 만들어지는 경로 차단 (리뷰 C)
+    // 구독 검사가 조직 생성보다 먼저 — legacy 계정이 초대를 눌렀다고 organizations 행이
+    // 남아 요금이 바뀌는 사고 방지 (members 라우트와 동일한 순서 규칙)
     {
       const { data: sub } = await admin
         .from("subscriptions")
@@ -43,21 +43,32 @@ export async function POST(request: Request) {
         .eq("user_id", user.id)
         .maybeSingle();
       if (!sub || !subscriptionAllows(sub) || !isProPlan(sub.plan)) {
-        return NextResponse.json({ error: "구독이 유효하지 않습니다. 결제를 먼저 확인해주세요." }, { status: 402 });
+        return NextResponse.json({ error: "현재 요금제로는 현장을 초대할 수 없어요. 구독을 먼저 확인해주세요." }, { status: 402 });
       }
+    }
+    // 첫 현장을 초대 링크/편입으로 시작하는 경우 — 회사가 아직 없으면 여기서 만든다.
+    // (직접 발급만 조직을 만들 수 있으면, 온보딩이 안내하는 세 경로 중 둘이 403으로 죽는다)
+    if (ctx.kind === "solo" && !ctx.orgLapsed) {
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+      const name = String(meta.company_name ?? "").trim() || String(meta.full_name ?? "").trim() || "우리 회사";
+      const { error: orgErr } = await admin
+        .from("organizations")
+        .upsert({ owner_user_id: user.id, name, seat_count: 1, pending_seat_count: null }, { onConflict: "owner_user_id" });
+      if (orgErr) {
+        console.error("org lazy-create error (invites):", orgErr);
+        return NextResponse.json({ error: "회사 생성에 실패했습니다." }, { status: 500 });
+      }
+      ctx = await getOrgContext(user.id, admin);
+    }
+    if (ctx.kind !== "owner" || !ctx.org) {
+      return NextResponse.json({ error: "초대를 만들 수 없습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
     const kind = String(body.kind ?? "link");
 
     if (kind === "link") {
-      const seatsLeft = ctx.org.seatCount - (ctx.memberIds ?? []).length;
-      if (seatsLeft <= 0) {
-        return NextResponse.json(
-          { error: "남은 좌석이 없습니다. 좌석을 추가한 뒤 초대해주세요." },
-          { status: 409 }
-        );
-      }
+      // 좌석 상한 없음 — 과금이 "실제 계정 수 × 단가"라 초대 수를 미리 제한할 이유가 없다
       const { data, error } = await admin
         .from("org_invites")
         .insert({ org_id: ctx.org.id, kind: "link" })
@@ -92,7 +103,7 @@ export async function POST(request: Request) {
         .eq("owner_user_id", targetId)
         .maybeSingle();
       if (targetOrg) {
-        return NextResponse.json({ error: "안전관리자 계정은 편입할 수 없습니다." }, { status: 400 });
+        return NextResponse.json({ error: "이미 회사를 운영 중인 계정은 편입할 수 없습니다." }, { status: 400 });
       }
       // 이미 다른 조직 소속이면 안내
       const { data: existingMember } = await admin
@@ -106,13 +117,6 @@ export async function POST(request: Request) {
       }
       if (existingMember && existingMember.org_id === ctx.org.id) {
         return NextResponse.json({ error: "이미 우리 조직에 소속된 계정입니다." }, { status: 400 });
-      }
-      const seatsLeft = ctx.org.seatCount - (ctx.memberIds ?? []).length;
-      if (seatsLeft <= 0) {
-        return NextResponse.json(
-          { error: "남은 좌석이 없습니다. 좌석을 추가한 뒤 편입해주세요." },
-          { status: 409 }
-        );
       }
       const { data, error } = await admin
         .from("org_invites")

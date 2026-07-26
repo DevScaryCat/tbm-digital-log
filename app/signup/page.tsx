@@ -228,7 +228,7 @@ export default function SignupPage() {
                         <h2 className="text-[24px] font-normal text-cur-ink tracking-[-0.72px]">회원가입 완료!</h2>
                         {trialStarted ? (
                             <p className="text-[15px] text-cur-muted font-medium">
-                                <b className="text-cur-primary">Pro 1개월 무료체험</b>이 시작되었습니다. 🎉<br />
+                                <b className="text-cur-primary">1개월 무료체험</b>이 시작되었습니다. 🎉<br />
                                 모든 기능을 자유롭게 써보세요.<br />
                                 {autoLoggedIn ? "잠시 후 1분 사용법 안내로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>

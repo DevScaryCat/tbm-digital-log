@@ -11,7 +11,7 @@ export const maxDuration = 300;
 
 // Vercel Cron(매일 00:00 UTC): 매월 1일(KST)에 지난달 종합 보고서 발송. 두 축(§7):
 // ① 회사 경로: 감독자 본인 현장 + 소속 현장을 병합 → 앱 열람 저장 + 승인 수신처 발송,
-//    각 소속 현장은 자기 현장분을 본인 인증 이메일로 수신 (kind='member_monthly_<id>').
+//    각 소속 현장은 자기 현장분을 본인 인증 이메일로 수신 (kind='member_minutes/_education_<id>').
 // ② 단독 경로: 회사에 속하지 않은 계정의 기존 수신자 승인제.
 //
 // 두 경로는 반드시 서로소여야 한다. 예전에는 `plan === 'monthly_pro'` 필터가 org 계정을
@@ -23,11 +23,11 @@ export async function GET(request: Request) { return run(request); }
 
 type Account = { userId: string; siteName: string };
 // org 경로는 단독 경로와 발신 주체가 달라 멱등 키(kind)를 분리한다 — 같은 수신 이메일이
-// 양쪽에 걸치면 한쪽이 조용히 미발송되는 교차 누락 방지 (리뷰 G). member_monthly는
+// 양쪽에 걸치면 한쪽이 조용히 미발송되는 교차 누락 방지 (리뷰 G). member_* 키는
 // 계정 id를 키에 포함 — 한 담당자가 두 현장의 실이메일이면 두 현장분 모두 받아야 한다 (리뷰 H).
 // org_* 도 마찬가지로 소유자 id를 포함해야 한다: 회사가 둘 이상 생기면 같은 원청 이메일을
 // 두 회사가 승인했을 때 먼저 보낸 쪽만 나가고 나머지는 조용히 '이미 보냄'이 된다.
-type Kind = "minutes" | "education" | `org_${string}` | `member_monthly_${string}`;
+type Kind = "minutes" | "education" | `org_${string}` | `member_${string}`;
 
 async function alreadySent(admin: SupabaseClient, email: string, year: number, month: number, kind: Kind): Promise<boolean> {
   const { data } = await admin
@@ -197,41 +197,105 @@ async function run(request: Request) {
           if (acc.userId === org.owner_user_id) continue;
           const email = memberEmail.get(acc.userId);
           if (!email) { orgResults.memberSkipped++; continue; } // 미인증 — 홈 배너가 인증 유도
-          // 멱등 키에 계정 id 포함 — 같은 담당자 이메일로 두 현장을 인증해도 각 현장분이 발송돼야 함
-          const memberKind: Kind = `member_monthly_${acc.userId}`;
-          if (await alreadySent(admin, email, year, month, memberKind)) { orgResults.memberSkipped++; continue; }
+          // 멱등 키는 계정 id + 문서 종류별로 분리한다. 하나로 묶으면(구 member_monthly_*)
+          // 회의록만 실패하고 교육만 성공한 달에 재시도(?force=1)가 통째로 건너뛰어
+          // 실패분이 그 달 영구 미발송이 된다.
+          const kMemberMinutes: Kind = `member_minutes_${acc.userId}`;
+          const kMemberEdu: Kind = `member_education_${acc.userId}`;
           try {
-            const own = await buildMergedMinutesContent(admin, [acc], year, month, acc.siteName);
             let anySent = false;
-            if (own.stats.total > 0) {
-              const html = renderReportHtml(own);
-              const docTitle = `${acc.siteName} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
-              const attachments = await buildReportAttachments(own, docTitle, date);
-              const sent = await sendMail({
-                to: email,
-                subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 TBM 회의록 분석 보고서`,
-                html,
-                attachments,
-              });
-              if (sent.ok) anySent = true; else orgResults.failed++;
+            if (!(await alreadySent(admin, email, year, month, kMemberMinutes))) {
+              const own = await buildMergedMinutesContent(admin, [acc], year, month, acc.siteName);
+              if (own.stats.total > 0) {
+                const html = renderReportHtml(own);
+                const docTitle = `${acc.siteName} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
+                const attachments = await buildReportAttachments(own, docTitle, date);
+                const sent = await sendMail({
+                  to: email,
+                  subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 TBM 회의록 분석 보고서`,
+                  html,
+                  attachments,
+                });
+                if (sent.ok) { await recordSent(admin, email, year, month, kMemberMinutes, 1); anySent = true; }
+                else orgResults.failed++;
+              }
             }
-            const edu = await buildMergedEducationContent(admin, [acc.userId], year, month, acc.siteName);
-            if (edu) {
-              const html = renderEducationReportHtml(edu);
-              const attachments = await buildEducationAttachments(edu, `${acc.siteName} 안전보건교육일지 종합 보고서`, date);
-              const sent = await sendMail({
-                to: email,
-                subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 안전보건교육일지 종합`,
-                html,
-                attachments,
-              });
-              if (sent.ok) anySent = true; else orgResults.failed++;
+            if (!(await alreadySent(admin, email, year, month, kMemberEdu))) {
+              const edu = await buildMergedEducationContent(admin, [acc.userId], year, month, acc.siteName);
+              if (edu) {
+                const html = renderEducationReportHtml(edu);
+                const attachments = await buildEducationAttachments(edu, `${acc.siteName} 안전보건교육일지 종합 보고서`, date);
+                const sent = await sendMail({
+                  to: email,
+                  subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 안전보건교육일지 종합`,
+                  html,
+                  attachments,
+                });
+                if (sent.ok) { await recordSent(admin, email, year, month, kMemberEdu, 1); anySent = true; }
+                else orgResults.failed++;
+              }
             }
-            if (anySent) { await recordSent(admin, email, year, month, memberKind, 1); orgResults.memberSent++; }
+            if (anySent) orgResults.memberSent++;
           } catch (e) {
             console.error("org member monthly error:", acc.userId, e);
             orgResults.failed++;
           }
+        }
+      }
+    }
+
+    // ══ ①.5 단독 계정 앱 내 열람 저장 ══════════════════════════════════
+    // 현장관리 탭의 '월간 보고서' 화면은 "매월 1일 쌓입니다"라고 약속하는데,
+    // 저장은 회사 경로에서만 하고 있었다 — 조직 없는 유료 계정(현 실사용 대다수)은
+    // 화면이 영원히 비어 기능 고장으로 보인다. 수신 동의 여부와 무관하게 본인 몫을 저장한다.
+    const soloStored = { stored: 0, failed: 0 };
+    {
+      const { data: allSubs } = await admin
+        .from("subscriptions")
+        .select("user_id, plan, status, current_period_end")
+        .limit(3000);
+      const nowMs0 = now.getTime();
+      for (const s of (allSubs as any[]) || []) {
+        if (orgLinked.has(s.user_id)) continue; // 회사 경로가 저장
+        if (!isProPlan(s.plan)) continue;
+        const ok = ["active", "trialing", "past_due"].includes(s.status) ||
+          (s.status === "canceled" && s.current_period_end && new Date(s.current_period_end).getTime() > nowMs0);
+        if (!ok) continue;
+        try {
+          // 이미 저장돼 있으면(재실행) 재빌드하지 않는다 — AI 요약 비용 멱등
+          const { data: existing } = await admin
+            .from("monthly_reports")
+            .select("token")
+            .eq("user_id", s.user_id)
+            .eq("period_year", year)
+            .eq("period_month", month)
+            .maybeSingle();
+          if (existing) continue;
+          let label = "현장";
+          try {
+            const { data: u } = await admin.auth.admin.getUserById(s.user_id);
+            const meta = (u?.user?.user_metadata ?? {}) as Record<string, any>;
+            label = String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "현장";
+          } catch { /* 라벨만 기본값 */ }
+          const own = await buildMergedMinutesContent(admin, [{ userId: s.user_id, siteName: label }], year, month, label);
+          if (own.stats.total === 0) continue; // 기록 없는 달은 저장할 것도 없다
+          const { error: upErr } = await admin.from("monthly_reports").upsert(
+            {
+              user_id: s.user_id,
+              period_year: year,
+              period_month: month,
+              token: randomUUID(),
+              content: own as any,
+              recipients: [],
+              sent_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,period_year,period_month" }
+          );
+          if (upErr) { soloStored.failed++; console.error("solo report store error:", s.user_id, upErr); }
+          else soloStored.stored++;
+        } catch (e) {
+          soloStored.failed++;
+          console.error("solo report build error:", s.user_id, e);
         }
       }
     }
@@ -244,7 +308,7 @@ async function run(request: Request) {
       .eq("status", "approved")
       .limit(3000);
     const rows = (consents as { recipient_email: string; account_user_id: string }[]) || [];
-    if (rows.length === 0) return NextResponse.json({ success: true, recipients: 0, org: orgResults });
+    if (rows.length === 0) return NextResponse.json({ success: true, recipients: 0, org: orgResults, solo: soloStored });
 
     // 유효한 Pro 계정만 (해지+기간만료 제외)
     const accountIds = [...new Set(rows.map((r) => r.account_user_id))];
@@ -330,7 +394,7 @@ async function run(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, period: { year, month }, today: todayKST, ...results, org: orgResults });
+    return NextResponse.json({ success: true, period: { year, month }, today: todayKST, ...results, org: orgResults, solo: soloStored });
   } catch (e: any) {
     console.error("consolidated monthly-report cron error:", e);
     return NextResponse.json({ error: "서버 오류", detail: e?.message }, { status: 500 });

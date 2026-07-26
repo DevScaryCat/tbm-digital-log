@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
-import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
+import { fetchSubscription, isProActive, type SubscriptionRow } from "@/lib/useSubscription"
 import {
     Loader2, ChevronRight, FileBarChart2, Settings2, Users, Sparkles,
     CheckCircle2, CircleDashed, Lock, CreditCard, Minus, Plus,
@@ -86,6 +86,9 @@ export function CompanyPanel({ autoSetup = false }: { autoSetup?: boolean } = {}
     }
 
     const managed = data.canManage
+    // legacy(구 베이직 1,900·영구무료)는 현장 추가가 요금제에 없다 — 서버가 402로 막으므로
+    // 여기서 추가 UI 대신 안내를 보여준다 (가격까지 보여주고 마지막에 거절하면 그게 더 나쁘다)
+    const canAddSites = managed && isProActive(sub)
     const activeSites = data.sites.filter((s) => s.status === "active")
     const noMembersYet = managed && data.memberCount === 0
 
@@ -180,7 +183,24 @@ export function CompanyPanel({ autoSetup = false }: { autoSetup?: boolean } = {}
                     })}
 
                     {/* 현장 추가 — 목록의 마지막 행. 처음이면 청구 미리보기 셋업을 펼친다 */}
-                    {managed && (
+                    {managed && !canAddSites && (
+                        <button
+                            onClick={() => router.push("/pricing")}
+                            className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                        >
+                            <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                                <Plus className="w-4 h-4" />
+                            </span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[14px] font-semibold text-cur-body">현장 추가는 유료 요금제에서</span>
+                                <span className="block text-[12px] text-cur-muted-soft mt-0.5">
+                                    계정 1개당 월 {SEAT_PRICE.toLocaleString()}원 — 요금제 보기
+                                </span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        </button>
+                    )}
+                    {canAddSites && (
                         <button
                             onClick={() => (noMembersYet ? setSetupOpen((v) => !v) : router.push("/org/members?new=1"))}
                             className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
@@ -201,7 +221,7 @@ export function CompanyPanel({ autoSetup = false }: { autoSetup?: boolean } = {}
             </section>
 
             {/* 다현장 셋업 — 몇 개 현장을 쓸지 고르면 한 달 뒤 청구액이 바로 보인다 */}
-            {managed && noMembersYet && setupOpen && (
+            {canAddSites && noMembersYet && setupOpen && (
                 <section className="bg-cur-card rounded-[12px] border border-cur-primary/30 p-5 space-y-4">
                     <div>
                         <h2 className="text-[16px] font-bold text-cur-ink">몇 개 현장을 관리하세요?</h2>

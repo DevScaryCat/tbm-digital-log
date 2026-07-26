@@ -58,7 +58,9 @@ export async function POST(request: Request) {
     let work = "";
     let eduSessions = 0;
     let builtLabel = "";
-    if (targetId !== user.id) {
+    // owner는 대상이 본인이어도 서버가 회의록을 직접 읽어 컨텍스트를 빌드한다 —
+    // 클라이언트 텍스트 경로(solo)로 흘리면 실제 기록 없이 라벨만으로 분석하게 된다.
+    if (tgt.kind === "owner") {
       if (!DATE_RE.test(String(from)) ) {
         return NextResponse.json({ error: "기간이 올바르지 않습니다." }, { status: 400 });
       }

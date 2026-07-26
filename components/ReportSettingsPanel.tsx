@@ -76,7 +76,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const addRecipient = async () => {
         const email = newEmail.trim()
         if (!email) return
-        if (!pro) { setMsg({ type: "err", text: "예시 화면입니다 — Pro 구독 시 실제로 등록·발송됩니다." }); return }
+        if (!pro) { setMsg({ type: "err", text: "예시 화면입니다 — 구독하면 실제로 등록·발송됩니다." }); return }
         const j = await post({ addRecipient: email })
         if (j) {
             setNewEmail("")
@@ -101,7 +101,7 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                         <Sparkles className="w-4 h-4" /> 예시 화면입니다
                     </p>
                     <p className="text-[12px] text-cur-muted leading-relaxed">
-                        아래 미리보기처럼 매월 자동으로 보고서가 발송됩니다. Pro 구독 시 받는 사람·평가 방법을 실제로 설정할 수 있어요.
+                        아래 미리보기처럼 매월 자동으로 보고서가 발송됩니다. 구독하면 받는 사람·발송 방법을 실제로 설정할 수 있어요.
                     </p>
                     <Button onClick={() => router.push("/pricing")} className="w-full h-9 rounded-lg bg-cur-primary text-white text-[13px] font-bold hover:opacity-90">
                         Pro 플랜 보기
