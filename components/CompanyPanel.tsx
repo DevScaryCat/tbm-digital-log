@@ -44,6 +44,7 @@ interface Overview {
     today: string
     sites: SiteRow[]
     daily?: { date: string; minutes: number; logs: number }[]
+    risk?: { levels: { high: number; mid: number; low: number }; keywords: { word: string; count: number }[] }
 }
 
 const SEAT_PRICE = 3900
@@ -130,24 +131,13 @@ export function CompanyPanel() {
                 </div>
             )}
 
-            {/* 오늘 요약 */}
-            <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5">
-                {data.orgName && data.memberCount > 0 && <p className="text-[13px] text-cur-muted">{data.orgName}</p>}
-                <h1 className="text-[20px] font-bold text-cur-ink mt-0.5">
-                    오늘 TBM 실시 <span className="text-cur-primary">{data.todayDoneCount}</span>
-                    <span className="text-cur-muted font-semibold text-[16px]"> / {activeSites.length}개 현장</span>
-                </h1>
-                <div className="mt-3 h-2 rounded-full bg-cur-elevated overflow-hidden">
-                    <div
-                        className="h-full bg-cur-primary rounded-full transition-all duration-700 ease-out"
-                        style={{ width: activeSites.length ? `${Math.round((data.todayDoneCount / activeSites.length) * 100)}%` : "0%" }}
-                    />
-                </div>
-                {managed && data.memberCount > 0 && (
-                    <p className="text-[12px] text-cur-muted-soft mt-2">
-                        계정 {data.accountCount}개 · 월 {(data.accountCount * SEAT_PRICE).toLocaleString()}원
-                    </p>
-                )}
+            {/* 오늘 요약 — 한 줄 */}
+            <section className="bg-cur-card rounded-[12px] border border-cur-hairline px-4 py-3.5 flex items-center justify-between">
+                <span className="text-[14px] font-semibold text-cur-ink">오늘 TBM 실시</span>
+                <span className="text-[16px] font-bold tabular-nums">
+                    <span className={data.todayDoneCount > 0 ? "text-cur-success" : "text-cur-primary"}>{data.todayDoneCount}</span>
+                    <span className="text-cur-muted font-semibold text-[14px]"> / {activeSites.length} 현장</span>
+                </span>
             </section>
 
             {/* 현장 목록 — 혼자 쓰면 본인 현장 하나, 감독자면 본인이 맨 위 */}
@@ -292,6 +282,63 @@ export function CompanyPanel() {
                                     )
                                 })}
                             </div>
+                        )}
+                    </section>
+                )
+            })()}
+
+            {/* 이번 달 위험요인 — 등급 분포 + 자주 나온 키워드. 감독자의 실질 관심사. */}
+            {(() => {
+                const r = data.risk
+                const total = r ? r.levels.high + r.levels.mid + r.levels.low : 0
+                return (
+                    <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-[14px] font-bold text-cur-ink">이번 달 위험요인</h2>
+                            {total > 0 && <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>}
+                        </div>
+                        {total === 0 ? (
+                            <p className="text-[13px] text-cur-muted leading-relaxed">
+                                아직 분석할 기록이 없어요. TBM 회의록이 쌓이면<br />위험등급 분포와 자주 나온 위험 키워드를 보여드려요.
+                            </p>
+                        ) : (
+                            <>
+                                {/* 등급 분포 — 누적 막대 + 수치 */}
+                                <div className="space-y-2">
+                                    <div className="flex h-2.5 rounded-full overflow-hidden bg-cur-elevated">
+                                        {r!.levels.high > 0 && <div className="bg-cur-error" style={{ width: `${(r!.levels.high / total) * 100}%` }} />}
+                                        {r!.levels.mid > 0 && <div className="bg-cur-primary" style={{ width: `${(r!.levels.mid / total) * 100}%` }} />}
+                                        {r!.levels.low > 0 && <div className="bg-cur-success" style={{ width: `${(r!.levels.low / total) * 100}%` }} />}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-[12px]">
+                                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-error" /><span className="text-cur-body">상 <b className="text-cur-ink">{r!.levels.high}</b></span></span>
+                                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-primary" /><span className="text-cur-body">중 <b className="text-cur-ink">{r!.levels.mid}</b></span></span>
+                                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-success" /><span className="text-cur-body">하 <b className="text-cur-ink">{r!.levels.low}</b></span></span>
+                                    </div>
+                                </div>
+                                {/* 자주 나온 위험 키워드 */}
+                                {r!.keywords.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {r!.keywords.map((k) => (
+                                                <span key={k.word} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
+                                                    {k.word} <span className="text-cur-muted-soft">{k.count}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* 더 깊은 분석은 AI 보고서로 */}
+                                {managed && (
+                                    <button
+                                        onClick={() => router.push("/risk-assessment")}
+                                        className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                    >
+                                        현장별 AI 분석 보고서 만들기
+                                    </button>
+                                )}
+                            </>
                         )}
                     </section>
                 )

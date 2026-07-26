@@ -78,13 +78,37 @@ export async function GET(request: Request) {
   });
   const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
 
-  // 이번 달+최근 7일 회의록/일지 날짜를 한 번에 긁어 현장별·일별 집계 (현장 수 규모에서 충분)
+  // 이번 달+최근 7일 회의록/일지를 한 번에 긁어 현장별·일별·위험요인 집계 (현장 수 규모에서 충분)
   const [minutesRes, logsRes] = activeIds.length
     ? await Promise.all([
-        admin.from("tbm_minutes").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
+        admin.from("tbm_minutes").select("user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart),
         admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
       ])
     : [{ data: [] }, { data: [] }];
+
+  // 위험요인 대시보드 — 감독자가 실제로 보고 싶은 건 "우리 현장들, 뭐가 위험한가"다.
+  // 등급 분포(상/중/하)와 자주 등장한 키워드를 이번 달 회의록에서 뽑는다.
+  const levelCounts = { high: 0, mid: 0, low: 0 };
+  const kwCount = new Map<string, number>();
+  const KW_STOP = new Set(["위험", "및", "의한", "인한", "대한", "관련", "작업", "발생", "주변", "부위", "가능", "우려", "사고", "상태", "구간", "현장", "안전"]);
+  for (const r of (minutesRes.data as any[]) || []) {
+    if (r.date < monthStart || !Array.isArray(r.hazards)) continue;
+    for (const h of r.hazards) {
+      const lv = String(h?.level ?? "");
+      if (lv === "상") levelCounts.high++;
+      else if (lv === "하") levelCounts.low++;
+      else levelCounts.mid++;
+      for (const tok of String(h?.factor ?? "").split(/[\s·,()\-]+/)) {
+        const w = tok.trim();
+        if (w.length < 2 || KW_STOP.has(w) || /^\d+$/.test(w)) continue;
+        kwCount.set(w, (kwCount.get(w) ?? 0) + 1);
+      }
+    }
+  }
+  const keywords = [...kwCount.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([word, count]) => ({ word, count }));
 
   const byUser = new Map<
     string,
@@ -143,5 +167,7 @@ export async function GET(request: Request) {
     sites,
     // 최근 7일 활동 (전 현장 합) — 현장관리 대시보드 미니 차트용
     daily: last7.map((d) => ({ date: d, ...dailyMap.get(d)! })),
+    // 이번 달 위험요인 집계 — 등급 분포 + 자주 나온 키워드
+    risk: { levels: levelCounts, keywords },
   });
 }
