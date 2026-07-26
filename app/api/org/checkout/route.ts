@@ -77,9 +77,10 @@ export async function POST(request: Request) {
     }
 
     // 빌링키 검증 — 즉시 결제 경로라 낙관수용 불가(미검증 키로 청구하면 타인 카드 과금 위험).
-    // 대신 카카오페이 전파 지연을 넘길 만큼 재시도 창을 길게 잡는다(총 ~25초).
+    // 카카오페이는 발급 확정(issuedAt)까지 실측 ~50초가 걸려 조회가 UNAUTHORIZED로 뜬다.
+    // 서버에서 다 기다리면 함수 타임아웃이라 여기선 ~12초만 보고, 나머지는 클라이언트가 폴링한다.
     let info = await getBillingKeyInfo(billingKey);
-    const retryDelays = [1500, 2500, 4000, 5000, 6000, 6000];
+    const retryDelays = [1500, 2500, 3500, 4500];
     for (let i = 0; !info.ok && i < retryDelays.length; i++) {
       await new Promise((r) => setTimeout(r, retryDelays[i]));
       info = await getBillingKeyInfo(billingKey);

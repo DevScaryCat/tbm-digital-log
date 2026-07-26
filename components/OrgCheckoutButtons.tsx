@@ -53,12 +53,14 @@ export function OrgCheckoutButtons({
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    // 카카오페이 등 간편결제는 빌링키 발급 직후 조회가 잠깐 막힌다(전파 지연).
-    // 그때 발급된 키를 들고 있다가 재인증 없이 같은 키로 다시 청구할 수 있게 한다.
+    // 카카오페이는 빌링키 발급 확정까지 실측 ~50초가 걸린다(그동안 조회 불가).
+    // 그 사이엔 자동으로 재시도하고, 그래도 안 되면 수동 버튼을 남긴다.
     const [pendingKey, setPendingKey] = useState<string | null>(null)
+    const [waitingSec, setWaitingSec] = useState(0)
     const total = seatCount * SEAT_PRICE
 
-    const registerCheckout = async (billingKey: string) => {
+    /** 한 번 시도. 아직 발급 확정 전이면 "pending" 반환 */
+    const attemptCheckout = async (billingKey: string): Promise<"ok" | "pending" | "failed"> => {
         const { data: sessionData } = await supabase.auth.getSession()
         const token = sessionData?.session?.access_token
         const res = await fetch("/api/org/checkout", {
@@ -67,18 +69,39 @@ export function OrgCheckoutButtons({
             body: JSON.stringify({ billingKey, seatCount, orgName }),
         })
         const json = await res.json()
-        if (!res.ok) {
-            // 전파 지연이면 키를 보관해 재시도 버튼을 띄운다
-            if (json.retryableBillingKey) setPendingKey(json.retryableBillingKey)
-            setMsg({ type: "err", text: json.error || "결제 처리 실패" })
-            return false
+        if (res.ok) {
+            clearOrgContextCache()
+            setPendingKey(null)
+            setMsg({ type: "ok", text: "결제가 완료되었습니다!" })
+            onSuccess?.()
+            return "ok"
         }
-        setPendingKey(null)
-        // 홈이 owner 관제 대시보드로 스왑되도록 역할 캐시 무효화 (iframe 경로는 풀 리로드가 없음)
-        clearOrgContextCache()
-        setMsg({ type: "ok", text: "결제가 완료되었습니다!" })
-        onSuccess?.()
-        return true
+        if (json.retryableBillingKey) {
+            setPendingKey(json.retryableBillingKey)
+            return "pending"
+        }
+        setMsg({ type: "err", text: json.error || "결제 처리 실패" })
+        return "failed"
+    }
+
+    /** 발급 확정될 때까지 자동 폴링 (최대 ~2분) */
+    const registerCheckout = async (billingKey: string) => {
+        const DEADLINE_MS = 120_000
+        const started = Date.now()
+        setWaitingSec(0)
+        while (Date.now() - started < DEADLINE_MS) {
+            const r = await attemptCheckout(billingKey)
+            if (r === "ok") return true
+            if (r === "failed") return false
+            setWaitingSec(Math.round((Date.now() - started) / 1000))
+            setMsg({ type: "ok", text: "카카오페이 결제수단을 확인하는 중이에요. 최대 1분 정도 걸립니다…" })
+            await new Promise((r) => setTimeout(r, 5000))
+        }
+        setMsg({
+            type: "err",
+            text: "결제수단 확인이 예상보다 오래 걸리고 있어요. 잠시 후 '결제 다시 시도'를 눌러주세요.",
+        })
+        return false
     }
 
     const handleIssue = async (method: Method) => {
@@ -151,8 +174,15 @@ export function OrgCheckoutButtons({
             {processing && (
                 <div role="alert" aria-busy="true" className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm flex flex-col items-center justify-center gap-3 px-6 text-center">
                     <Loader2 className="w-10 h-10 animate-spin text-white" />
-                    <p className="text-white text-[15px] font-semibold">결제를 처리하고 있어요</p>
-                    <p className="text-white/70 text-[13px]">완료될 때까지 화면을 닫거나 이동하지 마세요</p>
+                    <p className="text-white text-[15px] font-semibold">
+                        {pendingKey ? "결제수단을 확인하고 있어요" : "결제를 처리하고 있어요"}
+                    </p>
+                    <p className="text-white/70 text-[13px]">
+                        {pendingKey
+                            ? `카카오페이는 확인에 1분 정도 걸릴 수 있어요${waitingSec ? ` (${waitingSec}초 경과)` : ""}`
+                            : "완료될 때까지 화면을 닫거나 이동하지 마세요"}
+                    </p>
+                    <p className="text-white/50 text-[12px]">화면을 닫거나 이동하지 마세요</p>
                 </div>
             )}
             {msg && (
