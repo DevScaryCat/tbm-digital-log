@@ -8,6 +8,43 @@ import { cancelPayment, deleteBillingKey } from "@/lib/portone";
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** 청약철회 기간 — 전자상거래법 제17조① (7일 이내) */
+const WITHDRAWAL_DAYS = 7;
+
+/**
+ * 이번 결제분에 대해 '청약철회'로 봐야 하는지 판정한다.
+ *
+ * 결제 후 7일 이내에 서비스를 한 번도 쓰지 않았다면 중도해지(일할 공제)가 아니라
+ * 청약철회(전액 환불)다. 시간 단위로 일할을 떼면 "3시간 썼으니 25원 공제" 같은 결과가
+ * 나오는데, 미사용 청약철회에 그걸 적용하면 분쟁에서 방어가 안 된다.
+ *
+ * 운영상으로도 전액취소가 낫다 — 당일 전액취소는 매입 전이라 승인취소로 처리돼
+ * 카드 명세에서 아예 사라지지만, 부분취소는 원 승인이 남고 취소 전표가 며칠 뒤에
+ * 따로 붙어서 "환불이 안 됐다"는 문의를 만든다.
+ */
+async function isUnusedWithdrawal(
+  admin: SupabaseClient,
+  userId: string,
+  paidAt: Date,
+  now: Date
+): Promise<boolean> {
+  if (now.getTime() - paidAt.getTime() > WITHDRAWAL_DAYS * DAY) return false;
+  const since = paidAt.toISOString();
+  const [minutes, logs, ra] = await Promise.all([
+    admin.from("tbm_minutes").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
+    admin.from("tbm_logs").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
+    admin.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
+  ]);
+  // 조회 실패는 '사용함'으로 간주 — 못 셌다고 전액 환불해버리면 어뷰징 경로가 열린다
+  if (minutes.error || logs.error || ra.error) {
+    console.error("청약철회 사용량 조회 실패 — 일할 환불로 진행", {
+      userId, m: minutes.error, l: logs.error, r: ra.error,
+    });
+    return false;
+  }
+  return (minutes.count ?? 0) === 0 && (logs.count ?? 0) === 0 && (ra.count ?? 0) === 0;
+}
+
 export interface CancelResult {
   ok: boolean;
   alreadyCanceled?: boolean;
@@ -51,24 +88,45 @@ export async function cancelUserSubscription(
       .limit(1)
       .maybeSingle();
     const periodStart = lastPay?.paid_at ? new Date(lastPay.paid_at) : new Date(end.getTime() - 30 * DAY);
+
+    // 결제 후 7일 이내 + 이번 주기 미사용 = 청약철회 → 일할 공제 없이 전액.
+    // 정기 건과 좌석 추가 건 모두에 같은 판정을 적용한다(같은 계약의 같은 주기라서).
+    const withdrawal = lastPay?.paid_at
+      ? await isUnusedWithdrawal(admin, userId, new Date(lastPay.paid_at), now)
+      : false;
+
     if (lastPay?.payment_id && (lastPay.amount ?? 0) > 0) {
-      const total = end.getTime() - periodStart.getTime();
-      const remaining = end.getTime() - now.getTime();
-      if (total > 0 && remaining > 0) {
-        let amt = Math.floor(((lastPay.amount as number) * remaining) / total);
-        amt = Math.max(0, Math.min(amt, lastPay.amount as number));
-        if (amt > 0) {
-          const res = await cancelPayment({ paymentId: lastPay.payment_id, amount: amt, reason });
-          if (res.ok) {
-            refunded += amt;
-            await admin
-              .from("payments")
-              .update({ status: amt >= (lastPay.amount as number) ? "canceled" : "partial_canceled" })
-              .eq("payment_id", lastPay.payment_id);
-          } else {
-            refundFailed = true;
-            console.error("정기결제 환불 실패:", res.body);
-          }
+      const paidAmount = lastPay.amount as number;
+      let amt = 0;
+      if (withdrawal) {
+        amt = paidAmount;
+      } else {
+        const total = end.getTime() - periodStart.getTime();
+        const remaining = end.getTime() - now.getTime();
+        if (total > 0 && remaining > 0) {
+          amt = Math.min(Math.max(0, Math.floor((paidAmount * remaining) / total)), paidAmount);
+        }
+      }
+
+      if (amt > 0) {
+        const res = await cancelPayment({
+          paymentId: lastPay.payment_id,
+          // 전액이면 amount를 넘기지 않는다 — 부분취소가 아니라 전체취소로 처리돼야
+          // 매입 전 승인취소가 되고 카드 명세에 흔적이 남지 않는다
+          amount: amt >= paidAmount ? undefined : amt,
+          reason: withdrawal ? "청약철회 - 미사용 전액 환불" : reason,
+        });
+        if (res.ok) {
+          refunded += amt;
+          const { error: payUpdErr } = await admin
+            .from("payments")
+            .update({ status: amt >= paidAmount ? "canceled" : "partial_canceled" })
+            .eq("payment_id", lastPay.payment_id);
+          // 이 UPDATE가 조용히 실패하면 PG에는 환불이 있는데 우리 장부만 'paid'로 남는다
+          if (payUpdErr) console.error("환불 기록 갱신 실패(PG 환불은 완료됨):", lastPay.payment_id, payUpdErr);
+        } else {
+          refundFailed = true;
+          console.error("정기결제 환불 실패:", res.body);
         }
       }
     }
@@ -83,20 +141,29 @@ export async function cancelUserSubscription(
       .gte("paid_at", periodStart.toISOString());
     for (const p of seatPays ?? []) {
       if (!p.paid_at || !(p.amount > 0)) continue;
-      const pStart = new Date(p.paid_at);
-      const total = end.getTime() - pStart.getTime();
-      const remaining = end.getTime() - now.getTime();
-      if (total <= 0 || remaining <= 0) continue;
-      let amt = Math.floor((p.amount * remaining) / total);
-      amt = Math.max(0, Math.min(amt, p.amount));
+      let amt: number;
+      if (withdrawal) {
+        amt = p.amount;
+      } else {
+        const pStart = new Date(p.paid_at);
+        const total = end.getTime() - pStart.getTime();
+        const remaining = end.getTime() - now.getTime();
+        if (total <= 0 || remaining <= 0) continue;
+        amt = Math.min(Math.max(0, Math.floor((p.amount * remaining) / total)), p.amount);
+      }
       if (amt <= 0) continue;
-      const res = await cancelPayment({ paymentId: p.payment_id, amount: amt, reason });
+      const res = await cancelPayment({
+        paymentId: p.payment_id,
+        amount: amt >= p.amount ? undefined : amt,
+        reason,
+      });
       if (res.ok) {
         refunded += amt;
-        await admin
+        const { error: seatUpdErr } = await admin
           .from("payments")
           .update({ status: amt >= p.amount ? "canceled" : "partial_canceled" })
           .eq("payment_id", p.payment_id);
+        if (seatUpdErr) console.error("환불 기록 갱신 실패(PG 환불은 완료됨):", p.payment_id, seatUpdErr);
       } else {
         refundFailed = true;
         console.error("좌석 일할결제 환불 실패:", res.body);
