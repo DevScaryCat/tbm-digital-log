@@ -9,8 +9,9 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Copy, KeyRound, UserMinus, Plus, Link2, UserPlus2 } from "lucide-react"
+import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2 } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
+import { suggestIdStems, suggestInitialPassword } from "@/lib/romanize"
 
 const inputCls =
     "h-11 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -27,18 +28,19 @@ export default function OrgMembersPage() {
     const router = useRouter()
     const { ctx, loading: ctxLoading } = useOrgContext()
     const [members, setMembers] = useState<MemberRow[]>([])
-    const [seatCount, setSeatCount] = useState(0)
-    const [pendingSeat, setPendingSeat] = useState<number | null>(null)
     const [loading, setLoading] = useState(true)
     const [busy, setBusy] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
-    // 직접 발급 폼
+    // 일괄 발급 폼 — 시드 + 개수 + 공용 초기 비밀번호. 현장명·새 비밀번호는
+    // 담당자가 첫 로그인 온보딩에서 직접 정한다.
     const [showCreate, setShowCreate] = useState(false)
-    const [newId, setNewId] = useState("")
-    const [newPw, setNewPw] = useState("")
-    const [newSite, setNewSite] = useState("")
-    const [newManager, setNewManager] = useState("")
+    const [stems, setStems] = useState<string[]>([])
+    const [stem, setStem] = useState("")
+    const [count, setCount] = useState(1)
+    const [initPw, setInitPw] = useState("")
+    const [formErr, setFormErr] = useState<string | null>(null)
+    const [createdIds, setCreatedIds] = useState<string[] | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
     // 초대 링크
@@ -56,8 +58,6 @@ export default function OrgMembersPage() {
             if (res.ok) {
                 const j = await res.json()
                 setMembers(j.members ?? [])
-                setSeatCount(j.seatCount ?? 0)
-                setPendingSeat(j.pendingSeatCount ?? null)
             }
         } finally {
             setLoading(false)
@@ -79,27 +79,53 @@ export default function OrgMembersPage() {
         }
     }, [])
 
+    // 아이디 시드 추천 — 회사명 로마자 (예: '하이' → hai01, hai02…)
+    useEffect(() => {
+        ;(async () => {
+            const { data } = await supabase.auth.getUser()
+            const name = String(data?.user?.user_metadata?.company_name ?? "")
+            const sugg = suggestIdStems(name)
+            setStems(sugg)
+            setStem((cur) => cur || sugg[0] || "site")
+            setInitPw((cur) => cur || suggestInitialPassword())
+        })()
+    }, [])
+
     const activeCount = members.filter((m) => m.status === "active").length
     // 상한이 없다 — 필요한 만큼 만들고 만든 만큼 낸다
     const seatsLeft = Number.POSITIVE_INFINITY
 
-    const createMember = async () => {
+    const createBulk = async () => {
+        setFormErr(null)
         setMsg(null)
+        if (!/^[a-z][a-z0-9_]{1,11}$/.test(stem)) { setFormErr("아이디 시작 문자는 영문 소문자로 시작하는 2~12자예요."); return }
+        if (initPw.length < 8) { setFormErr("초기 비밀번호는 8자 이상이어야 해요."); return }
         setBusy("create")
         try {
-            const res = await fetch("/api/org/members", {
+            const res = await fetch("/api/org/members/bulk", {
                 method: "POST",
                 headers: await authHeaders(),
-                body: JSON.stringify({ loginId: newId, password: newPw, siteName: newSite, managerName: newManager }),
+                body: JSON.stringify({ stem, count, password: initPw }),
             })
             const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "발급 실패" }); return }
-            setMsg({ type: "ok", text: `계정이 만들어졌어요. 아이디 [${j.loginId}] 와 비밀번호를 현장 담당자에게 전달하세요.` })
-            setNewId(""); setNewPw(""); setNewSite(""); setNewManager(""); setShowCreate(false)
+            if (!res.ok) { setFormErr(j.error || "발급 실패") ; return }
+            setCreatedIds(j.created ?? [])
             await load()
         } finally {
             setBusy(null)
         }
+    }
+
+    const copyCreated = async () => {
+        if (!createdIds) return
+        const text = [
+            "[안톡] 현장 계정 안내",
+            ...createdIds.map((id) => `아이디: ${id}`),
+            `초기 비밀번호: ${initPw}`,
+            "",
+            "safetalk.kr 에 로그인하면 첫 화면에서 새 비밀번호와 현장명을 설정하게 됩니다.",
+        ].join("\n")
+        try { await navigator.clipboard.writeText(text); setMsg({ type: "ok", text: "계정 목록을 복사했어요. 담당자들에게 전달하세요." }) } catch { /* 무시 */ }
     }
 
     const createInviteLink = async () => {
@@ -199,23 +225,75 @@ export default function OrgMembersPage() {
                         <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
                     </div>
 
-                    {/* ① 직접 발급 (메인) */}
-                    {!showCreate ? (
-                        <Button onClick={() => setShowCreate(true)} disabled={seatsLeft <= 0} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                    {/* ① 일괄 발급 (메인) — 시드+개수+초기 비밀번호. 현장명·새 비밀번호는 담당자 첫 로그인 때 */}
+                    {createdIds ? (
+                        <div className="rounded-xl border border-cur-success/30 bg-cur-success/5 p-4 space-y-3">
+                            <p className="flex items-center gap-1.5 text-[14px] font-bold text-cur-success">
+                                <CheckCircle2 className="w-4 h-4" /> 계정 {createdIds.length}개를 만들었어요
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {createdIds.map((id) => (
+                                    <span key={id} className="text-[13px] font-mono font-semibold text-cur-ink bg-cur-card border border-cur-hairline rounded-[6px] px-2 py-1">{id}</span>
+                                ))}
+                            </div>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                초기 비밀번호는 전부 <b className="text-cur-ink font-mono">{initPw}</b> 예요.
+                                담당자가 처음 로그인하면 새 비밀번호와 현장명을 직접 설정합니다.
+                            </p>
+                            <div className="flex gap-2">
+                                <Button onClick={copyCreated} className="flex-1 h-11 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
+                                    <Copy className="w-4 h-4 mr-1.5" /> 계정 목록 복사
+                                </Button>
+                                <Button onClick={() => { setCreatedIds(null); setShowCreate(false) }} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                            </div>
+                        </div>
+                    ) : !showCreate ? (
+                        <Button onClick={() => setShowCreate(true)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
                             <UserPlus2 className="w-4 h-4 mr-2" /> 계정 만들어서 전달하기
                         </Button>
                     ) : (
-                        <div className="rounded-xl border border-cur-hairline p-4 space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1"><Label className="text-[12px]">아이디</Label><Input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="영문·숫자 3~20자" className={inputCls} /></div>
-                                <div className="space-y-1"><Label className="text-[12px]">비밀번호</Label><Input value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="8자 이상" className={inputCls} /></div>
+                        <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-[12px]">아이디 시작 문자</Label>
+                                <Input value={stem} onChange={(e) => setStem(e.target.value.toLowerCase())} placeholder="예: hai" className={inputCls} />
+                                {stems.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {stems.map((sg) => (
+                                            <button key={sg} onClick={() => setStem(sg)}
+                                                className={`text-[12px] font-mono font-semibold rounded-full px-2.5 py-1 border transition-colors ${stem === sg ? "bg-cur-primary/10 border-cur-primary/40 text-cur-primary" : "bg-cur-elevated border-cur-hairline text-cur-body hover:border-cur-primary/30"}`}>
+                                                {sg}01…
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            <div className="space-y-1"><Label className="text-[12px]">현장명</Label><Input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="예: OO물류센터 신축현장" className={inputCls} /></div>
-                            <div className="space-y-1"><Label className="text-[12px]">담당자 이름 (선택)</Label><Input value={newManager} onChange={(e) => setNewManager(e.target.value)} placeholder="현장 관리감독자 성함" className={inputCls} /></div>
+                            <div className="flex items-center justify-between gap-3">
+                                <Label className="text-[12px] shrink-0">몇 개 만들까요?</Label>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
+                                        className="w-9 h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40"><Minus className="w-4 h-4" /></button>
+                                    <span className="w-8 text-center text-[18px] font-bold tabular-nums">{count}</span>
+                                    <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
+                                        className="w-9 h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
+                                </div>
+                            </div>
+                            {/^[a-z][a-z0-9_]{1,11}$/.test(stem) && (
+                                <p className="text-[12px] text-cur-muted bg-cur-elevated rounded-[8px] px-3 py-2 font-mono">
+                                    {Array.from({ length: Math.min(count, 3) }, (_, i) => `${stem}${String(i + 1).padStart(2, "0")}`).join(", ")}{count > 3 ? ` … ${stem}${String(count).padStart(2, "0")}` : ""} 로 만들어져요
+                                </p>
+                            )}
+                            <div className="space-y-1">
+                                <Label className="text-[12px]">공용 초기 비밀번호</Label>
+                                <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />
+                                <p className="text-[11px] text-cur-muted-soft">담당자가 처음 로그인하면 반드시 새 비밀번호로 바꾸게 돼요.</p>
+                            </div>
+                            {formErr && (
+                                <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
+                            )}
                             <div className="flex gap-2">
-                                <Button onClick={() => setShowCreate(false)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={createMember} disabled={busy === "create" || !newId || !newPw || !newSite} className="flex-1 h-11 rounded-lg bg-cur-primary text-white font-bold">
-                                    {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : "만들기"}
+                                <Button onClick={() => { setShowCreate(false); setFormErr(null) }} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={createBulk} disabled={busy === "create" || !stem || !initPw} className="flex-1 h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                    {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : `${count}개 만들기`}
                                 </Button>
                             </div>
                         </div>

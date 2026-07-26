@@ -64,6 +64,14 @@ export default function MainPage() {
   const [tabReady, setTabReady] = useState(false)
   // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
   const [showUsageStep, setShowUsageStep] = useState(false)
+  // 일괄 발급된 현장 계정의 첫 로그인 — 새 비밀번호·현장명을 정하기 전엔 앱을 열지 않는다
+  const [mustSetup, setMustSetup] = useState(false)
+  const [setupPw, setSetupPw] = useState("")
+  const [setupPw2, setSetupPw2] = useState("")
+  const [setupSite, setSetupSite] = useState("")
+  const [setupManager, setSetupManager] = useState("")
+  const [setupErr, setSetupErr] = useState<string | null>(null)
+  const [setupBusy, setSetupBusy] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -71,6 +79,13 @@ export default function MainPage() {
       if (session) {
         const currentUser = session.user
         setUser(currentUser)
+
+        // 일괄 발급 계정의 첫 로그인 — 비밀번호·현장명 설정이 최우선 (다른 온보딩은 그 다음)
+        if (currentUser.user_metadata?.must_set_password) {
+          setMustSetup(true)
+          setIsLoading(false)
+          return
+        }
 
         // 감독자도 TBM을 쓴다 — 역할과 무관하게 온보딩·통계를 동일하게 로드한다.
         // (관리 전용 시절엔 여기서 감독자를 건너뛰어, 출력 형식이 없어 hwpx/docx 설정이
@@ -185,12 +200,48 @@ export default function MainPage() {
   }
 
   // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
+  // 첫 로그인 설정 저장 — 비밀번호 교체 + 현장명·담당자 확정
+  const handleFirstSetup = async () => {
+    setSetupErr(null)
+    if (setupPw.length < 8) { setSetupErr("비밀번호는 8자 이상이어야 해요."); return }
+    if (setupPw !== setupPw2) { setSetupErr("비밀번호가 서로 달라요. 다시 확인해주세요."); return }
+    if (!setupSite.trim()) { setSetupErr("현장명을 입력해주세요."); return }
+    setSetupBusy(true)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: setupPw,
+        data: {
+          company_name: setupSite.trim(),
+          full_name: setupManager.trim() || setupSite.trim(),
+          must_set_password: null,
+        },
+      })
+      if (error) {
+        const msg = /weak|easy to guess/i.test(error.message)
+          ? "너무 흔한 비밀번호예요. 숫자·문자를 섞어 다른 비밀번호를 정해주세요."
+          : /should be different/i.test(error.message)
+            ? "초기 비밀번호와 다른 비밀번호를 정해주세요."
+            : "저장에 실패했어요: " + error.message
+        setSetupErr(msg)
+        return
+      }
+      window.location.reload() // 메타데이터·역할을 처음부터 다시 로드
+    } finally {
+      setSetupBusy(false)
+    }
+  }
+
   // '여러 현장'은 전용 셋업 페이지로 보낸다 — 탭 안에 셋업을 끼워 넣으면
   // 현장 목록·추가 버튼과 역할이 겹쳐 난잡해진다 (홈은 돌아왔을 때 현장관리 탭)
   const chooseUsage = (t: TabKey) => {
     setShowUsageStep(false)
     writeLastTab(t)
-    if (t === "company") { router.push("/org/setup"); return }
+    if (t === "company") {
+      // 셋업을 건너뛰고 돌아와도 현장관리 탭의 '현장 추가하기'가 눈에 띄게 힌트를 남긴다
+      try { window.localStorage.setItem("antok_hint_add_site", "1") } catch { /* 무시 */ }
+      router.push("/org/setup")
+      return
+    }
     setTab(t)
   }
 
@@ -229,6 +280,52 @@ export default function MainPage() {
   }
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+
+  // 일괄 발급 계정의 첫 로그인 설정 — 이걸 끝내야 앱이 열린다
+  if (user && mustSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
+        <div className="w-full max-w-md bg-cur-card border border-cur-hairline rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-6 py-9 sm:px-8 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="mx-auto w-fit"><Logo size="md" /></div>
+            <h1 className="text-[22px] font-bold tracking-[-0.02em]">처음 오셨네요!</h1>
+            <p className="text-[14px] text-cur-body leading-relaxed">
+              사용하실 비밀번호와 현장 정보를 정하면<br />바로 시작할 수 있어요.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-[13px] font-medium text-cur-body">새 비밀번호</label>
+              <input type="password" value={setupPw} onChange={(e) => setSetupPw(e.target.value)} placeholder="8자 이상"
+                className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[13px] font-medium text-cur-body">새 비밀번호 확인</label>
+              <input type="password" value={setupPw2} onChange={(e) => setSetupPw2(e.target.value)} placeholder="한 번 더 입력"
+                className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[13px] font-medium text-cur-body">현장명</label>
+              <input value={setupSite} onChange={(e) => setSetupSite(e.target.value)} placeholder="예: OO물류센터 신축현장"
+                className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[13px] font-medium text-cur-body">담당자 이름 (선택)</label>
+              <input value={setupManager} onChange={(e) => setSetupManager(e.target.value)} placeholder="본인 성함"
+                className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+            </div>
+          </div>
+          {setupErr && (
+            <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{setupErr}</p>
+          )}
+          <Button onClick={handleFirstSetup} disabled={setupBusy || !setupPw || !setupPw2 || !setupSite.trim()}
+            className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold disabled:opacity-40">
+            {setupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "설정하고 시작하기"}
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   if (!user) {
     const features = [

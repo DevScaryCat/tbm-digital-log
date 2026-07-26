@@ -52,6 +52,16 @@ export function CompanyPanel() {
     const [data, setData] = useState<Overview | null>(null)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
     const [loading, setLoading] = useState(true)
+    // 온보딩에서 '여러 현장을 관리해요'를 고른 사람에게만 '현장 추가하기'를 강조한다.
+    // 혼자 쓰는 사람에게는 광고성 소음이라 띄우지 않는다.
+    const [hintAddSite, setHintAddSite] = useState(false)
+    useEffect(() => {
+        try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
+    }, [])
+    const clearHint = () => {
+        setHintAddSite(false)
+        try { window.localStorage.removeItem("antok_hint_add_site") } catch { /* 무시 */ }
+    }
 
     useEffect(() => {
         ;(async () => {
@@ -192,9 +202,17 @@ export function CompanyPanel() {
                     )}
                     {canAddSites && (
                         <button
-                            onClick={() => router.push("/org/members?new=1")}
-                            className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                            onClick={() => { clearHint(); router.push("/org/members?new=1") }}
+                            className="relative w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
                         >
+                            {hintAddSite && data.memberCount === 0 && (
+                                <>
+                                    <span aria-hidden className="absolute inset-1 rounded-[10px] border-2 border-cur-primary pointer-events-none animate-pulse" />
+                                    <span aria-hidden className="absolute -top-2.5 right-3 z-10 flex items-center gap-1 rounded-full bg-cur-primary text-cur-on-primary text-[10px] font-bold px-2 py-[3px] shadow-[0_4px_12px_rgba(245,78,0,0.35)] animate-bounce pointer-events-none">
+                                        여기서 현장을 추가해요
+                                    </span>
+                                </>
+                            )}
                             <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
                                 <Plus className="w-4 h-4" />
                             </span>
@@ -211,14 +229,15 @@ export function CompanyPanel() {
             </section>
 
 
-            {/* 관리 바로가기 — 소속 현장에게는 잠긴 모습으로 같은 자리에 보인다 */}
-            <section className="grid grid-cols-2 gap-2.5">
+            {/* 관리 메뉴 — 내 안톡 탭의 카드 문법(아이콘 좌·라벨·셰브론)과 동일한 리스트 한 장.
+                소속 현장에게는 같은 자리·잠긴 모습으로 보인다. */}
+            <section className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                 {[
-                    { href: "/org/reports", label: "월간 보고서", desc: "전 현장 종합 열람", icon: <FileBarChart2 className="w-5 h-5" /> },
-                    { href: "/risk-assessment", label: "AI 분석 보고서", desc: "현장별 위험요인 분석", icon: <Sparkles className="w-5 h-5" /> },
-                    { href: "/report-settings", label: "보고서 설정", desc: "외부 수신처 관리", icon: <Settings2 className="w-5 h-5" /> },
-                    { href: "/org/members", label: "현장 계정 관리", desc: "계정 발급·편입", icon: <Users className="w-5 h-5" /> },
-                    { href: "/account", label: "구독 및 결제", desc: "카드·해지", icon: <CreditCard className="w-5 h-5" /> },
+                    { href: "/org/reports", label: "월간 보고서", icon: <FileBarChart2 className="w-5 h-5" /> },
+                    { href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="w-5 h-5" /> },
+                    { href: "/report-settings", label: "보고서 설정", icon: <Settings2 className="w-5 h-5" /> },
+                    { href: "/org/members", label: "현장 계정 관리", icon: <Users className="w-5 h-5" /> },
+                    { href: "/account", label: "구독 및 결제", icon: <CreditCard className="w-5 h-5" /> },
                 ].map((q) => (
                     <button
                         key={q.href}
@@ -227,24 +246,24 @@ export function CompanyPanel() {
                         aria-disabled={!managed}
                         onClick={() => managed && router.push(q.href)}
                         className={[
-                            "bg-cur-card rounded-[12px] border border-cur-hairline p-4 text-left transition-all",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary",
-                            managed
-                                ? "hover:border-cur-primary/40 active:bg-cur-elevated/40 cursor-pointer"
-                                : "opacity-55 cursor-not-allowed",
+                            "w-full flex items-center gap-3.5 p-4 text-left transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset",
+                            managed ? "hover:bg-cur-elevated/50 active:bg-cur-elevated cursor-pointer" : "opacity-55 cursor-not-allowed",
                         ].join(" ")}
                     >
                         <span
-                            className={`w-9 h-9 rounded-[8px] flex items-center justify-center ${
-                                managed ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-elevated text-cur-muted-soft"
+                            className={`w-10 h-10 shrink-0 rounded-[8px] flex items-center justify-center ${
+                                managed ? "bg-cur-elevated text-cur-ink" : "bg-cur-elevated text-cur-muted-soft"
                             }`}
                         >
                             {managed ? q.icon : <Lock className="w-4 h-4" />}
                         </span>
-                        <span className="block text-[14px] font-bold text-cur-ink mt-2.5">{q.label}</span>
-                        <span className="block text-[12px] text-cur-muted mt-0.5">
-                            {managed ? q.desc : "감독자가 관리"}
-                        </span>
+                        <span className="flex-1 text-[15px] font-semibold text-cur-ink">{q.label}</span>
+                        {managed ? (
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        ) : (
+                            <span className="text-[11px] text-cur-muted-soft shrink-0">감독자 관리</span>
+                        )}
                     </button>
                 ))}
             </section>

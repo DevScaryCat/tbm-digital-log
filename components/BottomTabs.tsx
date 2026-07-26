@@ -27,8 +27,8 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-    { key: "tbm", label: "TBM", icon: <HardHat className="w-[22px] h-[22px]" /> },
-    { key: "company", label: "현장관리", icon: <Building2 className="w-[22px] h-[22px]" /> },
+    { key: "tbm", label: "내 안톡", icon: <HardHat className="w-6 h-6" /> },
+    { key: "company", label: "현장관리", icon: <Building2 className="w-6 h-6" /> },
 ]
 
 export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
@@ -36,13 +36,14 @@ export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
     // 페이지 맨 아래(푸터 저작권 줄 등)가 바 뒤로 숨지 않는다.
     return (
       <>
-        <div aria-hidden className="h-[58px] pb-[env(safe-area-inset-bottom)]" />
+        <div aria-hidden className="h-[60px] pb-[env(safe-area-inset-bottom)]" />
         <nav
             aria-label="주요 화면"
-            // 모바일 폭 컨테이너에 맞춰 가운데 고정. 홈 인디케이터 영역만큼 아래 여백을 더한다.
-            className="fixed inset-x-0 bottom-0 z-40 bg-cur-card/95 backdrop-blur-sm border-t border-cur-hairline pb-[env(safe-area-inset-bottom)]"
+            // 바를 홈 카드와 같은 폭(max-w-lg)으로 — 전폭 바는 데스크톱에서 카드와 따로 놀았다.
+            // 홈 인디케이터 영역만큼 아래 여백을 더한다.
+            className="fixed inset-x-0 bottom-0 z-40 pointer-events-none"
         >
-            <ul className="max-w-lg mx-auto grid grid-cols-2">
+            <ul className="max-w-lg mx-auto grid grid-cols-2 pointer-events-auto bg-cur-card/95 backdrop-blur-sm border-t border-x border-cur-hairline pb-[env(safe-area-inset-bottom)]">
                 {TABS.map((t) => {
                     const current = value === t.key
                     return (
@@ -53,7 +54,7 @@ export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
                                 disabled={loading}
                                 onClick={() => onChange(t.key)}
                                 className={[
-                                    "group relative w-full h-[58px] flex flex-col items-center justify-center gap-1",
+                                    "group relative w-full h-[60px] flex flex-col items-center justify-center gap-1",
                                     "transition-colors duration-150 ease-out",
                                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset",
                                     "disabled:opacity-45 disabled:cursor-default",
@@ -80,7 +81,7 @@ export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
                                         />
                                     )}
                                 </span>
-                                <span className={`text-[11px] leading-none ${current ? "font-bold" : "font-medium"}`}>
+                                <span className={`text-[12px] leading-none tracking-[-0.01em] ${current ? "font-bold" : "font-medium"}`}>
                                     {t.label}
                                 </span>
                             </button>
