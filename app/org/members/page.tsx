@@ -77,9 +77,14 @@ export default function OrgMembersPage() {
     // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우 발급 폼을 바로 펼친다.
     // useSearchParams는 정적 렌더에서 Suspense를 요구해 window로 직접 읽는다.
     useEffect(() => {
-        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-            setAddStep("count")
-        }
+        if (typeof window === "undefined") return
+        const sp = new URLSearchParams(window.location.search)
+        if (sp.get("new") !== "1") return
+        // /org/setup에서 이미 고른 개수·방식은 다시 묻지 않고 해당 단계로 직행
+        const c = Math.floor(Number(sp.get("count")))
+        if (Number.isFinite(c) && c >= 1 && c <= 20) setCount(c)
+        const m = sp.get("method")
+        setAddStep(m === "direct" ? "direct" : m === "link" ? "method" : "count")
     }, [])
 
     // 아이디 시드 추천 — 회사명 로마자 (예: '하이' → hai01, hai02…)
