@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 import { cn, paymentsEnabled } from "@/lib/utils"
 
 type PlanId = "monthly_basic" | "monthly_pro"
@@ -62,8 +63,13 @@ export default function PricingPage() {
         ;(async () => {
             const { data } = await supabase.auth.getUser()
             setHasUser(!!data?.user)
-            // 안전관리자 가입 중 이탈 계정: 개인 플랜 퍼널로 새면 개인 구독이 붙는 순간
-            // 회사 플랜 결제가 영구 차단된다 → 회사 플랜 결제(가입 이어서)로 되돌린다 (리뷰 F)
+            // 요금제 화면은 단독(solo) 사용자용이다. 조직 계정은 각자 갈 곳으로 보낸다.
+            // ※ 이미 결제를 마친 owner까지 /signup/manager로 보내면 거기서 다시 홈으로 튕겨
+            //   pricing → signup/manager → home 삼각 리다이렉트가 된다. 반드시 org 유무로 분기.
+            const orgCtx = await fetchOrgContext()
+            if (orgCtx?.kind === "owner") { router.replace("/org/members"); return }
+            if (orgCtx?.kind === "member") { router.replace("/"); return }
+            // 조직이 아직 없는 안전관리자 = 결제 전 이탈 → 회사 플랜 결제로 되돌린다 (리뷰 F)
             if ((data?.user?.user_metadata as any)?.role === "safety_manager") {
                 router.replace("/signup/manager")
                 return

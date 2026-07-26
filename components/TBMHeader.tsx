@@ -128,7 +128,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
         <div className="flex items-center gap-2">
             {badge && (
                 <button
-                    onClick={() => router.push("/pricing")}
+                    // 안전관리자는 요금제 화면이 아니라 좌석·계정 관리로 (거기가 요금 관리 지점)
+                    onClick={() => router.push(orgKind === "owner" ? "/org/members" : "/pricing")}
                     className={`text-[10px] font-bold px-2 py-1 rounded-[4px] tracking-wide ${
                         badge.isPro
                             ? "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active"
@@ -145,7 +146,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                {usage && (
+                {/* 안전관리자는 작성 기능이 없어 회의록·일지 사용량이 무의미하다 (한도 0 → "Pro 전용"으로 표시됨) */}
+                {usage && orgKind !== "owner" && (
                     <>
                         <div className="px-3 py-2.5 space-y-2.5">
                             <div className="flex items-center justify-between">
