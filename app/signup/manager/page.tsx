@@ -33,6 +33,8 @@ export default function ManagerSignupPage() {
     const [idChecked, setIdChecked] = useState<null | boolean>(null)
     const [checkingId, setCheckingId] = useState(false)
     const [existingSession, setExistingSession] = useState(false)
+    // 결제 전 이탈 후 재방문 시, 이미 만들어진 계정의 아이디 (안내·재시작용)
+    const [currentLoginId, setCurrentLoginId] = useState<string | null>(null)
 
     // ② 회사·좌석
     const [orgName, setOrgName] = useState("")
@@ -61,11 +63,24 @@ export default function ManagerSignupPage() {
                     return
                 }
             }
-            // 로그인은 돼 있는데 조직이 없음 → 계정 단계 생략하고 회사 정보부터
+            // 로그인은 돼 있는데 조직이 없음 → 계정 단계 생략하고 회사 정보부터.
+            // (결제 전 이탈 후 재방문하는 경우 — 계정은 이미 만들어져 있다)
             setExistingSession(true)
+            setCurrentLoginId((session.user.email || "").replace(/@tbm\.com$/, ""))
             setStep(2)
         })()
     }, [router])
+
+    /** 다른 아이디로 처음부터 — 로그아웃하고 계정 단계로 되돌린다 */
+    const restartWithNewAccount = async () => {
+        if (!window.confirm("지금 로그인된 계정에서 로그아웃하고 새 아이디로 다시 시작할까요?\n(결제 전이라 기존 계정에는 아무 것도 청구되지 않았습니다)")) return
+        await supabase.auth.signOut()
+        setExistingSession(false)
+        setCurrentLoginId(null)
+        setLoginId(""); setPassword(""); setPassword2(""); setIdChecked(null)
+        setError(null)
+        setStep(1)
+    }
 
     const checkId = async () => {
         const id = loginId.trim().toLowerCase()
@@ -114,6 +129,7 @@ export default function ManagerSignupPage() {
             })
             if (loginErr) { setError("계정은 만들어졌지만 로그인에 실패했습니다. 로그인 후 다시 방문해주세요."); return }
             setExistingSession(true)
+            setCurrentLoginId(loginId.trim().toLowerCase())
             setStep(3)
         } finally {
             setLoading(false)
@@ -195,6 +211,22 @@ export default function ManagerSignupPage() {
                 {/* ② 회사·좌석 */}
                 {step === 2 && (
                     <div className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-5">
+                        {/* 결제 전 이탈 후 재방문 — 계정이 이미 있다는 걸 알리고 빠져나갈 길을 준다 */}
+                        {existingSession && currentLoginId && (
+                            <div className="rounded-xl bg-cur-elevated p-4 space-y-2">
+                                <p className="text-[13px] text-cur-body leading-relaxed">
+                                    <b className="text-cur-ink">{currentLoginId}</b> 계정으로 이어서 진행합니다.
+                                    <br />
+                                    아직 결제 전이라 요금은 청구되지 않았어요.
+                                </p>
+                                <button
+                                    onClick={restartWithNewAccount}
+                                    className="text-[13px] font-semibold text-cur-primary hover:underline"
+                                >
+                                    다른 아이디로 다시 시작하기
+                                </button>
+                            </div>
+                        )}
                         <div className="space-y-1.5">
                             <Label className="text-[14px] font-semibold text-cur-ink">회사명</Label>
                             <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="예: OO건설" className={inputCls} />
@@ -217,6 +249,12 @@ export default function ManagerSignupPage() {
                         <Button onClick={goStep3} disabled={loading || !orgName.trim()} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 disabled:opacity-40">
                             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "결제하고 시작하기"}
                         </Button>
+                        {!existingSession && (
+                            <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed -mt-2">
+                                다음 단계에서 계정이 만들어지고 결제 화면으로 넘어가요.
+                                <br />결제는 결제수단을 고른 뒤에 진행됩니다.
+                            </p>
+                        )}
                         {/* 이 단계까지는 계정이 아직 만들어지지 않아 되돌아가도 안전하다.
                             이미 로그인된 상태로 재개한 경우(existingSession)엔 돌아갈 계정 단계가 없다. */}
                         {!existingSession && (
