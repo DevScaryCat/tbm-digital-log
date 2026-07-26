@@ -43,8 +43,10 @@ export default function OrgReportsPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
-            <TBMHeader title="월간 보고서" backHref="/" />
-            <main className="max-w-2xl mx-auto px-5 py-6 space-y-4 pb-16">
+            <div className="max-w-lg mx-auto px-4 pt-4">
+                <TBMHeader title="월간 보고서" backHref="/" />
+            </div>
+            <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                 {loading || ctxLoading ? (
                     <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
                 ) : rows.length === 0 ? (

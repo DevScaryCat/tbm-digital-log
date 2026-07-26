@@ -69,6 +69,14 @@ export default function OrgMembersPage() {
         load()
     }, [ctx, ctxLoading, router, load])
 
+    // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우 발급 폼을 바로 펼친다.
+    // useSearchParams는 정적 렌더에서 Suspense를 요구해 window로 직접 읽는다.
+    useEffect(() => {
+        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
+            setShowCreate(true)
+        }
+    }, [])
+
     const activeCount = members.filter((m) => m.status === "active").length
     const seatsLeft = Math.max(0, seatCount - activeCount)
 
@@ -190,8 +198,10 @@ export default function OrgMembersPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
-            <TBMHeader title="좌석·계정 관리" backHref="/" />
-            <main className="max-w-2xl mx-auto px-5 py-6 space-y-5 pb-16">
+            <div className="max-w-lg mx-auto px-4 pt-4">
+                <TBMHeader title="좌석·계정 관리" backHref="/" />
+            </div>
+            <main className="max-w-lg mx-auto px-5 py-6 space-y-5 pb-16">
                 {msg && (
                     <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
                 )}

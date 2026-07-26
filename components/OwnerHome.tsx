@@ -57,12 +57,66 @@ export function OwnerHome() {
 
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
-            <TBMHeader />
-            <main className="max-w-2xl mx-auto px-5 py-6 space-y-6 pb-16">
+            {/* 앱 전체가 모바일 폭 컨테이너 기준 — 헤더도 같이 묶어 데스크톱에서 벌어지지 않게 */}
+            <div className="max-w-lg mx-auto px-4 pt-4">
+                <TBMHeader />
+            </div>
+            <main className="max-w-lg mx-auto px-5 py-6 space-y-6 pb-16">
                 {loading ? (
                     <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
                 ) : !data ? (
                     <p className="text-[14px] text-cur-muted text-center py-16">현황을 불러오지 못했습니다.</p>
+                ) : data.activeCount === 0 ? (
+                    /* 첫 진입 — 연결된 현장이 없으면 관제 대신 '다음에 할 일'을 안내한다 */
+                    <section className="space-y-5 pt-2">
+                        <div className="text-center space-y-2">
+                            <p className="text-[13px] text-cur-muted">{data.orgName}</p>
+                            <h1 className="text-[22px] font-bold text-cur-ink tracking-[-0.02em]">
+                                이제 현장을 추가하면 시작이에요
+                            </h1>
+                            <p className="text-[13px] text-cur-muted leading-relaxed">
+                                현장 계정을 만들어 관리감독자에게 전달하면<br />
+                                그 현장의 기록이 여기로 모입니다
+                            </p>
+                        </div>
+
+                        <ol className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                            {[
+                                { n: 1, t: "현장 계정 만들기", d: "아이디·비밀번호를 정해 만들고 담당자에게 전달", now: true },
+                                { n: 2, t: "현장에서 TBM 기록", d: "관리감독자가 회의록·교육일지를 작성해요" },
+                                { n: 3, t: "매달 1일 보고서 자동 발송", d: "전 현장 종합 보고서를 여기서 열람" },
+                            ].map((s) => (
+                                <li key={s.n} className="flex items-start gap-3 p-4">
+                                    <span className={`w-6 h-6 rounded-full text-[12px] font-bold flex items-center justify-center shrink-0 ${s.now ? "bg-cur-primary text-white" : "bg-cur-elevated text-cur-muted-soft"}`}>
+                                        {s.n}
+                                    </span>
+                                    <span className="flex-1 min-w-0">
+                                        <span className={`block text-[14px] font-semibold ${s.now ? "text-cur-ink" : "text-cur-muted"}`}>{s.t}</span>
+                                        <span className="block text-[12px] text-cur-muted-soft mt-0.5">{s.d}</span>
+                                    </span>
+                                </li>
+                            ))}
+                        </ol>
+
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => router.push("/org/members?new=1")}
+                                className="w-full h-12 rounded-xl bg-cur-primary text-white text-[15px] font-bold hover:opacity-90 transition-opacity"
+                            >
+                                현장 계정 만들기
+                            </button>
+                            <button
+                                onClick={() => router.push("/org/members")}
+                                className="w-full h-11 text-[13px] font-semibold text-cur-muted hover:text-cur-ink transition-colors"
+                            >
+                                이미 안톡을 쓰던 현장이 있어요 (기존 계정 편입)
+                            </button>
+                        </div>
+
+                        <p className="text-[12px] text-cur-muted-soft text-center">
+                            좌석 {data.activeCount}/{data.seatCount} 사용 중
+                        </p>
+                    </section>
                 ) : (
                     <>
                         {/* 오늘 요약 */}
