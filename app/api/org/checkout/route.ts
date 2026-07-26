@@ -17,7 +17,9 @@ import { getOrgContext } from "@/lib/org";
 import { paymentsEnabled } from "@/lib/utils";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+// 카카오페이 빌링키 전파 지연(발급 직후 조회가 UNAUTHORIZED)이 길어질 수 있어
+// 검증 재시도 창을 넉넉히 잡는다. 재시도(~25s) + 청구까지 커버.
+export const maxDuration = 60;
 
 const MAX_SEATS = 100;
 
@@ -74,9 +76,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // 빌링키 검증 — 즉시 결제 경로라 낙관수용 불가 (전파 지연이면 잠시 후 재시도 안내)
+    // 빌링키 검증 — 즉시 결제 경로라 낙관수용 불가(미검증 키로 청구하면 타인 카드 과금 위험).
+    // 대신 카카오페이 전파 지연을 넘길 만큼 재시도 창을 길게 잡는다(총 ~25초).
     let info = await getBillingKeyInfo(billingKey);
-    const retryDelays = [1500, 3000, 4500];
+    const retryDelays = [1500, 2500, 4000, 5000, 6000, 6000];
     for (let i = 0; !info.ok && i < retryDelays.length; i++) {
       await new Promise((r) => setTimeout(r, retryDelays[i]));
       info = await getBillingKeyInfo(billingKey);
@@ -84,8 +87,12 @@ export async function POST(request: Request) {
     if (!info.ok) {
       const b = info.body as { message?: string; type?: string; pgCode?: string; pgMessage?: string } | null;
       if (b?.type === "UNAUTHORIZED") {
+        // 재인증 없이 같은 빌링키로 재시도할 수 있도록 키를 함께 돌려준다
         return NextResponse.json(
-          { error: "결제수단을 확인하는 중입니다. 잠시 후(약 30초) 다시 시도해주세요." },
+          {
+            error: "결제수단 확인이 아직 끝나지 않았어요. 잠시 후 '결제 다시 시도'를 눌러주세요.",
+            retryableBillingKey: billingKey,
+          },
           { status: 409 }
         );
       }

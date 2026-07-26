@@ -53,6 +53,9 @@ export function OrgCheckoutButtons({
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 카카오페이 등 간편결제는 빌링키 발급 직후 조회가 잠깐 막힌다(전파 지연).
+    // 그때 발급된 키를 들고 있다가 재인증 없이 같은 키로 다시 청구할 수 있게 한다.
+    const [pendingKey, setPendingKey] = useState<string | null>(null)
     const total = seatCount * SEAT_PRICE
 
     const registerCheckout = async (billingKey: string) => {
@@ -65,9 +68,12 @@ export function OrgCheckoutButtons({
         })
         const json = await res.json()
         if (!res.ok) {
+            // 전파 지연이면 키를 보관해 재시도 버튼을 띄운다
+            if (json.retryableBillingKey) setPendingKey(json.retryableBillingKey)
             setMsg({ type: "err", text: json.error || "결제 처리 실패" })
             return false
         }
+        setPendingKey(null)
         // 홈이 owner 관제 대시보드로 스왑되도록 역할 캐시 무효화 (iframe 경로는 풀 리로드가 없음)
         clearOrgContextCache()
         setMsg({ type: "ok", text: "결제가 완료되었습니다!" })
@@ -154,7 +160,23 @@ export function OrgCheckoutButtons({
                     {msg.text}
                 </div>
             )}
-            <p className="text-[13px] text-cur-muted text-center">결제수단을 선택하세요</p>
+            {/* 전파 지연으로 첫 청구가 막힌 경우 — 카카오페이 인증을 다시 하지 않고 같은 키로 재시도 */}
+            {pendingKey && (
+                <Button
+                    onClick={async () => {
+                        setProcessing("retry")
+                        setMsg(null)
+                        try { await registerCheckout(pendingKey) } finally { setProcessing(null) }
+                    }}
+                    disabled={!!processing}
+                    className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                >
+                    {processing === "retry" ? <Loader2 className="w-4 h-4 animate-spin" /> : "결제 다시 시도"}
+                </Button>
+            )}
+            <p className="text-[13px] text-cur-muted text-center">
+                {pendingKey ? "다른 수단으로 새로 결제하려면 아래에서 선택하세요" : "결제수단을 선택하세요"}
+            </p>
             {METHODS.map((m) => (
                 <Button
                     key={m.key}
