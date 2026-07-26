@@ -9,7 +9,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2 } from "lucide-react"
+import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2, ChevronRight } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
 import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
@@ -35,8 +35,8 @@ export default function OrgMembersPage() {
 
     // 일괄 발급 폼 — 시드 + 개수 + 공용 초기 비밀번호. 현장명·새 비밀번호는
     // 담당자가 첫 로그인 온보딩에서 직접 정한다.
-    const [showCreate, setShowCreate] = useState(false)
-    const [stems, setStems] = useState<string[]>([])
+    // 추가 마법사: count(몇 개) → method(방식 선택) → direct(직접 발급) | link(초대 링크)
+    const [addStep, setAddStep] = useState<null | "count" | "method" | "direct" | "link">(null)
     const [stem, setStem] = useState("")
     const [count, setCount] = useState(1)
     const [initPw, setInitPw] = useState("")
@@ -78,7 +78,7 @@ export default function OrgMembersPage() {
     // useSearchParams는 정적 렌더에서 Suspense를 요구해 window로 직접 읽는다.
     useEffect(() => {
         if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1") {
-            setShowCreate(true)
+            setAddStep("count")
         }
     }, [])
 
@@ -87,8 +87,8 @@ export default function OrgMembersPage() {
         ;(async () => {
             const { data } = await supabase.auth.getUser()
             const name = String(data?.user?.user_metadata?.company_name ?? "")
+            // 추천 칩은 없앴다(혼란) — 회사명 로마자를 입력칸 기본값으로만 깔아준다
             const sugg = suggestIdStems(name)
-            setStems(sugg)
             setStem((cur) => cur || sugg[0] || "")
             setInitPw((cur) => cur || suggestInitialPassword())
             setSub(await fetchSubscription())
@@ -146,6 +146,7 @@ export default function OrgMembersPage() {
             })
             const j = await res.json()
             if (!res.ok) { setMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
+            setAddStep("link")
             setInviteUrl(`${window.location.origin}/join/${j.token}`)
         } finally {
             setBusy(null)
@@ -218,7 +219,7 @@ export default function OrgMembersPage() {
 
                 {/* 계정 현황 = 계산기 — 발급 폼의 개수를 바꾸면 여기 숫자가 바로 바뀐다 */}
                 {(() => {
-                    const pending = showCreate && !createdIds ? count : 0
+                    const pending = addStep && !createdIds ? count : 0
                     const sites = activeCount + pending
                     const total = (1 + sites) * 3900
                     const isTrial = sub?.status === "trialing"
@@ -263,48 +264,100 @@ export default function OrgMembersPage() {
                                 <Button onClick={copyCreated} className="flex-1 h-11 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
                                     <Copy className="w-4 h-4 mr-1.5" /> 계정 목록 복사
                                 </Button>
-                                <Button onClick={() => { setCreatedIds(null); setShowCreate(false) }} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                                <Button onClick={() => { setCreatedIds(null); setAddStep(null) }} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                             </div>
                         </div>
-                    ) : !showCreate ? (
-                        <Button onClick={() => setShowCreate(true)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
-                            <UserPlus2 className="w-4 h-4 mr-2" /> 계정 만들어서 전달하기
+                    ) : addStep === null ? (
+                        <Button onClick={() => setAddStep("count")} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                            <UserPlus2 className="w-4 h-4 mr-2" /> 현장 계정 추가
                         </Button>
-                    ) : (
+                    ) : addStep === "count" ? (
+                        /* 1단계 — 몇 개? (위 요약 카드의 금액이 함께 움직인다) */
                         <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
-                            <div className="space-y-2">
-                                <Label className="text-[12px]">아이디 시작 문자 <span className="text-cur-muted-soft font-normal">— 현장명을 한글로 적어도 돼요</span></Label>
-                                <Input value={stem} onChange={(e) => setStem(e.target.value)} placeholder="예: 하이 물류센터" className={inputCls} />
+                            <p className="text-[14px] font-semibold text-cur-ink">몇 개 현장을 추가할까요?</p>
+                            <div className="flex items-center justify-center gap-5">
+                                <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
+                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40"><Minus className="w-4 h-4" /></button>
+                                <span className="w-12 text-center text-[28px] font-bold tabular-nums">{count}</span>
+                                <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
+                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button onClick={() => setAddStep(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={() => setAddStep("method")} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
+                            </div>
+                        </div>
+                    ) : addStep === "method" ? (
+                        /* 2단계 — 계정을 누가 만들까? */
+                        <div className="rounded-xl border border-cur-hairline p-4 space-y-3">
+                            <p className="text-[14px] font-semibold text-cur-ink">계정 {count}개, 어떻게 만들까요?</p>
+                            <button
+                                onClick={() => setAddStep("direct")}
+                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                            >
+                                <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-primary/10 text-cur-primary flex items-center justify-center"><KeyRound className="w-5 h-5" /></span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block text-[14px] font-bold text-cur-ink">내가 만들어서 전달할래요</span>
+                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">아이디·초기 비밀번호를 한 번에 만들어 담당자에게 알려줘요</span>
+                                </span>
+                                <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
+                            </button>
+                            <button
+                                onClick={createInviteLink}
+                                disabled={busy === "link"}
+                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-60"
+                            >
+                                <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-ink/8 text-cur-ink flex items-center justify-center">
+                                    {busy === "link" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block text-[14px] font-bold text-cur-ink">담당자가 직접 만들게 할래요</span>
+                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">초대 링크를 보내면 담당자가 스스로 가입해요</span>
+                                </span>
+                                <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
+                            </button>
+                            <button onClick={() => setAddStep("count")} className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink">이전</button>
+                        </div>
+                    ) : addStep === "link" ? (
+                        /* 초대 링크 결과 */
+                        <div className="rounded-xl border border-cur-hairline p-4 space-y-3">
+                            <p className="text-[14px] font-semibold text-cur-ink">초대 링크가 준비됐어요</p>
+                            {inviteUrl && (
+                                <div className="flex items-center gap-2 rounded-lg bg-cur-elevated p-2.5">
+                                    <span className="text-[12px] text-cur-body truncate flex-1 min-w-0">{inviteUrl}</span>
+                                    <button
+                                        onClick={() => { navigator.clipboard?.writeText(inviteUrl); setMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장 담당자에게 보내세요." }) }}
+                                        className="shrink-0 h-8 px-2.5 rounded-md bg-cur-card border border-cur-hairline text-[12px] font-semibold text-cur-ink flex items-center gap-1"
+                                    >
+                                        <Copy className="w-3.5 h-3.5" /> 복사
+                                    </button>
+                                </div>
+                            )}
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                링크 하나로 여러 담당자가 가입할 수 있어요 (14일 유효).
+                                가입이 끝나면 아래 목록에 자동으로 나타납니다.
+                            </p>
+                            <Button onClick={() => setAddStep(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
+                        </div>
+                    ) : (
+                        /* 직접 발급 — 아이디 규칙 설명을 눈앞에서 예시로 */
+                        <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-[12px]">아이디 앞부분</Label>
+                                <p className="text-[12px] text-cur-muted leading-relaxed">
+                                    이 글자 뒤에 01, 02… 번호가 붙어 현장 계정 아이디가 돼요.<br />
+                                    한글로 적으면 영문으로 바꿔드려요.
+                                </p>
+                                <Input value={stem} onChange={(e) => setStem(e.target.value)} placeholder="예: 무신사 또는 musinsa" className={inputCls} />
                                 {stem && effStem && sanitizeStem(stem) !== stem.toLowerCase() && (
                                     <p className="text-[12px] text-cur-muted">아이디로는 <b className="font-mono text-cur-ink">{effStem}</b> 를 사용해요</p>
                                 )}
-                                {stems.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {stems.map((sg) => (
-                                            <button key={sg} onClick={() => setStem(sg)}
-                                                className={`text-[12px] font-mono font-semibold rounded-full px-2.5 py-1 border transition-colors ${stem === sg ? "bg-cur-primary/10 border-cur-primary/40 text-cur-primary" : "bg-cur-elevated border-cur-hairline text-cur-body hover:border-cur-primary/30"}`}>
-                                                {sg}01…
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <Label className="text-[12px] shrink-0">몇 개 만들까요?</Label>
-                                <div className="flex items-center gap-3">
-                                    <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
-                                        className="w-9 h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40"><Minus className="w-4 h-4" /></button>
-                                    <span className="w-8 text-center text-[18px] font-bold tabular-nums">{count}</span>
-                                    <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
-                                        className="w-9 h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
-                                </div>
                             </div>
                             {STEM_RE.test(effStem) && (
                                 <p className="text-[12px] text-cur-muted bg-cur-elevated rounded-[8px] px-3 py-2 font-mono">
                                     {Array.from({ length: Math.min(count, 3) }, (_, i) => `${effStem}${String(i + 1).padStart(2, "0")}`).join(", ")}{count > 3 ? ` … ${effStem}${String(count).padStart(2, "0")}` : ""} 로 만들어져요
                                 </p>
                             )}
-
                             <div className="space-y-1">
                                 <Label className="text-[12px]">공용 초기 비밀번호</Label>
                                 <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />
@@ -314,33 +367,15 @@ export default function OrgMembersPage() {
                                 <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
                             )}
                             <div className="flex gap-2">
-                                <Button onClick={() => { setShowCreate(false); setFormErr(null) }} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-1 h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                <Button onClick={() => { setAddStep("method"); setFormErr(null) }} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
+                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
                                     {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : `${count}개 만들기`}
                                 </Button>
                             </div>
                         </div>
                     )}
 
-                    {/* ② 초대 링크 (보조) */}
-                    <div className="space-y-2">
-                        <button onClick={createInviteLink} disabled={busy === "link" || seatsLeft <= 0} className="text-[13px] font-semibold text-cur-primary flex items-center gap-1.5 disabled:opacity-40">
-                            <Link2 className="w-4 h-4" /> {busy === "link" ? "생성 중…" : "초대 링크 만들기 (14일 유효)"}
-                        </button>
-                        {inviteUrl && (
-                            <div className="flex items-center gap-2 rounded-lg bg-cur-elevated p-2.5">
-                                <span className="text-[12px] text-cur-body truncate flex-1 min-w-0">{inviteUrl}</span>
-                                <button
-                                    onClick={() => { navigator.clipboard?.writeText(inviteUrl); setMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장 담당자에게 보내세요." }) }}
-                                    className="shrink-0 h-8 px-2.5 rounded-md bg-cur-card border border-cur-hairline text-[12px] font-semibold text-cur-ink flex items-center gap-1"
-                                >
-                                    <Copy className="w-3.5 h-3.5" /> 복사
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ③ 기존 계정 편입 */}
+                    {/* 기존 계정 편입 */}
                     <div className="pt-3 border-t border-cur-hairline space-y-2">
                         <Label className="text-[13px] font-semibold text-cur-ink">이미 안톡을 쓰던 현장이 있나요?</Label>
                         <p className="text-[12px] text-cur-muted-soft">그 계정의 아이디를 입력하면 편입 초대가 가요. 기존 기록은 그대로 유지됩니다.</p>
