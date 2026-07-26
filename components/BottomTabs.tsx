@@ -32,7 +32,11 @@ const TABS: TabDef[] = [
 ]
 
 export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
+    // 탭바는 fixed라 문서 흐름에서 빠진다 — 같은 높이의 스페이서를 넣어야
+    // 페이지 맨 아래(푸터 저작권 줄 등)가 바 뒤로 숨지 않는다.
     return (
+      <>
+        <div aria-hidden className="h-[58px] pb-[env(safe-area-inset-bottom)]" />
         <nav
             aria-label="주요 화면"
             // 모바일 폭 컨테이너에 맞춰 가운데 고정. 홈 인디케이터 영역만큼 아래 여백을 더한다.
@@ -85,6 +89,7 @@ export function BottomTabs({ value, onChange, companyDot, loading }: Props) {
                 })}
             </ul>
         </nav>
+      </>
     )
 }
 

@@ -42,6 +42,8 @@ export default function PricingPage() {
     const [loading, setLoading] = useState(true)
     const [hasUser, setHasUser] = useState(false)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
+    // 감독자는 본인 + 소속 현장 수만큼 낸다 — 큰 숫자 하나만 던지면 "3,900이라며?"가 된다
+    const [accountCount, setAccountCount] = useState(1)
 
     const loadSubscription = async () => {
         const s = await fetchSubscription()
@@ -64,6 +66,7 @@ export default function PricingPage() {
                 router.replace("/")
                 return
             }
+            if (orgCtx?.kind === "owner") setAccountCount(1 + (orgCtx.memberIds?.length ?? 0))
             await loadSubscription()
             setLoading(false)
         })()
@@ -153,6 +156,12 @@ export default function PricingPage() {
                         <p className="font-bold text-cur-ink">
                             월 {(sub?.amount ?? SEAT_PRICE).toLocaleString()}원 · {statusLabel}
                         </p>
+                        {accountCount > 1 && (
+                            <p className="text-cur-body text-[13px]">
+                                계정 {accountCount}개 × {SEAT_PRICE.toLocaleString()}원
+                                <span className="text-cur-muted"> (내 현장 1 + 소속 현장 {accountCount - 1})</span>
+                            </p>
+                        )}
                         {nextDate && <p className="text-cur-muted text-[14px]">다음 결제일: {nextDate}</p>}
                     </div>
                     <Button
@@ -203,10 +212,14 @@ export default function PricingPage() {
                 <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-6 space-y-5">
                     <div className="text-center">
                         <p className="text-[36px] font-bold text-cur-ink leading-none tracking-[-0.02em]">
-                            {SEAT_PRICE.toLocaleString()}
+                            {(accountCount * SEAT_PRICE).toLocaleString()}
                             <span className="text-[16px] font-semibold text-cur-muted ml-1">원 / 월</span>
                         </p>
-                        <p className="text-[13px] text-cur-muted mt-2">계정 1개 기준 · VAT 포함</p>
+                        <p className="text-[13px] text-cur-muted mt-2">
+                            {accountCount > 1
+                                ? `내 현장 1 + 소속 현장 ${accountCount - 1} = 계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · VAT 포함`
+                                : `계정 1개 기준 · VAT 포함`}
+                        </p>
                     </div>
 
                     <div className="rounded-[8px] bg-cur-elevated p-3.5 text-[13px] text-cur-body leading-relaxed">

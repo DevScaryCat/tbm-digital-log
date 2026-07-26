@@ -54,11 +54,18 @@ async function run(request: Request) {
     // 상위(org) 구독이 어떤 경로로 canceled 되었든(3회 실패·수동 해지·재구독 실패),
     // 하위 미러(org_seat)가 유효 상태로 남아 있으면 영구 무료 Pro가 된다 → 매일 멱등 정리.
     {
-      const { data: canceledOrgs } = await admin
-        .from("subscriptions")
-        .select("user_id, current_period_end")
-        .eq("plan", "org")
-        .eq("status", "canceled");
+      // plan 문자열이 아니라 '실제로 회사를 소유한 계정'에서 출발한다.
+      // 단일 요금제 이후 감독자의 plan은 monthly_pro라, plan='org' 필터는 영구 no-op이 되어
+      // 결제가 끊긴 감독자의 소속 현장이 무료로 계속 살아있는 구멍이 됐다.
+      const { data: orgOwners } = await admin.from("organizations").select("owner_user_id");
+      const ownerIds = ((orgOwners as any[]) || []).map((o) => o.owner_user_id as string);
+      const { data: canceledOrgs } = ownerIds.length
+        ? await admin
+            .from("subscriptions")
+            .select("user_id, current_period_end")
+            .in("user_id", ownerIds)
+            .eq("status", "canceled")
+        : { data: [] as any[] };
       for (const o of (canceledOrgs as any[]) || []) {
         // 해지 후 잔여 이용기간이 남아 있으면(무환불 해지) 그 기간까지는 하위도 유지
         if (o.current_period_end && new Date(o.current_period_end) > new Date()) continue;

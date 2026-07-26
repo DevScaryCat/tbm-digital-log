@@ -1,6 +1,6 @@
 // app/signup/page.tsx — 가입 위저드
 // ① 계정 ② 현장 정보(업종·공종 — 데이터 분석용) ③ 휴대폰 인증(솔라피 OTP, 켜져 있을 때만) ④ 확인·가입
-// 휴대폰 인증이 켜져 있으면(서버 env) 가입 즉시 카드 없이 Pro 1개월 무료체험이 시작된다.
+// 휴대폰 인증이 켜져 있으면(서버 env) 가입 즉시 카드 없이 1개월 무료체험이 시작된다.
 // 꺼져 있으면 기존 흐름(가입 → 카드 등록 시 체험) 그대로 3단계로 동작한다.
 "use client"
 
@@ -492,7 +492,7 @@ export default function SignupPage() {
 
                         {stepKey === "confirm" && phoneEnabled && (
                             <p className="text-[13px] text-cur-muted bg-cur-primary/5 border border-cur-primary/20 rounded-[8px] p-3.5 leading-5">
-                                가입과 동시에 <b className="text-cur-primary">Pro 1개월 무료체험</b>이 시작됩니다. 체험이 끝나면 결제수단 등록 후 베이직/Pro 중 선택해 이어서 이용할 수 있어요.
+                                가입과 동시에 <b className="text-cur-primary">1개월 무료체험</b>이 시작됩니다. 체험이 끝나면 결제수단을 등록해 월 3,900원으로 이어서 이용할 수 있어요.
                             </p>
                         )}
 

@@ -30,6 +30,7 @@ const PAY_STATUS_LABEL: Record<string, string> = {
     paid: "결제완료",
     failed: "실패",
     canceled: "취소",
+    partial_canceled: "부분환불",
 }
 
 export default function AccountPage() {
@@ -172,7 +173,7 @@ export default function AccountPage() {
                                 )}
                                 <h2 className="text-[18px] font-bold text-cur-ink">
                                     {isGrandfather
-                                        ? "베이직 · 영구 무료"
+                                        ? "영구 무료"
                                         : cardlessTrialExpired
                                         ? "무료체험 종료"
                                         : committedTrial
@@ -183,7 +184,7 @@ export default function AccountPage() {
 
                             {isGrandfather ? (
                                 <p className="text-[14px] text-cur-muted leading-relaxed">
-                                    기존 가입자 혜택으로 베이직 요금제를 영구 무료로 이용 중입니다. AI 분석 보고서·월간 보고서 등 Pro 기능은 카드 등록 후 Pro로 업그레이드하면 이용하실 수 있어요.
+                                    기존 가입자 혜택으로 영구 무료로 이용 중입니다. AI 분석 보고서·월간 보고서는 카드 등록 후 유료 요금제(계정 1개당 월 3,900원)로 전환하면 이용하실 수 있어요.
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
@@ -221,7 +222,7 @@ export default function AccountPage() {
                             <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
                                 <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-1.5">
                                     <p className="text-[14px] font-bold text-cur-ink flex items-center gap-1.5">
-                                        <Sparkles className="w-4 h-4 text-cur-primary" /> Pro 1개월 무료체험 중
+                                        <Sparkles className="w-4 h-4 text-cur-primary" /> 1개월 무료체험 중
                                     </p>
                                     <p className="text-[13px] text-cur-muted leading-relaxed">
                                         {nextDate ? `${nextDate}까지 ` : ""}모든 기능을 무료로 이용하세요.

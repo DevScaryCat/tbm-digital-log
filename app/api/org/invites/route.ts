@@ -2,7 +2,7 @@
 // kind='link'  : 신규 가입용 다회용 링크 (14일 만료, 좌석 상한은 가입 시 claim_org_seat가 검증)
 // kind='attach': 기존 계정 편입 초대 — 아이디({id}@tbm.com)로 대상 지정, 대상이 로그인 후 수락
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
 
 export const runtime = "nodejs";
@@ -42,8 +42,8 @@ export async function POST(request: Request) {
         .select("status, plan, current_period_end, billing_key")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (!sub || sub.plan !== "org" || !subscriptionAllows(sub)) {
-        return NextResponse.json({ error: "회사 플랜 구독이 유효하지 않습니다. 결제를 먼저 완료해주세요." }, { status: 402 });
+      if (!sub || !subscriptionAllows(sub) || !isProPlan(sub.plan)) {
+        return NextResponse.json({ error: "구독이 유효하지 않습니다. 결제를 먼저 확인해주세요." }, { status: 402 });
       }
     }
 

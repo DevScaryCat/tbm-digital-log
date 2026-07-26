@@ -436,7 +436,7 @@ export default function RiskAssessmentPage() {
                                 <Button onClick={() => setStep(1)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
                                     체험해보기
                                 </Button>
-                                <p className="text-[12px] text-cur-muted-soft text-center">Pro 4,900원/월 · 첫 달 무료 · AI 분석 보고서 + 월간 보고서</p>
+                                <p className="text-[12px] text-cur-muted-soft text-center">월 3,900원 · 첫 달 무료 · AI 분석 보고서 + 월간 보고서</p>
                             </div>
                         </div>
                     )}

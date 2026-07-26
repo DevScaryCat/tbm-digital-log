@@ -146,17 +146,38 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export async function chargeProratedAccount(
   admin: SupabaseClient,
-  sub: { id: string; user_id: string; billing_key: string | null; current_period_end: string | null },
+  sub: {
+    id: string;
+    user_id: string;
+    status?: string;
+    billing_key: string | null;
+    current_period_end: string | null;
+  },
   opts: { count?: number; customerEmail?: string } = {}
 ): Promise<{ ok: boolean; charged: number; error?: string }> {
   const count = opts.count ?? 1;
-  if (!sub.billing_key) return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
-
   const now = new Date();
   const end = sub.current_period_end ? new Date(sub.current_period_end) : null;
-  // 주기 정보가 없거나 이미 지난 경우엔 일할 청구를 건너뛴다 —
-  // 다음 정기 결제에서 늘어난 계정 수로 온전히 청구되므로 요금이 새지 않는다.
-  if (!end || end.getTime() <= now.getTime()) return { ok: true, charged: 0 };
+
+  // 무료체험 중에는 일할 청구를 하지 않는다.
+  // '첫 달 무료'라고 안내해 놓고 현장을 추가했다는 이유로 당일 3,900원을 긁으면 약속 위반이고,
+  // 카드 없는 휴대폰 인증 체험 계정은 아예 결제수단이 없어 여기서 막히면 현장을 하나도
+  // 못 만든다(가입 직후 안내되는 첫 화면이 바로 '현장 계정 만들기'다).
+  // 체험이 끝나는 날 cron이 늘어난 계정 수로 온전히 청구한다.
+  if (sub.status === "trialing") return { ok: true, charged: 0 };
+
+  if (!sub.billing_key) return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
+
+  // 주기가 이미 지났다 = 정기 결제가 아직 안 붙었거나 실패한 상태.
+  // 여기서 '나중에 받으면 된다'고 통과시키면, past_due로 실패를 반복하는 감독자가
+  // 계정을 무제한으로 무료 발급할 수 있다(3회 실패 후 해지되면 그대로 끝).
+  if (!end || end.getTime() <= now.getTime()) {
+    return {
+      ok: false,
+      charged: 0,
+      error: "결제가 확인되지 않았습니다. 구독 및 결제에서 결제수단을 확인한 뒤 다시 시도해주세요.",
+    };
+  }
 
   const periodStart = new Date(end);
   periodStart.setMonth(periodStart.getMonth() - 1);

@@ -19,8 +19,38 @@ async function requireOwner(
   const admin = getAdminClient();
   let ctx = await getOrgContext(user.id, admin);
 
-  // 회사는 '첫 현장 계정을 만드는 순간' 생긴다 — 별도의 안전관리자 가입 절차가 없다.
-  // 이미 다른 회사에 소속된 계정(member)은 스스로 회사를 만들 수 없다.
+  if (ctx.kind === "member") {
+    return {
+      error: NextResponse.json(
+        { error: "소속 현장 계정은 회사 관리를 할 수 없습니다. 회사 감독자에게 문의하세요." },
+        { status: 403 }
+      ),
+    };
+  }
+
+  // 구독 검사가 반드시 조직 생성보다 **먼저** 와야 한다.
+  // 순서가 반대면 legacy(구 베이직 1,900·영구무료) 계정이 '현장 계정 만들기'를 누르는
+  // 것만으로 organizations 행이 남고, resolveBillableAmount가 legacy 분기 앞에서
+  // org 분기를 타 버려 재동의 없이 요금이 3,900으로 올라간다.
+  let sub: { id: string; user_id: string; status: string; billing_key: string | null; current_period_end: string | null } | null = null;
+  if (opts.requireValidSub) {
+    const { data } = await admin
+      .from("subscriptions")
+      .select("id, user_id, status, plan, current_period_end, billing_key")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!data || !subscriptionAllows(data) || !isProPlan((data as any).plan)) {
+      return {
+        error: NextResponse.json(
+          { error: "현재 요금제로는 현장 계정을 추가할 수 없어요. 구독을 먼저 확인해주세요." },
+          { status: 402 }
+        ),
+      };
+    }
+    sub = data as any;
+  }
+
+  // 회사는 '첫 현장 계정을 만드는 순간' 생긴다 — 별도의 감독자 가입 절차가 없다.
   if (opts.createOrgIfMissing && ctx.kind === "solo" && !ctx.orgLapsed) {
     const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
     const name = String(meta.company_name ?? "").trim() || String(meta.full_name ?? "").trim() || "우리 회사";
@@ -34,35 +64,15 @@ async function requireOwner(
     ctx = await getOrgContext(user.id, admin);
   }
 
-  if (ctx.kind !== "owner" || !ctx.org) {
-    return {
-      error: NextResponse.json(
-        { error: "소속 현장 계정은 회사 관리를 할 수 없습니다. 회사 감독자에게 문의하세요." },
-        { status: 403 }
-      ),
-    };
-  }
-  // 계정 발급 등 쓰기 작업은 구독 유효성까지 요구 — 결제 실패/해지 상태의 감독자가
-  // 무료 미러 구독을 계속 만들어내는 경로 차단 (리뷰 C).
-  // plan 문자열이 아니라 "유료 자격이 살아있는가"로 판정한다(단일 요금제).
-  let sub: { id: string; user_id: string; billing_key: string | null; current_period_end: string | null } | null = null;
-  if (opts.requireValidSub) {
-    const { data } = await admin
-      .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!data || !subscriptionAllows(data) || !isProPlan((data as any).plan)) {
-      return { error: NextResponse.json({ error: "구독이 유효하지 않습니다. 결제를 먼저 완료해주세요." }, { status: 402 }) };
-    }
-    sub = data as any;
-  }
-  return { user, admin, ctx, org: ctx.org, sub };
+  // 아직 회사가 없는 단독 계정도 조회는 허용한다 — 화면이 "첫 현장을 만드세요"를
+  // 보여줘야 하는데 여기서 403을 내면 그 화면으로 갈 방법이 사라진다.
+  return { user, admin, ctx, org: ctx.org ?? null, sub };
 }
 
 export async function GET(request: Request) {
   const r = await requireOwner(request);
   if ("error" in r) return r.error;
+  if (!r.org) return NextResponse.json({ members: [], seatCount: 1, pendingSeatCount: null });
   const members = await listOrgMembers(r.org.id, r.admin);
   return NextResponse.json({
     members,
@@ -74,7 +84,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const r = await requireOwner(request, { requireValidSub: true, createOrgIfMissing: true });
   if ("error" in r) return r.error;
-  const { admin, org, user } = r;
+  const { admin, user } = r;
+  const org = r.org!;
   try {
     const { loginId, password, siteName, managerName } = await request.json();
     const id = String(loginId ?? "").trim().toLowerCase();
@@ -162,6 +173,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const r = await requireOwner(request);
   if ("error" in r) return r.error;
+  if (!r.org) return NextResponse.json({ error: "회사 정보가 없습니다." }, { status: 404 });
   try {
     const { userId, newPassword } = await request.json();
     if (!(r.ctx.memberIds ?? []).includes(String(userId))) {
@@ -182,6 +194,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const r = await requireOwner(request);
   if ("error" in r) return r.error;
+  if (!r.org) return NextResponse.json({ error: "회사 정보가 없습니다." }, { status: 404 });
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId");
   if (!userId || !(r.ctx.memberIds ?? []).includes(userId)) {

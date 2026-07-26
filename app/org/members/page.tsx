@@ -66,7 +66,8 @@ export default function OrgMembersPage() {
 
     useEffect(() => {
         if (ctxLoading) return
-        if (!ctx || ctx.kind !== "owner") { router.replace("/"); return }
+        // 아직 회사가 없는 단독 계정도 들어와야 한다 — 첫 현장을 만드는 화면이 여기다.
+        if (!ctx || ctx.kind === "member") { router.replace("/"); return }
         load()
     }, [ctx, ctxLoading, router, load])
 
@@ -196,7 +197,6 @@ export default function OrgMembersPage() {
                 <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
-                        <span className="text-[12px] text-cur-muted">남은 좌석 {seatsLeft}개</span>
                     </div>
 
                     {/* ① 직접 발급 (메인) */}

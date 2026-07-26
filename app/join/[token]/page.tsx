@@ -170,9 +170,6 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                         <Building2 className="w-5 h-5 text-cur-primary shrink-0" />
                         <p className="text-[14px] text-cur-ink leading-snug">
                             <b>{info.orgName}</b>의 관리감독자(현장 담당)로 가입합니다
-                            {typeof info.seatsLeft === "number" && (
-                                <span className="text-cur-muted text-[12px]"> · 남은 좌석 {info.seatsLeft}개</span>
-                            )}
                         </p>
                     </div>
                     {hasSession && (

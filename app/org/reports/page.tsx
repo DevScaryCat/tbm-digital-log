@@ -25,7 +25,7 @@ export default function OrgReportsPage() {
 
     useEffect(() => {
         if (ctxLoading) return
-        if (!ctx || ctx.kind !== "owner") { router.replace("/"); return }
+        if (!ctx || ctx.kind === "member") { router.replace("/"); return }
         ;(async () => {
             try {
                 const { data } = await supabase
