@@ -167,6 +167,51 @@ export async function cancelOrgSeatMirrors(
   }
 }
 
+/**
+ * 감독자가 다시 결제했을 때 활성 소속 현장의 미러 구독을 되살린다.
+ *
+ * 해지 시 cancelOrgSeatMirrors는 미러만 접고 org_members는 active로 남겨둔다(복구용).
+ * 재결제 때 이걸 호출하지 않으면 "요금은 계정 수만큼 내는데 그 현장들은 여전히 잠겨 있는"
+ * 상태가 된다 — 청구액과 실제 사용 가능 계정 수가 어긋나면 안 된다.
+ * grandfather 복원 대상(prev_plan)은 건드리지 않는다 — 그쪽은 영구 무료가 맞다.
+ */
+export async function restoreOrgSeatMirrors(
+  memberUserIds: string[],
+  adminClient?: SupabaseClient
+): Promise<void> {
+  if (memberUserIds.length === 0) return;
+  const admin = adminClient ?? getAdminClient();
+  const now = new Date().toISOString();
+  for (const id of memberUserIds) {
+    let prevPlan: string | null = null;
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(id);
+      prevPlan = String((u?.user?.user_metadata as any)?.prev_plan ?? "") || null;
+    } catch { /* 메타데이터 조회 실패 → 일반 미러로 복원 */ }
+    if (prevPlan === "grandfather") continue;
+    const { error } = await admin
+      .from("subscriptions")
+      .upsert(
+        {
+          user_id: id,
+          plan: "org_seat",
+          status: "active",
+          billing_key: null,
+          card_info: null,
+          amount: 0,
+          currency: "KRW",
+          current_period_end: null,
+          trial_used: true,
+          failed_attempts: 0,
+          canceled_at: null,
+          updated_at: now,
+        },
+        { onConflict: "user_id" }
+      );
+    if (error) console.error("미러 구독 복원 실패:", id, error);
+  }
+}
+
 /** 하위 1명 detach: 멤버십 detached + 미러 구독 canceled (원자성은 순서로 보장 — 미러 먼저) */
 export async function detachOrgMember(memberUserId: string, adminClient?: SupabaseClient): Promise<void> {
   const admin = adminClient ?? getAdminClient();

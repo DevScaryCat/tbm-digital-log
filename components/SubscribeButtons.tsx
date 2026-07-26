@@ -1,16 +1,17 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Loader2, CreditCard } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
+import { fetchOrgContext } from "@/lib/useOrgContext"
+import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
 
 // 단일 요금제 단가 — 서버 lib/portone.ts SEAT_PRICE와 같은 값이어야 한다.
 // (클라이언트 번들에 서버 모듈을 끌어오지 않으려고 상수만 복제한다)
 const SEAT_PRICE = 3900
-import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
 
 const STORE_ID = process.env.NEXT_PUBLIC_PORTONE_STORE_ID
 
@@ -80,6 +81,19 @@ export function SubscribeButtons({
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 실제로 청구될 금액 = (본인 1 + 활성 소속 현장 수) x 단가.
+    // 카드사 정기결제창에 표기하는 금액이라, 서버 resolveBillableAmount와 반드시 같아야 한다.
+    const [accountCount, setAccountCount] = useState(1)
+    const billedAmount = accountCount * SEAT_PRICE
+
+    useEffect(() => {
+        let alive = true
+        fetchOrgContext().then((c) => {
+            if (!alive) return
+            if (c?.kind === "owner") setAccountCount(1 + (c.memberIds?.length ?? 0))
+        })
+        return () => { alive = false }
+    }, [])
 
     // 발급된 빌링키를 서버에 등록(구독 시작/수단 변경) — 인라인(프로미스)과 리디렉션 복귀가 공용
     const registerBillingKey = async (billingKey: string, methodKey: string, planV: string, modeV: string) => {
@@ -133,7 +147,7 @@ export function SubscribeButtons({
                 issueId: crypto.randomUUID().replace(/-/g, ""),
                 issueName: "안톡 월간구독",
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
-                displayAmount: SEAT_PRICE,
+                displayAmount: billedAmount,
                 currency: "KRW",
                 // 카드(이니시스) 모바일: 이니시스 모바일 빌링 페이지는 iframe 레이어 안에서
                 // 동작하지 않음(500) → 결제사 페이지로 완전히 이동하는 REDIRECTION을 강제.
@@ -251,7 +265,7 @@ export function SubscribeButtons({
                 ) : (
                     <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
                 )}
-                <p>· 이용요금: 계정 1개당 월 {SEAT_PRICE.toLocaleString()}원(VAT 포함). 현장 계정을 추가하면 그만큼 더해집니다.</p>
+                <p>· 이용요금: 월 {billedAmount.toLocaleString()}원(VAT 포함){accountCount > 1 ? ` — 계정 ${accountCount}개 x ${SEAT_PRICE.toLocaleString()}원` : " · 계정 1개"}. 현장 계정을 추가하면 그만큼 더해집니다.</p>
                 {mode !== "update" && (
                     <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
                 )}

@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabaseClient"
 export interface ClientOrgContext {
     kind: "owner" | "member" | "solo"
     org?: { id: string; name: string; seatCount: number; pendingSeatCount: number | null }
+    /** owner일 때: 활성 소속 현장 user id — 청구 계정 수(본인 1 + 이 수) 계산에 쓴다 */
+    memberIds?: string[]
     orgLapsed?: boolean
     pendingAttach?: { inviteId: string; token: string; orgId: string; orgName: string } | null
 }

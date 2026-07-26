@@ -8,6 +8,7 @@ import {
   getPlan,
 } from "@/lib/portone";
 import { chargeSubscription } from "@/lib/billing";
+import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
 import { paymentsEnabled } from "@/lib/utils";
 import { phoneAuthEnabled } from "@/lib/phoneAuth";
 
@@ -101,23 +102,20 @@ export async function POST(request: Request) {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // 조직 소속 하위(활성 미러): 개인 결제 등록 시 미러 행이 덮여 자기도 모르게 조직에서
-    // 분리되고 상위는 좌석비를 계속 내는 사고 방지 — 서버에서 차단 (검증 §2)
-    if (existing?.plan === "org_seat" && existing.status !== "canceled") {
+    // 소속 현장은 감독자가 대신 결제한다 — 본인이 카드를 걸면 미러 행이 덮여 조용히
+    // 조직에서 분리되고 감독자는 계속 그 계정 요금을 낸다. plan 문자열이 아니라 실제
+    // 소속(org_members)으로 판정한다(단일 요금제 이후 plan은 신뢰할 수 있는 키가 아니다).
+    const ctx = await getOrgContext(user.id, admin);
+    if (ctx.kind === "member") {
       return NextResponse.json(
-        { error: "조직 소속 계정입니다. 구독·결제는 회사 안전관리자가 관리합니다." },
+        { error: "소속 현장 계정입니다. 구독·결제는 회사 감독자가 관리합니다." },
         { status: 403 }
       );
     }
-    // 안전관리자(org)의 신규/재구독은 좌석 결제 라우트로 — 카드 교체(mode=update)만 여기서 허용
-    if (existing?.plan === "org" && mode !== "update") {
-      return NextResponse.json(
-        { error: "회사 플랜 결제는 좌석 관리 화면에서 진행해주세요." },
-        { status: 400 }
-      );
-    }
-    // 안전관리자로 가입한 계정(role 표시)은 개인 플랜 대신 회사 플랜 결제로 유도 —
-    // 개인 구독이 붙는 순간 org checkout이 영구 차단된다 (리뷰 F)
+    // 감독자(회사 소유)도 여기서 결제한다. 청구액은 chargeSubscription이
+    // 실제 계정 수로 재계산하므로 별도 라우트가 필요 없다.
+    // (구 구현은 여기서 400을 내고 /api/org/checkout으로 보냈는데, 그 라우트가 사라진 뒤로는
+    //  해지된 회사 계정이 재결제할 방법이 아예 없는 막다른 길이 됐다)
 
     // --- 결제수단 변경: 빌링키/카드정보만 교체 ---
     if (mode === "update") {
@@ -200,6 +198,9 @@ export async function POST(request: Request) {
         console.error("subscription upsert error:", error);
         return NextResponse.json({ error: "구독 저장 실패" }, { status: 500 });
       }
+      if (ctx.kind === "owner" && (ctx.memberIds ?? []).length > 0) {
+        await restoreOrgSeatMirrors(ctx.memberIds ?? [], admin);
+      }
       return NextResponse.json({
         success: true,
         subscription: {
@@ -253,6 +254,13 @@ export async function POST(request: Request) {
         { error: "결제에 실패했습니다. 카드를 확인해주세요." },
         { status: 402 }
       );
+    }
+
+    // 재결제 성공 → 활성 소속 현장의 미러 구독 복원.
+    // 청구는 이미 (본인 + 활성 소속 현장) 수로 계산됐으므로, 복원하지 않으면
+    // 돈은 받고 그 현장들은 잠겨 있는 상태가 된다.
+    if (ctx.kind === "owner" && (ctx.memberIds ?? []).length > 0) {
+      await restoreOrgSeatMirrors(ctx.memberIds ?? [], admin);
     }
 
     const { data: updated } = await admin
