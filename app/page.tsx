@@ -21,6 +21,26 @@ import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { BottomTabs, readLastTab, writeLastTab, type TabKey } from "@/components/BottomTabs"
 import { CompanyPanel } from "@/components/CompanyPanel"
 
+// 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
+// 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
+// 마운트 후 조용히 갱신된다. 계정이 바뀌면 무효.
+interface HomeCache {
+  userId: string
+  user: any
+  orgCtx: ClientOrgContext | null
+  stats: {
+    tbmCount: number; tbmMinutesCount: number; totalEducationSeconds: number
+    requiredHours: number; logDates: string[]; minuteDates: string[]
+    suggestionDates: string[]; unreadSuggestions: number
+  } | null
+}
+let homeCache: HomeCache | null = null
+if (typeof window !== "undefined") {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT" || event === "SIGNED_IN") homeCache = null
+  })
+}
+
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
 const toLocalDateStr = (iso: string) => {
   const d = new Date(iso)
@@ -30,23 +50,24 @@ const toLocalDateStr = (iso: string) => {
 export default function MainPage() {
   const router = useRouter()
   const { checking } = useRequireSubscription()
-  const [isLoading, setIsLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const cached = homeCache // 렌더 시점 스냅샷
+  const [isLoading, setIsLoading] = useState(!cached)
+  const [user, setUser] = useState<any>(cached?.user ?? null)
 
-  const [tbmCount, setTbmCount] = useState(0)
-  const [tbmMinutesCount, setTbmMinutesCount] = useState(0)
-  const [statsLoading, setStatsLoading] = useState(true)
-  const [totalEducationSeconds, setTotalEducationSeconds] = useState(0)
-  const [requiredHours, setRequiredHours] = useState(16)
+  const [tbmCount, setTbmCount] = useState(cached?.stats?.tbmCount ?? 0)
+  const [tbmMinutesCount, setTbmMinutesCount] = useState(cached?.stats?.tbmMinutesCount ?? 0)
+  const [statsLoading, setStatsLoading] = useState(!cached?.stats)
+  const [totalEducationSeconds, setTotalEducationSeconds] = useState(cached?.stats?.totalEducationSeconds ?? 0)
+  const [requiredHours, setRequiredHours] = useState(cached?.stats?.requiredHours ?? 16)
   // 진행도 바 순차 애니메이션: 진한 바(0~100%) 먼저 → 초과분 이어서
   const [animBase, setAnimBase] = useState(0)
   const [animOver, setAnimOver] = useState(0)
 
   // 월별 건수 필터용 원본(날짜만) + 선택 월("all" = 전체)
-  const [logDates, setLogDates] = useState<string[]>([])
-  const [minuteDates, setMinuteDates] = useState<string[]>([])
-  const [suggestionDates, setSuggestionDates] = useState<string[]>([])
-  const [unreadSuggestions, setUnreadSuggestions] = useState(0)
+  const [logDates, setLogDates] = useState<string[]>(cached?.stats?.logDates ?? [])
+  const [minuteDates, setMinuteDates] = useState<string[]>(cached?.stats?.minuteDates ?? [])
+  const [suggestionDates, setSuggestionDates] = useState<string[]>(cached?.stats?.suggestionDates ?? [])
+  const [unreadSuggestions, setUnreadSuggestions] = useState(cached?.stats?.unreadSuggestions ?? 0)
   const [selectedMonth, setSelectedMonth] = useState("all")
 
   // 문서 출력 형식 최초 설정 모달 (user_metadata.preferred_export_format 없을 때 1회)
@@ -59,9 +80,9 @@ export default function MainPage() {
   const formatModalRef = useRef<HTMLDivElement>(null)
 
   // 역할 판정 — pendingAttach면 편입 수락 모달, 회사 소유 여부로 첫 탭을 고른다
-  const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
-  const [tab, setTab] = useState<TabKey>("tbm")
-  const [tabReady, setTabReady] = useState(false)
+  const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
+  const [tab, setTab] = useState<TabKey>(() => (typeof window !== "undefined" && readLastTab()) || "tbm")
+  const [tabReady, setTabReady] = useState(!!cached)
   // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
   const [showUsageStep, setShowUsageStep] = useState(false)
   // 일괄 발급된 현장 계정의 첫 로그인 — 새 비밀번호·현장명을 정하기 전엔 앱을 열지 않는다
@@ -78,6 +99,11 @@ export default function MainPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         const currentUser = session.user
+        // 다른 계정의 스냅샷은 폐기
+        if (homeCache && homeCache.userId !== currentUser.id) {
+          homeCache = null
+          setStatsLoading(true)
+        }
         setUser(currentUser)
 
         // 일괄 발급 계정의 첫 로그인 — 비밀번호·현장명 설정이 최우선 (다른 온보딩은 그 다음)
@@ -90,22 +116,35 @@ export default function MainPage() {
         // 감독자도 TBM을 쓴다 — 역할과 무관하게 온보딩·통계를 동일하게 로드한다.
         // (관리 전용 시절엔 여기서 감독자를 건너뛰어, 출력 형식이 없어 hwpx/docx 설정이
         //  무시되고 PDF로 강제되는 구멍이 있었다)
+        const hadCache = !!homeCache && homeCache.userId === currentUser.id
+        homeCache = {
+          userId: currentUser.id,
+          user: currentUser,
+          orgCtx: hadCache ? homeCache!.orgCtx : null,
+          stats: hadCache ? homeCache!.stats : null,
+        }
+
         const meta = currentUser.user_metadata
         if (!meta?.preferred_export_format || !meta?.worker_type) {
           if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
           setNeedsWorkerType(!meta?.worker_type)
           setShowFormatModal(true)
         }
-        fetchUserStats(currentUser.id, meta?.worker_type || "현장 근로자 (비사무직)")
+        // 캐시로 이미 그렸으면 통계는 조용히 갱신 (스피너 없이 숫자만 바뀐다)
+        fetchUserStats(currentUser.id, meta?.worker_type || "현장 근로자 (비사무직)", hadCache)
 
         const ctx = await fetchOrgContext()
         setOrgCtx(ctx)
+        if (homeCache?.userId === currentUser.id) homeCache.orgCtx = ctx
 
         // 첫 탭: 마지막으로 본 탭을 기억한다. 기억이 없고 아직 현장을 하나도 안 만든
         // 감독자라면 현장관리부터 열어 '현장 만들기'로 유도한다.
-        const last = readLastTab()
-        const freshOwnerWithNoSites = ctx?.kind === "owner" && (ctx.org?.seatCount ?? 1) <= 1
-        setTab(last ?? (freshOwnerWithNoSites ? "company" : "tbm"))
+        // 캐시 재진입 때는 이미 맞는 탭이 떠 있으므로 건드리지 않는다(깜빡임 방지).
+        if (!hadCache) {
+          const last = readLastTab()
+          const freshOwnerWithNoSites = ctx?.kind === "owner" && (ctx.org?.seatCount ?? 1) <= 1
+          setTab(last ?? (freshOwnerWithNoSites ? "company" : "tbm"))
+        }
         setTabReady(true)
       }
       setIsLoading(false)
@@ -123,8 +162,8 @@ export default function MainPage() {
     if (showFormatModal) formatModalRef.current?.focus()
   }, [showFormatModal])
 
-  const fetchUserStats = async (userId: string, currentWorkerType: string) => {
-    setStatsLoading(true)
+  const fetchUserStats = async (userId: string, currentWorkerType: string, silent = false) => {
+    if (!silent) setStatsLoading(true)
     try {
       const now = new Date()
       const currentYear = now.getFullYear()
@@ -160,7 +199,22 @@ export default function MainPage() {
         ...(logTimeRows || []).filter(l => isRegularEducationType(l.education_type)),
         ...(minuteTimeRows || []),
       ]
-      setTotalEducationSeconds(totalSeconds(validLogs))
+      const totalEdu = totalSeconds(validLogs)
+      setTotalEducationSeconds(totalEdu)
+
+      // 다음 진입에서 즉시 그릴 수 있게 캐시에 적재
+      if (homeCache?.userId === userId) {
+        homeCache.stats = {
+          tbmCount: logDateRows.length,
+          tbmMinutesCount: minuteDateRows.length,
+          totalEducationSeconds: totalEdu,
+          requiredHours: currentWorkerType === '사무직 / 판매직' ? 6 : 12,
+          logDates: logDateRows.map(l => l.date).filter(Boolean) as string[],
+          minuteDates: minuteDateRows.map(l => l.date).filter(Boolean) as string[],
+          suggestionDates: suggestionRows.map(sg => sg.created_at ? toLocalDateStr(sg.created_at) : null).filter(Boolean) as string[],
+          unreadSuggestions: suggestionRows.filter(sg => sg.is_read === false).length,
+        }
+      }
     } catch (e) {
       console.error("통계 에러:", e)
     } finally {
@@ -169,6 +223,7 @@ export default function MainPage() {
   }
 
   const handleLogout = async () => {
+    homeCache = null
     await supabase.auth.signOut()
     setUser(null)
     setTbmCount(0)

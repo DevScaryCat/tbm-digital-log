@@ -43,15 +43,20 @@ interface Overview {
     todayDoneCount: number
     today: string
     sites: SiteRow[]
+    daily?: { date: string; minutes: number; logs: number }[]
 }
 
 const SEAT_PRICE = 3900
 
+// 탭 전환·페이지 복귀 때마다 재마운트되며 풀 로딩이 돌던 문제 —
+// 마지막 응답을 모듈에 캐시해 두고 즉시 그린 뒤 뒤에서 조용히 갱신한다(SWR).
+let panelCache: { userId: string; data: Overview; sub: SubscriptionRow | null } | null = null
+
 export function CompanyPanel() {
     const router = useRouter()
-    const [data, setData] = useState<Overview | null>(null)
-    const [sub, setSub] = useState<SubscriptionRow | null>(null)
-    const [loading, setLoading] = useState(true)
+    const [data, setData] = useState<Overview | null>(panelCache?.data ?? null)
+    const [sub, setSub] = useState<SubscriptionRow | null>(panelCache?.sub ?? null)
+    const [loading, setLoading] = useState(!panelCache)
     // 온보딩에서 '여러 현장을 관리해요'를 고른 사람에게만 '현장 추가하기'를 강조한다.
     // 혼자 쓰는 사람에게는 광고성 소음이라 띄우지 않는다.
     const [hintAddSite, setHintAddSite] = useState(false)
@@ -67,14 +72,27 @@ export function CompanyPanel() {
         ;(async () => {
             try {
                 const { data: s } = await supabase.auth.getSession()
+                const uid = s?.session?.user?.id
+                if (!uid) return
+                // 다른 계정의 캐시는 버린다
+                if (panelCache && panelCache.userId !== uid) {
+                    panelCache = null
+                    setData(null); setSub(null); setLoading(true)
+                }
                 const [res, subRow] = await Promise.all([
                     fetch("/api/org/overview", {
                         headers: { Authorization: `Bearer ${s?.session?.access_token}` },
                     }),
                     fetchSubscription(),
                 ])
-                if (res.ok) setData(await res.json())
-                setSub(subRow)
+                if (res.ok) {
+                    const j = (await res.json()) as Overview
+                    setData(j)
+                    setSub(subRow)
+                    panelCache = { userId: uid, data: j, sub: subRow }
+                } else {
+                    setSub(subRow)
+                }
             } finally {
                 setLoading(false)
             }
@@ -228,6 +246,56 @@ export function CompanyPanel() {
                 </div>
             </section>
 
+
+            {/* 이번 달 활동 대시보드 — 설정은 온보딩·계정 관리에서 끝내므로, 들어왔을 때
+                눈에 들어와야 하는 건 메뉴가 아니라 데이터다 (Chris 의견). */}
+            {(() => {
+                const mMinutes = activeSites.reduce((a, x) => a + x.monthMinutes, 0)
+                const mLogs = activeSites.reduce((a, x) => a + x.monthLogs, 0)
+                const daily = data.daily ?? []
+                const maxDay = Math.max(1, ...daily.map((d) => d.minutes + d.logs))
+                const dow = ["일", "월", "화", "수", "목", "금", "토"]
+                return (
+                    <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-[14px] font-bold text-cur-ink">이번 달 활동</h2>
+                            <span className="text-[12px] text-cur-muted-soft">최근 7일</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+                            <div className="bg-cur-card py-3.5">
+                                <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">TBM 회의록</p>
+                                <p className="text-[24px] leading-none font-bold text-cur-ink font-mono">{mMinutes}</p>
+                            </div>
+                            <div className="bg-cur-card py-3.5">
+                                <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">교육일지</p>
+                                <p className="text-[24px] leading-none font-bold text-cur-ink font-mono">{mLogs}</p>
+                            </div>
+                        </div>
+                        {daily.length > 0 && (
+                            <div className="flex items-end justify-between gap-1.5 h-20 pt-1" aria-label="최근 7일 기록 수">
+                                {daily.map((d) => {
+                                    const v = d.minutes + d.logs
+                                    const [dy, dm, dd] = d.date.split("-").map(Number)
+                                    const kstDow = new Date(dy, dm - 1, dd).getDay()
+                                    const isToday = d.date === data.today
+                                    return (
+                                        <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                                            <span className={`text-[10px] leading-none font-mono ${v > 0 ? "text-cur-body font-semibold" : "text-cur-muted-soft"}`}>{v > 0 ? v : ""}</span>
+                                            <div className="w-full h-12 flex items-end">
+                                                <div
+                                                    className={`w-full rounded-t-[4px] ${v > 0 ? "bg-cur-primary" : "bg-cur-elevated"}`}
+                                                    style={{ height: v > 0 ? `${Math.max(14, Math.round((v / maxDay) * 100))}%` : "4px" }}
+                                                />
+                                            </div>
+                                            <span className={`text-[10px] leading-none ${isToday ? "font-bold text-cur-ink" : "text-cur-muted-soft"}`}>{isToday ? "오늘" : dow[kstDow]}</span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </section>
+                )
+            })()}
 
             {/* 관리 메뉴 — 내 안톡 탭의 카드 문법(아이콘 좌·라벨·셰브론)과 동일한 리스트 한 장.
                 소속 현장에게는 같은 자리·잠긴 모습으로 보인다. */}

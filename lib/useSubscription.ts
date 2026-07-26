@@ -102,13 +102,36 @@ export async function fetchSubscription(): Promise<SubscriptionRow | null> {
     return (data as SubscriptionRow) || null
 }
 
+// ── 짧은 캐시 — 페이지 이동/뒤로가기마다 구독을 다시 조회해 스피너가 뜨는 것 방지.
+// 결제·해지 직후 화면(/account, /pricing)은 신선도가 중요하니 원본 fetchSubscription을 쓴다.
+let subCache: { row: SubscriptionRow | null; ts: number } | null = null
+if (typeof window !== "undefined") {
+    supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT" || event === "SIGNED_IN" || event === "USER_UPDATED") subCache = null
+    })
+}
+
+export async function fetchSubscriptionCached(ttlMs = 60_000): Promise<SubscriptionRow | null> {
+    if (subCache && Date.now() - subCache.ts < ttlMs) return subCache.row
+    const row = await fetchSubscription()
+    subCache = { row, ts: Date.now() }
+    return row
+}
+
 /**
  * 보호된 페이지 상단에서 호출. 로그인했지만 구독(또는 체험/평생무료)이 없으면
  * /pricing 으로 보낸다. 로그인 안 한 경우엔 각 페이지의 기존 로직에 맡긴다.
  */
+// 마지막 통과 결과 — 같은 세션에서 페이지를 오갈 때마다 게이트 스피너를 다시 띄우지 않는다
+let allowedCache: { userId: string; ts: number } | null = null
+
 export function useRequireSubscription() {
     const router = useRouter()
-    const [checking, setChecking] = useState(true)
+    // 5분 내 통과 이력이 있으면 즉시 열고, 아래 effect가 백그라운드로 재검증한다
+    const [checking, setChecking] = useState(() => {
+        if (typeof window === "undefined") return true
+        return !(allowedCache && Date.now() - allowedCache.ts < 300_000)
+    })
 
     useEffect(() => {
         let active = true
@@ -133,9 +156,11 @@ export function useRequireSubscription() {
                 return
             }
             if (!isAllowed(data as SubscriptionRow)) {
+                allowedCache = null
                 router.replace("/pricing")
                 return
             }
+            allowedCache = { userId: user.id, ts: Date.now() }
             setChecking(false)
         })()
         return () => {

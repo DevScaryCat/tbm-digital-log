@@ -27,6 +27,11 @@ export default function ProfilePage() {
     const [exportFormat, setExportFormat] = useState<string>("")
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
+    // 저장 활성화 판정용 초기 스냅샷 — 아무것도 안 바꿨는데 '저장'이 눌리면 이상하다
+    const [initial, setInitial] = useState<string>("")
+
+    const snapshot = (v: { fullName: string; companyName: string; workerType: string; exportFormat: string; industry: string; workCategory: string }) =>
+        JSON.stringify(v)
 
     useEffect(() => {
         ;(async () => {
@@ -45,6 +50,14 @@ export default function ProfilePage() {
             setIndustry(meta.industry ?? "")
             // 저장 키는 snake_case(work_category) — 가입 API와 동일
             setWorkCategory(meta.work_category ?? "")
+            setInitial(snapshot({
+                fullName: meta.full_name ?? "",
+                companyName: meta.company_name ?? "",
+                workerType: meta.worker_type ?? "현장 근로자 (비사무직)",
+                exportFormat: meta.preferred_export_format ?? "",
+                industry: meta.industry ?? "",
+                workCategory: meta.work_category ?? "",
+            }))
             setLoading(false)
         })()
     }, [router])
@@ -54,6 +67,8 @@ export default function ProfilePage() {
     const isLegacyIndustry = !!industry && !selectedMajor
     const minors = selectedMajor?.minors ?? []
     const isLegacyWorkCategory = !!workCategory && !minors.some((mi) => mi.name === workCategory)
+
+    const dirty = initial !== snapshot({ fullName, companyName, workerType, exportFormat, industry, workCategory })
 
     const handleSave = async () => {
         if (!fullName.trim()) {
@@ -79,6 +94,10 @@ export default function ProfilePage() {
             })
             if (error) throw error
             setWorkCategory(data.user.user_metadata.work_category ?? "")
+            setInitial(snapshot({
+                fullName: fullName.trim(), companyName: companyName.trim(), workerType,
+                exportFormat, industry, workCategory: data.user.user_metadata.work_category ?? "",
+            }))
             setMsg({ type: "ok", text: "내 정보가 저장되었습니다." })
         } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : "알 수 없는 오류"
@@ -207,7 +226,7 @@ export default function ProfilePage() {
 
                 <Button
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={saving || !dirty}
                     className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
                 >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}

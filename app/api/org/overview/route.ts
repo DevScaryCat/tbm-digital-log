@@ -70,12 +70,19 @@ export async function GET(request: Request) {
   const activeIds = roster.filter((r) => r.status === "active").map((r) => r.userId);
   const today = kstToday();
   const monthStart = `${today.slice(0, 7)}-01`;
+  // 대시보드 미니 차트용 최근 7일 (월 경계를 넘을 수 있어 조회 시작은 둘 중 이른 날짜)
+  const last7: string[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${today}T00:00:00+09:00`);
+    d.setDate(d.getDate() - (6 - i));
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  });
+  const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
 
-  // 이번 달 회의록/일지 날짜를 한 번에 긁어 현장별 집계 (현장 수 규모에서 충분)
+  // 이번 달+최근 7일 회의록/일지 날짜를 한 번에 긁어 현장별·일별 집계 (현장 수 규모에서 충분)
   const [minutesRes, logsRes] = activeIds.length
     ? await Promise.all([
-        admin.from("tbm_minutes").select("user_id, date").in("user_id", activeIds).gte("date", monthStart),
-        admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", monthStart),
+        admin.from("tbm_minutes").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
+        admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
       ])
     : [{ data: [] }, { data: [] }];
 
@@ -84,17 +91,25 @@ export async function GET(request: Request) {
     { minutesMonth: number; logsMonth: number; todayMinutes: number; todayLogs: number; lastDate: string | null }
   >();
   for (const id of activeIds) byUser.set(id, { minutesMonth: 0, logsMonth: 0, todayMinutes: 0, todayLogs: 0, lastDate: null });
+  const dailyMap = new Map<string, { minutes: number; logs: number }>();
+  for (const d of last7) dailyMap.set(d, { minutes: 0, logs: 0 });
   for (const r of (minutesRes.data as any[]) || []) {
     const s = byUser.get(r.user_id); if (!s) continue;
-    s.minutesMonth++;
+    if (r.date >= monthStart) {
+      s.minutesMonth++;
+      if (!s.lastDate || r.date > s.lastDate) s.lastDate = r.date;
+    }
     if (r.date === today) s.todayMinutes++;
-    if (!s.lastDate || r.date > s.lastDate) s.lastDate = r.date;
+    const day = dailyMap.get(r.date); if (day) day.minutes++;
   }
   for (const r of (logsRes.data as any[]) || []) {
     const s = byUser.get(r.user_id); if (!s) continue;
-    s.logsMonth++;
+    if (r.date >= monthStart) {
+      s.logsMonth++;
+      if (!s.lastDate || r.date > s.lastDate) s.lastDate = r.date;
+    }
     if (r.date === today) s.todayLogs++;
-    if (!s.lastDate || r.date > s.lastDate) s.lastDate = r.date;
+    const day = dailyMap.get(r.date); if (day) day.logs++;
   }
 
   const sites = roster.map((m) => {
@@ -126,5 +141,7 @@ export async function GET(request: Request) {
     todayDoneCount: sites.filter((s) => s.status === "active" && s.todayDone).length,
     today,
     sites,
+    // 최근 7일 활동 (전 현장 합) — 현장관리 대시보드 미니 차트용
+    daily: last7.map((d) => ({ date: d, ...dailyMap.get(d)! })),
   });
 }
