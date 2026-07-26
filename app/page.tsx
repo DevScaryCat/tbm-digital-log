@@ -62,6 +62,10 @@ export default function MainPage() {
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
   const [tab, setTab] = useState<TabKey>("tbm")
   const [tabReady, setTabReady] = useState(false)
+  // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
+  const [showUsageStep, setShowUsageStep] = useState(false)
+  // '여러 현장'을 고르고 넘어온 직후엔 현장관리 탭의 셋업 카드를 펼친 채 연다
+  const [autoSetup, setAutoSetup] = useState(false)
 
   useEffect(() => {
     const checkSession = async () => {
@@ -85,7 +89,7 @@ export default function MainPage() {
         setOrgCtx(ctx)
 
         // 첫 탭: 마지막으로 본 탭을 기억한다. 기억이 없고 아직 현장을 하나도 안 만든
-        // 감독자라면 회사관리부터 열어 '현장 만들기'로 유도한다.
+        // 감독자라면 현장관리부터 열어 '현장 만들기'로 유도한다.
         const last = readLastTab()
         const freshOwnerWithNoSites = ctx?.kind === "owner" && (ctx.org?.seatCount ?? 1) <= 1
         setTab(last ?? (freshOwnerWithNoSites ? "company" : "tbm"))
@@ -175,6 +179,19 @@ export default function MainPage() {
     if (needsWorkerType) setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
     setShowFormatModal(false)
     setIsSavingFormat(false)
+    // 다음 온보딩: 사용 형태(혼자/여러 현장). 소속 현장은 관리 권한이 없고,
+    // 이미 현장을 거느린 감독자에게는 물을 이유가 없다.
+    if (orgCtx?.kind !== "member" && (orgCtx?.memberIds?.length ?? 0) === 0) {
+      setShowUsageStep(true)
+    }
+  }
+
+  // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
+  const chooseUsage = (t: TabKey) => {
+    setShowUsageStep(false)
+    if (t === "company") setAutoSetup(true)
+    writeLastTab(t)
+    setTab(t)
   }
 
   const rawPercent = (secondsToHours(totalEducationSeconds) / requiredHours) * 100
@@ -331,10 +348,10 @@ export default function MainPage() {
           />
         )}
 
-        {/* ── 회사관리 탭 ─────────────────────────────────────────── */}
+        {/* ── 현장관리 탭 ─────────────────────────────────────────── */}
         {tab === "company" && (
           <div className="flex-1 p-4 sm:p-6">
-            <CompanyPanel />
+            <CompanyPanel autoSetup={autoSetup} />
           </div>
         )}
 
@@ -567,7 +584,7 @@ export default function MainPage() {
         </>)}
       </div>
 
-      {/* 하단 탭 — TBM(작성) / 회사관리. 마지막으로 본 탭이 다음 진입의 기본값 */}
+      {/* 하단 탭 — TBM(작성) / 현장관리. 마지막으로 본 탭이 다음 진입의 기본값 */}
       <BottomTabs value={tab} onChange={selectTab} loading={!tabReady} companyDot={!!orgCtx?.pendingAttach} />
 
       {/* 출력 형식 최초 설정 모달 — preferred_export_format이 없을 때 1회 표시 */}
@@ -606,6 +623,45 @@ export default function MainPage() {
             >
               {isSavingFormat ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 온보딩 2단계 — 사용 형태. 여기서 고른 건 여는 탭뿐이고, 나중에 언제든 바꿀 수 있다. */}
+      {showUsageStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="usage-modal-title"
+            className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
+          >
+            <h3 id="usage-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">어떻게 쓰실 건가요?</h3>
+            <p className="text-cur-muted text-[14px] mb-5 leading-[1.5]">나중에 언제든 바꿀 수 있어요.</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => chooseUsage("tbm")}
+                className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+              >
+                <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] font-bold text-cur-ink">내 현장 하나만 써요</span>
+                  <span className="block text-[13px] text-cur-body mt-1 leading-snug">바로 TBM 회의록부터 시작해요</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+              </button>
+              <button
+                onClick={() => chooseUsage("company")}
+                className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+              >
+                <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><Users className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] font-bold text-cur-ink">여러 현장을 관리해요</span>
+                  <span className="block text-[13px] text-cur-body mt-1 leading-snug">현장마다 계정을 만들어 주고 기록을 한 곳에서 봐요</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -22,7 +22,7 @@ async function requireOwner(
   if (ctx.kind === "member") {
     return {
       error: NextResponse.json(
-        { error: "소속 현장 계정은 회사 관리를 할 수 없습니다. 회사 감독자에게 문의하세요." },
+        { error: "소속 현장 계정은 현장 관리를 할 수 없습니다. 회사 감독자에게 문의하세요." },
         { status: 403 }
       ),
     };

@@ -171,7 +171,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
                 </DropdownMenuItem>
-                {/* 구독·결제, 보고서 설정, 현장 계정 관리는 전부 '회사관리' 탭으로 이관했다.
+                {/* 구독·결제, 보고서 설정, 현장 계정 관리는 전부 '현장관리' 탭으로 이관했다.
                     드롭다운은 계정 자체에 관한 것만 남긴다 — 메뉴가 두 군데로 갈리면 어느 쪽이
                     최신인지 알 수 없어진다. */}
                 <DropdownMenuSeparator className="bg-cur-hairline" />

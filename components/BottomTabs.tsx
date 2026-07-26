@@ -14,7 +14,7 @@ export type TabKey = "tbm" | "company"
 interface Props {
     value: TabKey
     onChange: (t: TabKey) => void
-    /** 회사관리 탭에 표시할 알림 점 (예: 소속 현장 초대 대기) */
+    /** 현장관리 탭에 표시할 알림 점 (예: 소속 현장 초대 대기) */
     companyDot?: boolean
     /** 아직 역할·조직 정보를 불러오는 중 — 라벨 자리를 유지한 채 비활성 */
     loading?: boolean
@@ -28,7 +28,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
     { key: "tbm", label: "TBM", icon: <HardHat className="w-[22px] h-[22px]" /> },
-    { key: "company", label: "회사관리", icon: <Building2 className="w-[22px] h-[22px]" /> },
+    { key: "company", label: "현장관리", icon: <Building2 className="w-[22px] h-[22px]" /> },
 ]
 
 export function BottomTabs({ value, onChange, companyDot, loading }: Props) {

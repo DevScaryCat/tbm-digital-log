@@ -11,13 +11,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Loader2, HardHat, CheckCircle, CheckCircle2, ChevronLeft, MonitorCheck, ChevronRight } from "lucide-react"
+import { AlertCircle, Loader2, CheckCircle, CheckCircle2, ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
-import { writeLastTab } from "@/components/BottomTabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { hasAgreedTerms, setAgreedTerms } from "@/lib/consentStorage"
 
@@ -260,7 +259,8 @@ export default function SignupPage() {
         )
     }
 
-    // 가입 첫 단계: 역할 선택 — 관리감독자(현장 기록, 이 위저드) / 안전관리자(관제·좌석 결제)
+    // 가입 첫 단계: 약관 동의만. 사용 형태(혼자/여러 현장)는 여기서 묻지 않는다 —
+    // 가입 직후 첫 온보딩에서 물어야 계정 만들기 전에 이탈할 결정을 강요하지 않는다.
     if (!roleChosen) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
@@ -269,14 +269,11 @@ export default function SignupPage() {
                         <div className="mx-auto"><Logo size="md" /></div>
                         <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">회원가입</CardTitle>
                         <CardDescription className="text-[15px] text-cur-muted font-medium">
-                            어떻게 사용하실 건가요?
-                            <span className="block text-[13px] text-cur-muted-soft mt-1 font-normal">
-                                현장 한 곳만 쓰신다면 관리감독자를 선택하세요
-                            </span>
+                            1분이면 끝나요
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3 pb-10 pt-4">
-                        {/* 약관 동의 — 가입 시점 필수. 동의해야 역할 선택이 열린다. */}
+                        {/* 약관 동의 — 가입 시점 필수 */}
                         <div className="flex items-start gap-3 bg-cur-elevated rounded-[10px] p-3.5 text-left">
                             <Checkbox
                                 id="signup-agree"
@@ -290,39 +287,14 @@ export default function SignupPage() {
                             </label>
                         </div>
 
-                        {/* 두 선택지는 같은 계정을 만든다 — 가입 직후 어느 탭이 열리는지만 다르다.
-                            나중에 마음이 바뀌어도 회사관리 탭에서 현장을 추가하면 그만이라, 여기서
-                            잘못 골라도 막히는 게 없다. */}
-                        <button
-                            onClick={() => { writeLastTab("tbm"); setRoleChosen(true) }}
+                        <Button
+                            onClick={() => setRoleChosen(true)}
                             disabled={!agreed}
-                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
+                            className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold disabled:opacity-40"
                         >
-                            <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[15px] font-bold text-cur-ink">현장 한 곳만 쓸게요</span>
-                                <span className="block text-[13px] text-cur-body mt-1 leading-snug">
-                                    내 현장에서 TBM·안전보건교육일지를 직접 작성해요
-                                </span>
-                            </span>
-                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-                        </button>
-                        <button
-                            onClick={() => { writeLastTab("company"); setRoleChosen(true) }}
-                            disabled={!agreed}
-                            className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-40"
-                        >
-                            <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><MonitorCheck className="w-5 h-5" /></span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[15px] font-bold text-cur-ink">여러 현장을 관리할게요</span>
-                                <span className="block text-[13px] text-cur-body mt-1 leading-snug">
-                                    내 현장도 쓰면서, 다른 현장 계정을 만들어 주고 기록을 한 곳에서 봐요
-                                </span>
-                            </span>
-                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-                        </button>
+                            가입 시작하기
+                        </Button>
                         <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed pt-1">
-                            지금 안 정해도 괜찮아요. 나중에 언제든 현장을 추가할 수 있어요.<br />
                             회사에서 초대 링크를 받았다면 그 링크로 가입하세요.
                         </p>
                         <p className="text-center text-[14px] text-cur-muted pt-2">
