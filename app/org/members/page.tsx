@@ -89,7 +89,7 @@ export default function OrgMembersPage() {
             const name = String(data?.user?.user_metadata?.company_name ?? "")
             const sugg = suggestIdStems(name)
             setStems(sugg)
-            setStem((cur) => cur || sugg[0] || "site")
+            setStem((cur) => cur || sugg[0] || "")
             setInitPw((cur) => cur || suggestInitialPassword())
             setSub(await fetchSubscription())
         })()
@@ -216,15 +216,27 @@ export default function OrgMembersPage() {
                     <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
                 )}
 
-                {/* 계정 현황 — 선구매 좌석이 없으므로 '몇 개 쓰는 중 / 얼마' 만 보여준다 */}
-                <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-1">
-                    <p className="text-[13px] text-cur-muted">현장 계정</p>
-                    <p className="text-[20px] font-bold text-cur-ink">{activeCount + 1}개 사용 중</p>
-                    <p className="text-[12px] text-cur-muted-soft leading-relaxed pt-1">
-                        내 계정 1개 + 현장 {activeCount}개 · 월 {((activeCount + 1) * 3900).toLocaleString()}원<br />
-                        계정을 추가하면 잔여기간 요금이 즉시 결제되고, 해제하면 다음 결제일부터 빠져요.
-                    </p>
-                </section>
+                {/* 계정 현황 = 계산기 — 발급 폼의 개수를 바꾸면 여기 숫자가 바로 바뀐다 */}
+                {(() => {
+                    const pending = showCreate && !createdIds ? count : 0
+                    const sites = activeCount + pending
+                    const total = (1 + sites) * 3900
+                    const isTrial = sub?.status === "trialing"
+                    const nextDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
+                    return (
+                        <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-1">
+                            <p className="text-[13px] text-cur-muted">현장 계정</p>
+                            <p className="text-[20px] font-bold text-cur-ink">
+                                내 계정 1 + 현장 {sites}개 · <span className="text-cur-primary">월 {total.toLocaleString()}원</span>
+                            </p>
+                            <p className="text-[12px] text-cur-muted-soft leading-relaxed pt-1">
+                                {isTrial
+                                    ? `무료체험 중엔 결제되지 않아요 · ${nextDate ?? "체험 종료일"}부터 결제`
+                                    : "추가는 남은 기간만큼 즉시 결제 · 해제는 다음 결제일부터 제외"}
+                            </p>
+                        </section>
+                    )
+                })()}
 
                 {/* 현장 계정 추가 (3경로) */}
                 <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-4">
@@ -293,39 +305,6 @@ export default function OrgMembersPage() {
                                 </p>
                             )}
 
-                            {/* 청구 미리보기 — 얼마가 늘고, 언제 결제되는지 (개수 바꿀 때마다 갱신) */}
-                            {(() => {
-                                const currentTotal = (1 + activeCount) * 3900
-                                const newTotal = (1 + activeCount + count) * 3900
-                                const isTrial = sub?.status === "trialing"
-                                const cpe = sub?.current_period_end ? new Date(sub.current_period_end) : null
-                                const nextDate = cpe ? cpe.toLocaleDateString("ko-KR") : null
-                                let prorated: number | null = null
-                                if (!isTrial && cpe && cpe.getTime() > Date.now()) {
-                                    const startMs = new Date(cpe).setMonth(cpe.getMonth() - 1)
-                                    const total = Math.max(864e5, cpe.getTime() - startMs)
-                                    const remaining = Math.min(total, Math.max(0, cpe.getTime() - Date.now()))
-                                    prorated = Math.max(100, Math.floor((3900 * count * remaining) / total))
-                                }
-                                return (
-                                    <div className="rounded-[8px] bg-cur-primary/[0.06] border border-cur-primary/25 px-3.5 py-3 space-y-1">
-                                        <div className="flex items-baseline justify-between">
-                                            <span className="text-[13px] text-cur-body">월 요금</span>
-                                            <span className="text-[14px] font-bold text-cur-ink">
-                                                {currentTotal.toLocaleString()} → {newTotal.toLocaleString()}원
-                                                <span className="text-cur-primary ml-1">(+{(count * 3900).toLocaleString()})</span>
-                                            </span>
-                                        </div>
-                                        <p className="text-[12px] text-cur-muted leading-relaxed">
-                                            {isTrial
-                                                ? `무료체험 중이라 오늘은 결제되지 않아요. 체험이 끝나는 ${nextDate ?? "종료일"}부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`
-                                                : prorated != null
-                                                  ? `오늘 약 ${prorated.toLocaleString()}원(이번 달 남은 기간 일할)이 결제되고, ${nextDate}부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`
-                                                  : `다음 결제일부터 월 ${newTotal.toLocaleString()}원이 결제됩니다.`}
-                                        </p>
-                                    </div>
-                                )
-                            })()}
                             <div className="space-y-1">
                                 <Label className="text-[12px]">공용 초기 비밀번호</Label>
                                 <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />

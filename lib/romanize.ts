@@ -41,7 +41,6 @@ export function suggestIdStems(companyName: string): string[] {
     }
     push(full)
     push(full.slice(0, 4))
-    push("site")
     return out
 }
 
