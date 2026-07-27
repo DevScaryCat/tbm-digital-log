@@ -45,6 +45,7 @@ interface Overview {
     sites: SiteRow[]
     daily?: { date: string; minutes: number; logs: number }[]
     risk?: { levels: { high: number; mid: number; low: number }; keywords: { word: string; count: number }[] }
+    trend?: { weeklyRate: number; thisMonthTotal: number; prevMonthTotal: number }
 }
 
 const SEAT_PRICE = 3900
@@ -171,6 +172,23 @@ export function CompanyPanel() {
                                 <p className="text-[24px] leading-none font-bold text-cur-ink font-mono">{mLogs}</p>
                             </div>
                         </div>
+                        {(() => {
+                            const t = data.trend
+                            if (!t) return null
+                            const diff = t.thisMonthTotal - t.prevMonthTotal
+                            return (
+                                <div className="flex items-center gap-2 text-[12px]">
+                                    <span className="flex-1 rounded-[8px] bg-cur-elevated px-3 py-2">
+                                        <span className="text-cur-muted">이번 주 실시율 </span>
+                                        <b className={`tabular-nums ${t.weeklyRate >= 70 ? "text-cur-success" : t.weeklyRate >= 40 ? "text-cur-ink" : "text-cur-error"}`}>{t.weeklyRate}%</b>
+                                    </span>
+                                    <span className="flex-1 rounded-[8px] bg-cur-elevated px-3 py-2">
+                                        <span className="text-cur-muted">지난달 대비 </span>
+                                        <b className={`tabular-nums ${diff > 0 ? "text-cur-success" : diff < 0 ? "text-cur-error" : "text-cur-ink"}`}>{diff > 0 ? `+${diff}` : diff}건</b>
+                                    </span>
+                                </div>
+                            )
+                        })()}
                         {daily.length > 0 && (
                             <div className="flex items-end justify-between gap-1.5 h-20 pt-1" aria-label="최근 7일 기록 수">
                                 {daily.map((d) => {
@@ -205,7 +223,11 @@ export function CompanyPanel() {
                     <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                         <div className="flex items-center justify-between">
                             <h2 className="text-[14px] font-bold text-cur-ink">이번 달 위험요인</h2>
-                            {total > 0 && <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>}
+                            {total > 0 ? (
+                                <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>
+                            ) : (
+                                <span className="text-[10px] font-bold text-cur-muted bg-cur-elevated border border-cur-hairline rounded-full px-2 py-0.5">예시</span>
+                            )}
                         </div>
                         {total === 0 ? (
                             /* 예시 스켈레톤 — 데이터가 쌓이면 이 자리가 무엇으로 채워지는지 미리 보여준다 */
@@ -234,7 +256,6 @@ export function CompanyPanel() {
                                         </div>
                                     </div>
                                 </div>
-                                <span className="absolute top-0 right-0 text-[10px] font-bold text-cur-muted bg-cur-elevated border border-cur-hairline rounded-full px-2 py-0.5">예시</span>
                                 <p className="text-[12px] text-cur-muted mt-3">TBM 회의록이 쌓이면 실제 데이터로 채워져요.</p>
                             </div>
                         ) : (
@@ -276,6 +297,47 @@ export function CompanyPanel() {
                                 )}
                             </>
                         )}
+                    </section>
+                )
+            })()}
+
+            {/* 확인이 필요한 현장 — 3일 이상 기록이 없거나 이번 달 0건. 현장이 많을수록
+                감독자가 찾는 건 '빠진 곳'이다. 현장 2곳 이상일 때만 의미가 있다. */}
+            {activeSites.length > 1 && (() => {
+                const dayDiff = (d: string | null) => {
+                    if (!d) return Infinity
+                    return Math.round((new Date(`${data.today}T00:00:00`).getTime() - new Date(`${d}T00:00:00`).getTime()) / 864e5)
+                }
+                const attention = activeSites
+                    .map((x) => ({ ...x, gap: dayDiff(x.lastActivity) }))
+                    .filter((x) => x.gap >= 3)
+                    .sort((a, b) => b.gap - a.gap)
+                if (attention.length === 0) {
+                    return (
+                        <div className="flex items-center gap-2.5 px-4 py-3 rounded-[12px] bg-cur-success/5 border border-cur-success/20">
+                            <CheckCircle2 className="w-4 h-4 shrink-0 text-cur-success" />
+                            <p className="text-[13px] text-cur-body">모든 현장이 최근 3일 안에 기록했어요.</p>
+                        </div>
+                    )
+                }
+                return (
+                    <section className="bg-cur-card rounded-[12px] border border-cur-error/25 overflow-hidden">
+                        <p className="px-4 pt-3.5 pb-1 text-[14px] font-bold text-cur-ink">확인이 필요한 현장 <span className="text-cur-error">{attention.length}</span></p>
+                        <div className="divide-y divide-cur-hairline">
+                            {attention.slice(0, 3).map((x) => (
+                                <button
+                                    key={x.userId}
+                                    disabled={!managed || data.memberCount === 0}
+                                    onClick={() => managed && data.memberCount > 0 && router.push(`/org/sites/${x.userId}`)}
+                                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-cur-elevated/50 transition-colors disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                                >
+                                    <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-ink truncate">{x.siteName}</span>
+                                    <span className="shrink-0 text-[12px] font-semibold text-cur-error">
+                                        {x.gap === Infinity ? "기록 없음" : `${x.gap}일째 기록 없음`}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </section>
                 )
             })()}

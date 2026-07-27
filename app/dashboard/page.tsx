@@ -18,7 +18,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerC
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText, ShieldCheck } from "lucide-react"
+import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 
 export default function DashboardPage() {
@@ -154,38 +154,23 @@ export default function DashboardPage() {
     }
 
     // 기간 내 특정 타입(log=교육일지 / minute=회의록) 문서를 별도 PDF로 일괄 저장
-    const batchDownload = (kind: 'log' | 'minute') => {
+    // 회의록+교육일지를 한 번에 — 문서 종류별 버튼 두 개는 "둘 다 받고 싶은" 대다수 상황에서 두 번 일하게 했다
+    const batchDownloadAll = () => {
         if (!dateRange?.from) return alert("기간을 선택해주세요.")
         const from = dateRange.from.getTime()
         const to = (dateRange.to ?? dateRange.from).getTime()
-        const target = logs.filter(l => (kind === 'minute' ? l.type === 'minute' : l.type !== 'minute') && (() => {
-            const d = parseISO(l.date).getTime(); return d >= from && d <= to
-        })())
-        if (target.length === 0) return alert(kind === 'minute' ? "선택된 기간에 회의록이 없습니다." : "선택된 기간에 안전보건교육일지가 없습니다.")
-        const ids = target.map(l => l.id)
-        // 배치 페이지에서 뒤로 왔을 때 선택했던 기간을 그대로 복원 (1회용)
+        const inRange = (l: { date: string }) => { const d = parseISO(l.date).getTime(); return d >= from && d <= to }
+        const minuteIds = logs.filter(l => l.type === 'minute' && inRange(l)).map(l => l.id)
+        const logIds = logs.filter(l => l.type !== 'minute' && inRange(l)).map(l => l.id)
+        if (minuteIds.length === 0 && logIds.length === 0) return alert("선택된 기간에 문서가 없습니다.")
         sessionStorage.setItem("dash_restore", JSON.stringify({
             from: format(dateRange.from, "yyyy-MM-dd"),
             to: format(dateRange.to ?? dateRange.from, "yyyy-MM-dd"),
         }))
-        if (kind === 'minute') {
-            localStorage.setItem("batch_minute_ids", JSON.stringify(ids))
-            router.push("/report/batch/minutes")
-        } else {
-            localStorage.setItem("batch_print_ids", JSON.stringify(ids))
-            router.push("/report/batch")
-        }
-    }
-
-    const handleRiskAssessment = () => {
-        if (!dateRange?.from) return alert("기간을 선택해주세요.")
-        if (minutesInRange === 0) return alert("이 기간에 TBM 회의록이 없어 AI 분석 보고서를 만들 수 없습니다.")
-        const from = format(dateRange.from, "yyyy-MM-dd")
-        const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
-        localStorage.setItem("ra_range", JSON.stringify({ from, to }))
-        // 위험성평가에서 돌아왔을 때 선택했던 범위를 그대로 복원하기 위해 저장 (1회용)
-        sessionStorage.setItem("dash_restore", JSON.stringify({ from, to }))
-        router.push("/risk-assessment")
+        localStorage.setItem("batch_minute_ids", JSON.stringify(minuteIds))
+        localStorage.setItem("batch_print_ids", JSON.stringify(logIds))
+        sessionStorage.setItem("batch_combined", "1") // 1회용 — batch 페이지가 읽고 지운다
+        router.push("/report/batch")
     }
 
     // 선택 기간에 포함된 회의록/교육일지 수 (위험성평가는 회의록만 분석)
@@ -332,25 +317,9 @@ export default function DashboardPage() {
                             {rangeNote && (
                                 <p className="text-[12px] text-amber-600 bg-amber-50 rounded-[8px] px-3 py-2 -mt-1">{rangeNote}</p>
                             )}
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button onClick={() => batchDownload('log')} disabled={logsInRange === 0} className="bg-cur-primary text-white hover:bg-cur-primary-active h-10 text-[13px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                    교육일지 PDF
-                                </Button>
-                                <Button onClick={() => batchDownload('minute')} disabled={minutesInRange === 0} className="bg-[#0b285b] text-white hover:opacity-90 h-10 text-[13px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                    회의록 PDF
-                                </Button>
-                            </div>
-                            {orgCtx !== null && orgCtx.kind !== "member" && (
-                                <>
-                                    <Button onClick={handleRiskAssessment} disabled={minutesInRange === 0} variant="outline" className="w-full border-cur-hairline text-cur-ink hover:bg-cur-elevated h-10 text-[14px] font-medium rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                        <ShieldCheck className="mr-1.5 w-4 h-4 text-cur-primary" /> 이 기간으로 AI 분석 보고서
-                                        <span className="ml-1.5 bg-cur-primary/15 text-cur-primary text-[10px] font-bold px-1.5 py-0.5 rounded-[4px] tracking-wide">PRO</span>
-                                    </Button>
-                                    {minutesInRange === 0 && (
-                                        <p className="text-[12px] text-cur-muted-soft text-center -mt-1">이 기간에 TBM 회의록이 없어요. (AI 분석 보고서는 회의록만 분석)</p>
-                                    )}
-                                </>
-                            )}
+                            <Button onClick={batchDownloadAll} disabled={minutesInRange === 0 && logsInRange === 0} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
+                                문서 PDF 저장 (회의록·교육일지)
+                            </Button>
                         </div>
                     )}
 

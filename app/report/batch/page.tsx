@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { ReportView } from "@/components/ReportView"
+import { MinutesView } from "@/components/MinutesView"
 import { Printer, ArrowLeft, Loader2, FileDown } from "lucide-react"
 
 // 파일명용 기간 표기 — "2026-07-01" → "0701"
@@ -15,6 +16,10 @@ function mmdd(date?: string): string {
 export default function BatchReportPage() {
     const [logs, setLogs] = useState<any[]>([])
     const [participantsMap, setParticipantsMap] = useState<Record<string, any[]>>({})
+    // 통합 모드(달력의 '문서 PDF 저장') — 회의록을 교육일지 앞에 함께 렌더
+    const [minutes, setMinutes] = useState<any[]>([])
+    const [minutesPartsMap, setMinutesPartsMap] = useState<Record<string, any[]>>({})
+    const [combined, setCombined] = useState(false)
     const [loading, setLoading] = useState(true)
     // 문서 출력 형식(user_metadata) — 조회 실패 시 PDF 기본 동작 유지
     const [exportFormat, setExportFormat] = useState<string>("pdf")
@@ -67,6 +72,41 @@ export default function BatchReportPage() {
 
     useEffect(() => {
         const loadBatch = async () => {
+            // 통합 모드 판정은 1회용 플래그 — 다른 진입점(교육일지 단독)에 영향 없게 읽고 지운다
+            const isCombined = sessionStorage.getItem("batch_combined") === "1"
+            if (isCombined) { sessionStorage.removeItem("batch_combined"); setCombined(true) }
+
+            if (isCombined) {
+                try {
+                    const mids: string[] = JSON.parse(localStorage.getItem("batch_minute_ids") || "[]")
+                    if (Array.isArray(mids) && mids.length > 0) {
+                        const { data: minutesData } = await supabase
+                            .from("tbm_minutes")
+                            .select("id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, created_at")
+                            .in("id", mids)
+                            .order("date", { ascending: true })
+                        if (minutesData) {
+                            const { data: mParts } = await supabase.from("tbm_minutes_participants").select("*").in("minutes_id", mids)
+                            const mp: Record<string, any[]> = {}
+                            for (const mnt of minutesData) mp[mnt.id] = []
+                            for (const pp of (mParts || [])) (mp[pp.minutes_id] ||= []).push(pp)
+                            const urls: (string | null | undefined)[] = []
+                            for (const mnt of minutesData) urls.push(mnt.leader_signature)
+                            for (const arr of Object.values(mp)) for (const pp of arr) urls.push(pp.signature)
+                            const sigm = await resolveSignedMap(urls)
+                            setMinutes(minutesData.map((mnt: any) => ({
+                                ...mnt,
+                                hazards: Array.isArray(mnt.hazards) ? mnt.hazards : (() => { try { return JSON.parse(mnt.hazards ?? "[]") } catch { return [] } })(),
+                                leader_signature: signed(sigm, mnt.leader_signature),
+                            })))
+                            const smp: Record<string, any[]> = {}
+                            for (const [k, arr] of Object.entries(mp)) smp[k] = arr.map((pp: any) => ({ ...pp, signature: signed(sigm, pp.signature) }))
+                            setMinutesPartsMap(smp)
+                        }
+                    }
+                } catch (e) { console.error("combined minutes load error:", e) }
+            }
+
             const idsString = localStorage.getItem("batch_print_ids")
             if (!idsString) return setLoading(false)
 
@@ -124,7 +164,9 @@ export default function BatchReportPage() {
                 <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2" /> 돌아가기</Button>
                 <div className="flex flex-col items-end gap-1">
                     <div className="flex gap-2">
-                        {(exportFormat === "docx" || exportFormat === "hwp" || exportFormat === "xlsx") ? (
+                        {combined ? (
+                            <Button onClick={() => window.print()} className="bg-blue-900 text-cur-on-primary"><Printer className="mr-2" /> 전체 인쇄 / PDF 저장 (회의록·교육일지)</Button>
+                        ) : (exportFormat === "docx" || exportFormat === "hwp" || exportFormat === "xlsx") ? (
                             <>
                                 <Button onClick={handleDocxSave} disabled={exporting} className="bg-blue-900 text-cur-on-primary">
                                     {exporting ? <Loader2 className="mr-2 animate-spin" /> : <FileDown className="mr-2" />}
@@ -136,12 +178,17 @@ export default function BatchReportPage() {
                             <Button onClick={() => window.print()} className="bg-blue-900 text-cur-on-primary"><Printer className="mr-2" /> 전체 인쇄 / PDF 저장</Button>
                         )}
                     </div>
-                    {exportFormat === "hwp" && (
+                    {combined ? (
+                        <p className="text-[11px] text-cur-muted">한글·워드·엑셀 저장은 홈의 회의록/교육일지 목록에서 문서 종류별로 할 수 있어요.</p>
+                    ) : exportFormat === "hwp" ? (
                         <p className="text-[11px] text-cur-muted">정식 한글 파일(.hwpx)로 저장돼요 — 한글 2014 이상에서 열립니다.</p>
-                    )}
+                    ) : null}
                 </div>
             </div>
 
+            {minutes.map((mnt) => (
+                <MinutesView key={mnt.id} minutes={mnt} participants={minutesPartsMap[mnt.id] || []} />
+            ))}
             {logs.map((log) => (
                 <ReportView key={log.id} log={log} participants={participantsMap[log.id] || []} />
             ))}

@@ -70,6 +70,11 @@ export async function GET(request: Request) {
   const activeIds = roster.filter((r) => r.status === "active").map((r) => r.userId);
   const today = kstToday();
   const monthStart = `${today.slice(0, 7)}-01`;
+  // 지난달 범위 — 추이 비교용
+  const prevAnchor = new Date(`${monthStart}T00:00:00+09:00`);
+  prevAnchor.setDate(prevAnchor.getDate() - 1);
+  const prevYm = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(prevAnchor);
+  const prevStart = `${prevYm}-01`;
   // 대시보드 미니 차트용 최근 7일 (월 경계를 넘을 수 있어 조회 시작은 둘 중 이른 날짜)
   const last7: string[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(`${today}T00:00:00+09:00`);
@@ -79,12 +84,22 @@ export async function GET(request: Request) {
   const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
 
   // 이번 달+최근 7일 회의록/일지를 한 번에 긁어 현장별·일별·위험요인 집계 (현장 수 규모에서 충분)
-  const [minutesRes, logsRes] = activeIds.length
+  const [minutesRes, logsRes, prevMinutes, prevLogs] = activeIds.length
     ? await Promise.all([
         admin.from("tbm_minutes").select("user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart),
         admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
+        admin.from("tbm_minutes").select("id", { count: "exact", head: true }).in("user_id", activeIds).gte("date", prevStart).lt("date", monthStart),
+        admin.from("tbm_logs").select("id", { count: "exact", head: true }).in("user_id", activeIds).gte("date", prevStart).lt("date", monthStart),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { count: 0 }, { count: 0 }];
+
+  // 이번 주 실시율 — 최근 7일 동안 (현장 × 날짜) 중 기록이 있었던 칸의 비율
+  const siteDays = new Set<string>();
+  const last7Set = new Set(last7);
+  for (const r of [...(((minutesRes as any).data as any[]) || []), ...(((logsRes as any).data as any[]) || [])]) {
+    if (last7Set.has(r.date)) siteDays.add(`${r.user_id}|${r.date}`);
+  }
+  const weeklyRate = activeIds.length ? Math.round((siteDays.size / (activeIds.length * 7)) * 100) : 0;
 
   // 위험요인 대시보드 — 감독자가 실제로 보고 싶은 건 "우리 현장들, 뭐가 위험한가"다.
   // 등급 분포(상/중/하)와 자주 등장한 키워드를 이번 달 회의록에서 뽑는다.
@@ -169,5 +184,11 @@ export async function GET(request: Request) {
     daily: last7.map((d) => ({ date: d, ...dailyMap.get(d)! })),
     // 이번 달 위험요인 집계 — 등급 분포 + 자주 나온 키워드
     risk: { levels: levelCounts, keywords },
+    // 추이 — 이번 주 (현장×일) 실시율, 지난달 대비 기록 수
+    trend: {
+      weeklyRate,
+      thisMonthTotal: sites.reduce((a, x) => a + (x.status === "active" ? x.monthMinutes + x.monthLogs : 0), 0),
+      prevMonthTotal: ((prevMinutes as any).count ?? 0) + ((prevLogs as any).count ?? 0),
+    },
   });
 }
