@@ -279,6 +279,18 @@ export default function OrgMembersPage() {
                         <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
                     </div>
 
+                    {/* 승급 인지 — 아직 회사가 없는 단독 계정이 첫 현장을 만들면 이 계정이 감독자가 된다.
+                        회사 공통 설정(문서 형식 등)의 결정권이 본인에게 생긴다는 걸 만들기 전에 알려준다. */}
+                    {ctx?.kind === "solo" && addStep !== null && !createdIds && (
+                        <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/25 px-4 py-3 space-y-1">
+                            <p className="text-[13px] font-bold text-cur-primary">첫 현장 계정을 만들면 이 계정이 회사 감독자가 돼요</p>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                문서 출력 형식 같은 회사 공통 설정을 이 계정이 정하고, 모든 현장 계정이 따르게 됩니다.
+                                현장별 기록·보고서도 여기서 모아 봐요.
+                            </p>
+                        </div>
+                    )}
+
                     {/* ① 일괄 발급 (메인) — 시드+개수+초기 비밀번호. 현장명·새 비밀번호는 담당자 첫 로그인 때 */}
                     {createdIds ? (
                         <div className="rounded-xl border border-cur-success/30 bg-cur-success/5 p-4 space-y-3">

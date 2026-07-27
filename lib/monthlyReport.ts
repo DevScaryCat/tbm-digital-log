@@ -60,6 +60,9 @@ export interface ReportContent {
   riskItems?: RiskItem[];
   /** 통합(여러 현장 병합) 보고서의 현장별 소계 — 있으면 렌더에 '현장별 요약' 섹션 표시 */
   sites?: { name: string; total: number; high: number; mid: number }[];
+  /** 지난달보다 나아진 항목만 — 없으면 섹션 미표시.
+   *  나빠진 항목은 절대 넣지 않는다: 부정 표시는 가라 기록을 유인한다 (제품 원칙). */
+  improvements?: { label: string; detail: string }[];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -138,6 +141,7 @@ export async function buildMergedMinutesContent(
   const items: HazardRow[] = [];
   const sites: { name: string; total: number; high: number; mid: number }[] = [];
   let totalMinutes = 0;
+  const curDays = new Set<string>();
 
   for (const acc of accounts) {
     const { data: minutes } = await admin
@@ -151,6 +155,7 @@ export async function buildMergedMinutesContent(
     let sHigh = 0;
     let sMid = 0;
     for (const m of rows) {
+      if (m.date) curDays.add(String(m.date));
       const hs = Array.isArray(m.hazards) ? m.hazards : [];
       for (const h of hs) {
         const factor = String(h?.factor ?? "").trim();
@@ -179,9 +184,78 @@ export async function buildMergedMinutesContent(
   const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 40);
   const periodLabel = `${year}년 ${month}월`;
   const stats: ReportStats = { total: totalMinutes, high, mid };
+  const improvements = await computeImprovements(admin, accounts, year, month, {
+    total: totalMinutes,
+    days: curDays.size,
+    high,
+  });
   const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
 
-  return { companyName, periodLabel, stats, keywords, hazards, aiSummary, sites };
+  return { companyName, periodLabel, stats, keywords, hazards, aiSummary, sites, improvements };
+}
+
+/**
+ * 지난달 대비 '나아진 항목만' 계산 — 나빠진 항목은 절대 만들지 않는다.
+ * 부정 지표를 보여주면 기록을 부풀리는(가라) 유인이 생긴다는 제품 원칙.
+ * 지난달 기록이 아예 없으면(첫 달) 비교 대상이 없으므로 빈 배열.
+ */
+async function computeImprovements(
+  admin: SupabaseClient,
+  accounts: { userId: string; siteName: string }[],
+  year: number,
+  month: number,
+  cur: { total: number; days: number; high: number }
+): Promise<{ label: string; detail: string }[]> {
+  let py = year, pm = month - 1;
+  if (pm === 0) { pm = 12; py -= 1; }
+  const pFrom = `${py}-${pad(pm)}-01`;
+  const pLast = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  const pTo = `${py}-${pad(pm)}-${pad(pLast)}`;
+
+  let prevTotal = 0;
+  let prevHigh = 0;
+  const prevDays = new Set<string>();
+  try {
+    for (const acc of accounts) {
+      const { data, error } = await admin
+        .from("tbm_minutes")
+        .select("date, hazards")
+        .eq("user_id", acc.userId)
+        .gte("date", pFrom)
+        .lte("date", pTo);
+      // supabase-js는 실패 시 throw하지 않고 error를 돌려준다 — 한 현장이라도 조회에 실패하면
+      // 지난달 합계가 실제보다 작아져 가짜 '개선'이 만들어지므로 섹션을 통째로 포기한다.
+      if (error) {
+        console.error("improvements prev-month query error:", acc.userId, error);
+        return [];
+      }
+      for (const m of (data as any[]) || []) {
+        prevTotal++;
+        if (m.date) prevDays.add(String(m.date));
+        const hs = Array.isArray(m.hazards) ? m.hazards : [];
+        for (const h of hs) {
+          if (String(h?.factor ?? "").trim() && gradeOf(h?.level) === "상") prevHigh++;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("improvements prev-month query error:", e);
+    return []; // 비교 실패는 비치명 — 섹션만 생략
+  }
+  if (prevTotal === 0) return [];
+
+  const out: { label: string; detail: string }[] = [];
+  if (cur.total > prevTotal) {
+    out.push({ label: "회의록 작성", detail: `${prevTotal}건 → ${cur.total}건 (+${cur.total - prevTotal}건)` });
+  }
+  if (cur.days > prevDays.size) {
+    out.push({ label: "기록한 날", detail: `${prevDays.size}일 → ${cur.days}일` });
+  }
+  // 위험성 '상' 감소는 기록량이 줄지 않았을 때만 개선으로 친다 — 기록을 덜 써서 줄어든 건 개선이 아니다
+  if (cur.total >= prevTotal && cur.high < prevHigh) {
+    out.push({ label: "위험성 '상' 감소", detail: `${prevHigh}건 → ${cur.high}건 (-${prevHigh - cur.high}건)` });
+  }
+  return out;
 }
 
 /** 월간(year, month) 보고서 콘텐츠 */
@@ -324,6 +398,21 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   const summaryItems = hazards;
   const displayStats = stats;
 
+  // 지난달보다 나아진 점 — 개선 항목만 (없거나 첫 달이면 섹션 자체가 없다)
+  const improvements = content.improvements || [];
+  const improvementsSection =
+    improvements.length > 0
+      ? `<div style="background:#e7f6ee;border:1px solid #bfe6d2;border-radius:10px;padding:16px;margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:700;color:#1f8a65;margin-bottom:8px;">↑ 지난달보다 나아진 점</div>
+          ${improvements
+            .map(
+              (im) =>
+                `<div style="font-size:14px;color:#26251e;line-height:1.9;"><span style="color:#1f8a65;font-weight:700;">✓</span> ${escapeHtml(im.label)} <span style="font-weight:700;">${escapeHtml(im.detail)}</span></div>`
+            )
+            .join("")}
+        </div>`
+      : "";
+
   // 통합(여러 현장 병합) 보고서면 현장별 소계 섹션
   const sites = content.sites || [];
   const sitesSection =
@@ -406,6 +495,8 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
           </td>
         </tr>
       </table>
+
+      ${improvementsSection}
 
       ${sitesSection}
 
