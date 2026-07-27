@@ -39,7 +39,7 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
                         onClick={() => router.push("/org/stats")}
                         className="h-9 px-3 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                     >
-                        <BarChart3 className="w-4 h-4 text-cur-muted" /> 통계 보기
+                        <BarChart3 className="w-4 h-4 text-cur-muted" /> 모든 현장 통계 보기
                     </button>
                 )}
             </div>
