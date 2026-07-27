@@ -137,14 +137,6 @@ export function CompanyPanel() {
                 </div>
             )}
 
-            {/* 오늘 요약 — 한 줄 */}
-            <section className="bg-cur-card rounded-[12px] border border-cur-hairline px-4 py-3.5 flex items-center justify-between">
-                <span className="text-[14px] font-semibold text-cur-ink">오늘 TBM 실시</span>
-                <span className="text-[16px] font-bold tabular-nums">
-                    <span className={data.todayDoneCount > 0 ? "text-cur-success" : "text-cur-primary"}>{data.todayDoneCount}</span>
-                    <span className="text-cur-muted font-semibold text-[14px]"> / {activeSites.length} 현장</span>
-                </span>
-            </section>
 
 
 
@@ -159,10 +151,17 @@ export function CompanyPanel() {
                 return (
                     <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-[14px] font-bold text-cur-ink">이번 달 활동</h2>
-                            <span className="text-[12px] text-cur-muted-soft">최근 7일</span>
+                            <h2 className="text-[14px] font-bold text-cur-ink">활동 기록</h2>
+                            <span className="text-[12px] text-cur-muted-soft">이번 달 · 차트는 최근 7일</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+                        <div className="grid grid-cols-3 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+                            <div className="bg-cur-card py-3.5">
+                                <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">오늘 실시</p>
+                                <p className="text-[24px] leading-none font-bold font-mono">
+                                    <span className={data.todayDoneCount > 0 ? "text-cur-success" : "text-cur-primary"}>{data.todayDoneCount}</span>
+                                    <span className="text-[15px] text-cur-muted">/{activeSites.length}</span>
+                                </p>
+                            </div>
                             <div className="bg-cur-card py-3.5">
                                 <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">TBM 회의록</p>
                                 <p className="text-[24px] leading-none font-bold text-cur-ink font-mono">{mMinutes}</p>
