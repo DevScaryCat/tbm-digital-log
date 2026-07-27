@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, ChevronRight, CalendarDays } from "lucide-react"
+import { SiteDetailPanel } from "@/components/SiteDetailPanel"
 
 interface SiteRow {
     userId: string
@@ -47,9 +48,11 @@ interface Props {
     myLogs: number
     mySuggestions: number
     myUnread: number
+    /** 다른 현장을 보는 중인지 — 홈의 개인 섹션(교육 진행도·작성 카드)을 숨기는 신호 */
+    onViewingOtherSite?: (viewing: boolean) => void
 }
 
-export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySuggestions, myUnread }: Props) {
+export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySuggestions, myUnread, onViewingOtherSite }: Props) {
     const router = useRouter()
     const [data, setData] = useState<Overview | null>(overviewCache?.data ?? null)
     const [loading, setLoading] = useState(isOwner && !overviewCache)
@@ -101,6 +104,11 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
     // 선택 현장이 사라졌으면(해제) 전체로 폴백
     const view: "self" | "all" | "site" = !isOwner || degraded || selected?.isSelf ? "self" : selected ? "site" : "all"
 
+    // 다른 현장을 보는 중이면 홈의 개인 섹션을 숨기라고 알린다 (내 회의록 작성 버튼 등)
+    useEffect(() => {
+        onViewingOtherSite?.(view === "site")
+    }, [view, onViewingOtherSite])
+
     // 개인 그리드 (본인 전체 기간·클릭 이동·달력·안읽음 배지) — 비감독자와 '내 현장' 선택이 공유
     const selfGrid = (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
@@ -138,18 +146,11 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
         </div>
     )
 
-    // 전체/특정 현장 그리드 — 3타일. 특정 현장이면 타일이 그 현장 기록으로 들어간다.
-    const orgGrid = (minutes: number, logs: number, suggestions: number, siteId: string | null) => {
-        const clickable = !!siteId
-        const go = () => siteId && router.push(`/org/sites/${siteId}`)
-        const tile = (label: string, value: number, ariaLabel: string) => (
-            <div
-                {...(clickable
-                    ? { onClick: go, role: "button", tabIndex: 0, "aria-label": ariaLabel, onKeyDown: cardKeyDown(go) }
-                    : {})}
-                className={`relative py-6 px-2 bg-cur-card text-center ${clickable ? "cursor-pointer hover:bg-cur-elevated active:bg-cur-elevated transition-colors" : ""}`}
-            >
-                {clickable && <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />}
+    // 전체/특정 현장 누적 그리드 — 3타일(표시 전용).
+    // 현장 선택 시엔 아래 SiteDetailPanel이 진입 동선을 맡으므로 타일은 링크가 아니다.
+    const orgGrid = (minutes: number, logs: number, suggestions: number) => {
+        const tile = (label: string, value: number) => (
+            <div className="relative py-6 px-2 bg-cur-card text-center">
                 <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">{label}</div>
                 <div className="text-[32px] leading-none font-bold text-cur-ink font-mono">
                     {loading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : value}
@@ -158,9 +159,9 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
         )
         return (
             <div className="grid grid-cols-3 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden">
-                {tile("TBM 회의록", minutes, "현장 기록 보기")}
-                {tile("안전보건교육일지", logs, "현장 기록 보기")}
-                {tile("근로자 제안함", suggestions, "현장 기록 보기")}
+                {tile("TBM 회의록", minutes)}
+                {tile("안전보건교육일지", logs)}
+                {tile("근로자 제안함", suggestions)}
             </div>
         )
     }
@@ -206,8 +207,15 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
             {view === "self"
                 ? selfGrid
                 : view === "site"
-                  ? orgGrid(selected!.totalMinutes, selected!.totalLogs, selected!.suggestions, selected!.userId)
-                  : orgGrid(allMinutes, allLogs, allSuggestions, null)}
+                  ? orgGrid(selected!.totalMinutes, selected!.totalLogs, selected!.suggestions)
+                  : orgGrid(allMinutes, allLogs, allSuggestions)}
+
+            {/* 현장 선택 시 그 현장 대시보드 — 홈의 개인용 작성 카드 자리를 대신한다 */}
+            {view === "site" && (
+                <div className="pt-3">
+                    <SiteDetailPanel userId={selected!.userId} siteName={selected!.siteName} />
+                </div>
+            )}
         </div>
     )
 }

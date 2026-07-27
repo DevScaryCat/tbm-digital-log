@@ -26,7 +26,8 @@ export default function OrgReportsPage() {
     const [rows, setRows] = useState<ReportRow[]>([])
     const [loading, setLoading] = useState(true)
     const [pro, setPro] = useState(false)
-    const [tab, setTab] = useState<"inbox" | "settings">("inbox")
+    // 발송 설정을 먼저 — 보고서는 매월 1일에만 쌓이는데, 들어와서 할 일은 대개 수신자·형식 설정이다
+    const [tab, setTab] = useState<"settings" | "inbox">("settings")
 
     useEffect(() => {
         if (ctxLoading) return
@@ -55,7 +56,7 @@ export default function OrgReportsPage() {
             <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                 {/* 받은 보고서(열람)와 발송 설정(수신자·예시)을 탭으로 분리 — 한 화면 세로 나열은 스캔이 안 된다 */}
                 <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                    {([["inbox", "받은 보고서"], ["settings", "발송 설정"]] as const).map(([key, label]) => (
+                    {([["settings", "발송 설정"], ["inbox", "받은 보고서"]] as const).map(([key, label]) => (
                         <button
                             key={key}
                             onClick={() => setTab(key)}
@@ -109,12 +110,16 @@ export default function OrgReportsPage() {
                     )
                 )}
 
-                {/* 패널은 항상 마운트(hidden 토글) — 탭을 오가도 입력 중이던 수신자 이메일·목록이 유지되고 재조회도 없다 */}
-                <div className={tab === "settings" ? "space-y-4" : "hidden"}>
+                {/* 패널은 항상 마운트(hidden 토글) — 탭을 오가도 입력 중이던 수신자 이메일·목록이 유지되고 재조회도 없다.
+                    구독 판정 전에는 감춘다: pro 기본값 false로 그리면 유료 사용자에게 업그레이드 배너가 깜빡인다 */}
+                <div className={tab === "settings" && !loading && !ctxLoading ? "space-y-4" : "hidden"}>
                     {/* 문서 형식은 문서·보고서 계열 설정이라 여기(발송 설정)에 둔다 — 현장 계정 관리에서 이동 */}
                     <CompanyDocFormatCard />
                     <ReportSettingsPanel pro={pro} />
                 </div>
+                {tab === "settings" && (loading || ctxLoading) && (
+                    <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
+                )}
             </main>
         </div>
     )

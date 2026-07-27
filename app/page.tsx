@@ -78,6 +78,8 @@ export default function MainPage() {
 
   // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 활동 현황에 현장 셀렉트(HomeActivity)
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
+  // 다른 현장을 보는 중 — 내 교육 진행도·작성 카드는 남의 현장 화면에서 말이 안 되므로 숨긴다
+  const [viewingOtherSite, setViewingOtherSite] = useState(false)
   // 온보딩에서 '여러 현장'을 고르고 셋업을 건너뛴 솔로 — 홈에서 현장 추가 입구를 이어준다
   const [hintAddSite, setHintAddSite] = useState(false)
   useEffect(() => {
@@ -639,11 +641,13 @@ export default function MainPage() {
             myLogs={shownLogs}
             mySuggestions={shownSuggestions}
             myUnread={unreadSuggestions}
+            onViewingOtherSite={setViewingOtherSite}
           />
 
+          {/* 교육 진행도는 개인의 법정 이수시간 — 다른 현장을 보는 중엔 숨긴다 */}
           <div
             onClick={() => router.push('/education-progress')}
-            className="bg-cur-card rounded-[12px] p-4 border border-cur-hairline cursor-pointer hover:border-cur-primary/40 active:bg-cur-elevated/40 transition-all group"
+            className={`bg-cur-card rounded-[12px] p-4 border border-cur-hairline cursor-pointer hover:border-cur-primary/40 active:bg-cur-elevated/40 transition-all group ${viewingOtherSite ? 'hidden' : ''}`}
           >
             <div className="flex items-center justify-between gap-3 mb-5">
               <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 flex-wrap tracking-[-0.11px] min-w-0">
@@ -716,7 +720,8 @@ export default function MainPage() {
           </div>
         </div>
 
-        <div className="flex-1 p-6 space-y-4">
+        {/* 작성 카드는 '내 명의로 쓰는' 문서 — 다른 현장을 보는 중엔 숨긴다(그 현장 대신 쓰는 게 아니다) */}
+        <div className={`flex-1 p-6 space-y-4 ${viewingOtherSite ? 'hidden' : ''}`}>
 
           <div
             onClick={() => router.push('/tbm-minutes')}
