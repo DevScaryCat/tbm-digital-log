@@ -10,7 +10,7 @@ import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/li
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
-import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight, Users } from "lucide-react"
 
 interface Payment {
     payment_id: string
@@ -205,10 +205,30 @@ export default function AccountPage() {
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
-                                    <div className="flex justify-between">
-                                        <span className="text-cur-muted">플랜</span>
-                                        <span className="text-cur-ink font-medium">{planLabel}</span>
-                                    </div>
+                                    {/* 요금 구성 — 계정이 곧 청구 항목이라는 걸 표로 보여준다. 설명 문단보다 행 두 줄이 낫다 */}
+                                    {seatBilled ? (
+                                        <>
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">내 계정 (감독자)</span>
+                                                <span className="text-cur-ink font-medium">3,900원</span>
+                                            </div>
+                                            {accountCount > 1 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
+                                                    <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between pt-2 border-t border-cur-hairline">
+                                                <span className="text-cur-ink font-bold">{cardlessTrial ? "월 합계 (체험 종료 후)" : "월 합계"}</span>
+                                                <span className="text-cur-ink font-bold">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex justify-between">
+                                            <span className="text-cur-muted">플랜</span>
+                                            <span className="text-cur-ink font-medium">{planLabel}</span>
+                                        </div>
+                                    )}
                                     {/* 해지되면 빌링키·card_info를 폐기하므로 결제수단 표시도 숨김
                                         (구버전 해지 데이터에 card_info가 남아 있어도 여기서 걸러짐) */}
                                     {methodLabel && sub?.status !== "canceled" && (
@@ -230,20 +250,15 @@ export default function AccountPage() {
                                             다음 결제일부터 요금제가 변경될 예정입니다
                                         </div>
                                     )}
-                                    {/* 여기가 '회사 전체 결제'라는 걸 못 박는다 — 현장 계정 관리의 계산기와
-                                        이 화면이 서로 다른 결제처럼 읽히던 혼란의 해소 지점 */}
-                                    {seatBilled && accountCount > 1 && (
-                                        <div className="rounded-lg bg-cur-elevated border border-cur-hairline px-3 py-2.5 text-[13px] text-cur-body leading-relaxed">
-                                            이 결제 하나로 <b className="text-cur-ink">감독자 본인 + 현장 계정 {accountCount - 1}개</b>의
-                                            이용료가 함께 청구돼요. 현장 계정에는 별도 결제가 없습니다.
-                                            <button
-                                                type="button"
-                                                onClick={() => router.push("/org/members")}
-                                                className="block mt-1 text-cur-primary font-semibold hover:opacity-70 transition-opacity"
-                                            >
-                                                계정 추가·해제는 현장 계정 관리에서 →
-                                            </button>
-                                        </div>
+                                    {/* 계정과 결제는 한 몸 — 설명 대신 진입 버튼 하나로 (문단 설명은 요금 구성 표가 대체) */}
+                                    {seatBilled && (
+                                        <button
+                                            type="button"
+                                            onClick={() => router.push("/org/members")}
+                                            className="mt-1 w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center justify-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                        >
+                                            <Users className="w-4 h-4 text-cur-muted" /> 현장 계정 추가·관리
+                                        </button>
                                     )}
                                 </div>
                             )}
@@ -251,17 +266,12 @@ export default function AccountPage() {
 
                         {/* 액션: 카드 없는 무료체험(진행/종료) → 등록 안내 / 그 외 → 변경·해지·재구독 */}
                         {!isGrandfather && cardlessTrialActive && (
-                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
-                                <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-1.5">
-                                    <p className="text-[14px] font-bold text-cur-ink flex items-center gap-1.5">
-                                        <Sparkles className="w-4 h-4 text-cur-primary" /> 1개월 무료체험 중
-                                    </p>
-                                    <p className="text-[13px] text-cur-muted leading-relaxed">
-                                        {nextDate ? `${nextDate}까지 ` : ""}모든 기능을 무료로 이용하세요.
-                                        체험이 끝난 뒤에도 계속 이용하려면 아래에서 결제수단을 등록해 주세요.
-                                        <b className="text-cur-ink"> 등록 전에는 자동으로 결제되지 않습니다.</b>
-                                    </p>
-                                </div>
+                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                {/* '무료체험 중' 헤더·종료일은 위 상태 카드가 이미 말했다 — 여기선 행동만 */}
+                                <p className="text-[13px] text-cur-muted leading-relaxed">
+                                    체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.{" "}
+                                    <b className="text-cur-ink">등록 전에는 자동으로 결제되지 않습니다.</b>
+                                </p>
                                 {showRegister ? (
                                     <div className="space-y-3">
                                         <SubscribeButtons
