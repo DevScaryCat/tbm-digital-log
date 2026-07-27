@@ -5,8 +5,7 @@
  * tokens only — hairline depth, card radius 12px, CTA radius 8px
  */
 
-// 홈에서 다른 현장을 선택했을 때 보이는 그 현장 대시보드.
-// 이 자리에 원래 있던 '내 회의록 작성' 카드들은 남의 현장을 보는 중엔 말이 안 돼서 숨긴다(page.tsx).
+// 현장 통계(/org/stats)에서 소속 현장을 선택했을 때 보이는 그 현장 대시보드.
 // 데이터는 전부 서버 경유(/api/org/site-stats) — 소유 검증(assertOwnerOfMember)이 라우트에 있다.
 
 import { useCallback, useEffect, useRef, useState } from "react"
