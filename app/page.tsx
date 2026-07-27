@@ -631,9 +631,8 @@ export default function MainPage() {
             </button>
           )}
 
-          {/* 활동 현황 — 개인 그리드. 감독자에겐 '통계 보기' 버튼만 (전체·현장별 통계는 /org/stats) */}
+          {/* 활동 현황 — 개인 그리드. 모든 현장 통계 진입은 헤더 버튼(구 요금 배지 자리) */}
           <HomeActivity
-            isOwner={orgCtx?.kind === "owner"}
             statsLoading={statsLoading}
             myMinutes={shownMinutes}
             myLogs={shownLogs}

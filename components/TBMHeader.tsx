@@ -5,8 +5,8 @@ import { useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, FileBarChart2, Users, CreditCard, Lock, Sparkles } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { LogOut, User, Home, ChevronLeft, FileBarChart2, Users, CreditCard, Lock, Sparkles, BarChart3 } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
@@ -139,17 +139,14 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
 
     const userProfileDropdown = (
         <div className="flex items-center gap-2">
-            {badge && orgKind !== "member" && (
+            {/* 요금 배지 자리 — 단일 요금제라 배지의 정보 가치가 낮아, 감독자의 상시 동선인
+                통계 버튼으로 교체 (Chris). 결제 상태는 드롭다운 '구독 및 결제'가 담당. */}
+            {orgKind === "owner" && (
                 <button
-                    // 구독이 살아 있으면 결제 화면, 없으면 요금제 안내로
-                    onClick={() => router.push(badge.trial ? "/pricing" : "/account")}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-[4px] tracking-wide ${
-                        badge.isPro
-                            ? "bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active"
-                            : "bg-cur-elevated text-cur-muted border border-cur-hairline hover:bg-cur-hairline"
-                    }`}
+                    onClick={() => router.push("/org/stats")}
+                    className="h-9 px-2.5 rounded-[8px] border border-cur-hairline bg-cur-card text-[12px] font-bold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center gap-1.5"
                 >
-                    {badge.label}
+                    <BarChart3 className="w-4 h-4 text-cur-muted" /> 모든 현장 통계
                 </button>
             )}
         <DropdownMenu onOpenChange={(open) => { if (open) loadUsage() }}>
@@ -178,37 +175,46 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     </>
                 )}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
-                <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                    <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
-                </DropdownMenuItem>
-                {/* 관리 메뉴 — 현장관리 탭 제거로 여기가 유일한 입구다 (홈은 관제 카드만).
+                {/* 메뉴는 성격별 3그룹 — 보고서·분석(하는 일) / 회사 관리(설정) / 계정.
                     소속 현장에게는 같은 자리를 잠긴 모습으로 보여준다: 어디서 관리되는지 알게. */}
-                <DropdownMenuSeparator className="bg-cur-hairline" />
-                {[
-                    // AI 분석은 위험요인 카드 버튼이 유일한 입구였는데 카드가 빠지면서 여기로
-                    { href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> },
-                    { href: "/org/reports", label: "보고서", icon: <FileBarChart2 className="mr-2 h-4 w-4 text-cur-muted" /> },
-                    { href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> },
-                    { href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> },
-                ].map((m) =>
-                    orgKind === "member" ? (
-                        <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
-                            <Lock className="mr-2 h-4 w-4" /> {m.label}
-                            <span className="ml-auto text-[11px]">감독자 관리</span>
-                        </DropdownMenuItem>
-                    ) : (
-                        <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                            {m.icon} {m.label}
-                        </DropdownMenuItem>
+                {(() => {
+                    const item = (m: { href: string; label: string; icon: ReactNode }) =>
+                        orgKind === "member" ? (
+                            <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
+                                <Lock className="mr-2 h-4 w-4" /> {m.label}
+                                <span className="ml-auto text-[11px]">감독자 관리</span>
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                                {m.icon} {m.label}
+                            </DropdownMenuItem>
+                        )
+                    const groupLabel = (text: string) => (
+                        <DropdownMenuLabel className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-cur-muted-soft">{text}</DropdownMenuLabel>
                     )
-                )}
-                {orgKind === "member" && (
-                    <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
-                )}
-                <DropdownMenuSeparator className="bg-cur-hairline" />
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
-                    <LogOut className="mr-2 h-4 w-4" /> 로그아웃
-                </DropdownMenuItem>
+                    return (
+                        <>
+                            {groupLabel("보고서·분석")}
+                            {item({ href: "/org/reports", label: "보고서", icon: <FileBarChart2 className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                            {item({ href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                            <DropdownMenuSeparator className="bg-cur-hairline" />
+                            {groupLabel("회사 관리")}
+                            {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                            {item({ href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                            {orgKind === "member" && (
+                                <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
+                            )}
+                            <DropdownMenuSeparator className="bg-cur-hairline" />
+                            {groupLabel("계정")}
+                            <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                                <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
+                                <LogOut className="mr-2 h-4 w-4" /> 로그아웃
+                            </DropdownMenuItem>
+                        </>
+                    )
+                })()}
             </DropdownMenuContent>
         </DropdownMenu>
         </div>

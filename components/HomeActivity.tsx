@@ -6,14 +6,13 @@
  */
 
 // 홈 활동 현황 — 홈에는 토글·셀렉트를 두지 않는다 (Chris: 홈은 개인 화면).
-// 감독자에게는 헤더 오른쪽 '통계 보기' 버튼 하나만 — 전체·현장별 통계는 /org/stats 전용 페이지에서.
+// 감독자의 '모든 현장 통계' 진입은 헤더(구 요금 배지 자리)가 담당 — 여기는 개인 그리드만.
 
 import { type KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, ChevronRight, CalendarDays, BarChart3 } from "lucide-react"
+import { Loader2, ChevronRight, CalendarDays } from "lucide-react"
 
 interface Props {
-    isOwner: boolean
     statsLoading: boolean
     myMinutes: number
     myLogs: number
@@ -21,7 +20,7 @@ interface Props {
     myUnread: number
 }
 
-export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySuggestions, myUnread }: Props) {
+export function HomeActivity({ statsLoading, myMinutes, myLogs, mySuggestions, myUnread }: Props) {
     const router = useRouter()
 
     // 카드 키보드 접근성: Enter/Space가 onClick과 동일하게 동작
@@ -31,18 +30,7 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
 
     return (
         <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3 px-1">
-                <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px]">활동 현황</h3>
-                {isOwner && (
-                    <button
-                        type="button"
-                        onClick={() => router.push("/org/stats")}
-                        className="h-9 px-3 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                    >
-                        <BarChart3 className="w-4 h-4 text-cur-muted" /> 모든 현장 통계 보기
-                    </button>
-                )}
-            </div>
+            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
                 <div onClick={() => router.push('/analytics')} role="button" tabIndex={0} aria-label="TBM 회의록 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
