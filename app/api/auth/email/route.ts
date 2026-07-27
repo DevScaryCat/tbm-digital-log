@@ -21,14 +21,26 @@ export async function POST(request: Request) {
 
   const admin = getAdminClient();
 
-  // 발송 남용 방지: 계정당 시간당 5회 (스팸 발신지화 + 토큰 행 무한 증가 차단)
-  const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await admin
+  // 발송 남용 방지 3중 — 임의 주소로 보낼 수 있는 구조라(본인 수신용 이메일 입력) 폭탄 방지가 필수.
+  // phone/send 라우트와 같은 DB-count 패턴: ① 60초 쿨다운(연타 차단) ② 시간당 5회 ③ 일 10회.
+  const now = Date.now();
+  const { data: latest } = await admin
     .from("email_verifications")
-    .select("id", { count: "exact", head: true })
+    .select("created_at")
     .eq("user_id", user.id)
-    .gte("created_at", hourAgo);
-  if ((count ?? 0) >= 5) {
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (latest?.created_at && now - new Date(latest.created_at).getTime() < 60 * 1000) {
+    return NextResponse.json({ error: "잠시 후 다시 시도해주세요. (재발송은 1분에 한 번)" }, { status: 429 });
+  }
+  const hourAgo = new Date(now - 60 * 60 * 1000).toISOString();
+  const dayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const [{ count: hourCount }, { count: dayCount }] = await Promise.all([
+    admin.from("email_verifications").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", hourAgo),
+    admin.from("email_verifications").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", dayAgo),
+  ]);
+  if ((hourCount ?? 0) >= 5 || (dayCount ?? 0) >= 10) {
     return NextResponse.json({ error: "인증 메일을 너무 자주 요청했습니다. 잠시 후 다시 시도해주세요." }, { status: 429 });
   }
   const r = await sendRealEmailVerification(admin, user.id, target, baseUrl);

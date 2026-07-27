@@ -22,6 +22,9 @@ export default async function VerifyEmailPage({ params }: { params: Promise<{ to
               <br />
               매달 1일 이 주소로 월간 보고서가 발송됩니다.
             </p>
+            <p className="text-[12px] text-cur-muted-soft leading-relaxed">
+              열어둔 안톡 화면으로 돌아가면 인증이 자동으로 반영돼요.
+            </p>
           </>
         ) : (
           <>

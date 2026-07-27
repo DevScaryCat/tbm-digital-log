@@ -15,6 +15,7 @@ import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } 
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
+import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
 
@@ -90,8 +91,31 @@ export default function MainPage() {
   const [setupPw2, setSetupPw2] = useState("")
   const [setupSite, setSetupSite] = useState("")
   const [setupManager, setSetupManager] = useState("")
+  // 현장 정보 — 발급 계정은 가입 위저드를 안 거치므로 여기서 수집 (아니면 영원히 null)
+  const [setupIndustry, setSetupIndustry] = useState("")
+  const [setupWorkCategory, setSetupWorkCategory] = useState("")
   const [setupErr, setSetupErr] = useState<string | null>(null)
   const [setupBusy, setSetupBusy] = useState(false)
+  // 서버 기준 사용자 갱신의 순서 보장 — 늦게 도착한 낡은 응답이 방금 저장한 값을 덮지 않게
+  const userWriteSeq = useRef(0)
+
+  const refreshUserFromServer = async () => {
+    const seq = userWriteSeq.current
+    try {
+      const { data: fresh } = await supabase.auth.getUser()
+      // 대기 중 사용자가 직접 저장(updateUser)했다면 그 결과가 더 최신 — 이 응답은 버린다
+      if (!fresh?.user || seq !== userWriteSeq.current) return
+      setUser(fresh.user)
+      if (homeCache?.userId === fresh.user.id) homeCache.user = fresh.user
+    } catch { /* 배경 갱신 실패는 무시 — 다음 기회에 */ }
+  }
+
+  // 클라이언트에서 직접 메타데이터를 저장했을 때 호출 — 진행 중인 배경 갱신을 무효화한다
+  const commitUser = (u: any) => {
+    userWriteSeq.current += 1
+    setUser(u)
+    if (homeCache && u?.id && homeCache.userId === u.id) homeCache.user = u
+  }
 
   useEffect(() => {
     const checkSession = async () => {
@@ -123,6 +147,11 @@ export default function MainPage() {
           stats: hadCache ? homeCache!.stats : null,
         }
 
+        // 서버 기준 최신 메타데이터로 배경 갱신 — 이메일 인증 완료·회사 형식 전파처럼
+        // admin API로 바뀐 메타데이터는 로컬 세션 스냅샷(getSession)에 토큰 갱신(~1시간)까지
+        // 반영되지 않아, 인증을 마쳐도 배너가 계속 남는 문제가 있었다.
+        refreshUserFromServer()
+
         const meta = currentUser.user_metadata
         if (!meta?.preferred_export_format || !meta?.worker_type) {
           if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
@@ -145,6 +174,20 @@ export default function MainPage() {
   useEffect(() => {
     if (showFormatModal) formatModalRef.current?.focus()
   }, [showFormatModal])
+
+  // 메일 앱에서 인증을 마치고 돌아온 순간 배너가 스스로 사라지게 — 탭 복귀 시 서버 기준 재조회 (30초 스로틀)
+  useEffect(() => {
+    let last = 0
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      const now = Date.now()
+      if (now - last < 30_000) return
+      last = now
+      refreshUserFromServer()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [])
 
   const fetchUserStats = async (userId: string, currentWorkerType: string, silent = false) => {
     if (!silent) setStatsLoading(true)
@@ -229,7 +272,7 @@ export default function MainPage() {
       }
     })
     if (error) { alert("저장 실패: " + error.message); setIsSavingFormat(false); return; }
-    setUser(data.user)
+    commitUser(data.user)
     if (needsWorkerType) setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
     setShowFormatModal(false)
     setIsSavingFormat(false)
@@ -247,6 +290,8 @@ export default function MainPage() {
     if (setupPw.length < 8) { setSetupErr("비밀번호는 8자 이상이어야 해요."); return }
     if (setupPw !== setupPw2) { setSetupErr("비밀번호가 서로 달라요. 다시 확인해주세요."); return }
     if (!setupSite.trim()) { setSetupErr("현장명을 입력해주세요."); return }
+    if (!setupIndustry) { setSetupErr("업종을 선택해주세요."); return }
+    if (!setupWorkCategory) { setSetupErr("공종을 선택해주세요."); return }
     setSetupBusy(true)
     try {
       const { error } = await supabase.auth.updateUser({
@@ -254,6 +299,8 @@ export default function MainPage() {
         data: {
           company_name: setupSite.trim(),
           full_name: setupManager.trim() || setupSite.trim(),
+          industry: setupIndustry,
+          work_category: setupWorkCategory,
           must_set_password: null,
         },
       })
@@ -338,6 +385,35 @@ export default function MainPage() {
                 className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
             </div>
             <div className="space-y-1">
+              <label className="text-[13px] font-medium text-cur-body">업종</label>
+              <Select value={setupIndustry} onValueChange={(v) => {
+                setSetupIndustry(v)
+                // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
+                const minors = findKsicMajor(v)?.minors ?? []
+                setSetupWorkCategory(minors.length === 1 ? minors[0].name : "")
+              }}>
+                <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
+                  <SelectValue placeholder="업종을 선택해주세요" />
+                </SelectTrigger>
+                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                  {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {setupIndustry && (
+              <div className="space-y-1 animate-in slide-in-from-top-2">
+                <label className="text-[13px] font-medium text-cur-body">공종</label>
+                <Select value={setupWorkCategory} onValueChange={setSetupWorkCategory}>
+                  <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
+                    <SelectValue placeholder="주력 공종을 선택해주세요" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                    {(findKsicMajor(setupIndustry)?.minors ?? []).map((mi) => <SelectItem key={mi.code} value={mi.name} className="text-[15px] py-2.5">{mi.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
               <label className="text-[13px] font-medium text-cur-body">담당자 이름 (선택)</label>
               <input value={setupManager} onChange={(e) => setSetupManager(e.target.value)} placeholder="본인 성함"
                 className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
@@ -346,7 +422,7 @@ export default function MainPage() {
           {setupErr && (
             <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{setupErr}</p>
           )}
-          <Button onClick={handleFirstSetup} disabled={setupBusy || !setupPw || !setupPw2 || !setupSite.trim()}
+          <Button onClick={handleFirstSetup} disabled={setupBusy || !setupPw || !setupPw2 || !setupSite.trim() || !setupIndustry || !setupWorkCategory}
             className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold disabled:opacity-40">
             {setupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "설정하고 시작하기"}
           </Button>
@@ -495,7 +571,9 @@ export default function MainPage() {
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token}` },
                     body: JSON.stringify({ email }),
                   })
-                  alert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요.")
+                  // 서버 안내(쿨다운·상한)를 그대로 보여준다 — 일반 실패 문구로 뭉개면 연타가 고장으로 읽힌다
+                  const j = await res.json().catch(() => ({}))
+                  alert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : (j.error || "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요."))
                 }}
                 className="shrink-0 h-9 px-3 rounded-lg bg-cur-ink text-white text-[12px] font-bold"
               >
@@ -521,7 +599,7 @@ export default function MainPage() {
                 aria-label="사용법 안내 닫기"
                 onClick={async () => {
                   const { data } = await supabase.auth.updateUser({ data: { tutorial_seen_at: new Date().toISOString() } })
-                  if (data?.user) setUser(data.user)
+                  if (data?.user) commitUser(data.user)
                 }}
                 className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
               >

@@ -38,7 +38,7 @@ export async function sendRealEmailVerification(
   const { data: row, error } = await admin
     .from("email_verifications")
     .insert({ user_id: userId, email })
-    .select("token")
+    .select("id, token")
     .single();
   if (error || !row) {
     console.error("email_verifications insert 실패:", error);
@@ -61,6 +61,18 @@ export async function sendRealEmailVerification(
         <p style="font-size:12px;color:#999;margin-top:16px;">링크는 3일간 유효합니다. 본인이 요청하지 않았다면 무시하세요.</p>
       </div>`,
   });
+
+  // 이전 미인증 토큰 무효화는 '새 메일이 실제로 나간 뒤'에만 — 순서를 뒤집으면 발송 실패 시
+  // 받은 편지함의 멀쩡한 링크까지 죽여 사용자가 쓸 수 있는 링크가 0개가 된다.
+  // 삭제가 아니라 만료 처리인 이유: 행을 지우면 발송 라우트의 시간당/일일 카운트 증거가 사라져 상한이 무력화된다.
+  if (r.ok) {
+    await admin
+      .from("email_verifications")
+      .update({ expires_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .is("verified_at", null)
+      .neq("id", row.id);
+  }
   return r;
 }
 

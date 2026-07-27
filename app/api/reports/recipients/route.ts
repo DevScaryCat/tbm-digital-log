@@ -73,9 +73,37 @@ export async function POST(request: Request) {
     if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
   }
 
-  // ② 확인 메일 재발송 (대기중 수신처)
+  // ② 확인 메일 재발송 — 이미 등록된 '미승인' 수신처에 한정한다.
+  // 무검증으로 requestConsent에 넘기면 임의 주소 무제한 발송 + 신규 upsert로 5개 상한·형식 검증까지 우회된다.
   if (body.resendRecipient !== undefined) {
-    const r = await requestConsent(admin, user.id, String(body.resendRecipient).trim(), await companyNameOf(), baseUrl);
+    const email = String(body.resendRecipient).trim();
+    if (!EMAIL_RE.test(email)) {
+      return NextResponse.json({ error: "이메일 형식이 올바르지 않습니다." }, { status: 400 });
+    }
+    const existing = await listAccountConsents(admin, user.id);
+    const row = existing.find((r) => r.email === email);
+    if (!row) {
+      return NextResponse.json({ error: "등록된 수신처가 아닙니다. 먼저 추가해주세요." }, { status: 400 });
+    }
+    if (row.status === "approved") {
+      return NextResponse.json({ error: "이미 승인된 수신처예요. 재발송이 필요 없습니다." }, { status: 400 });
+    }
+    // 거부한 수신자에게 버튼 한 번으로 계속 조를 수 없게 — 재요청은 삭제 후 다시 추가로만.
+    // (메일 본문이 "받지 않기를 누르면 앞으로 발송되지 않습니다"라고 약속한다)
+    if (row.status === "declined") {
+      return NextResponse.json({ error: "수신을 거부한 주소예요. 다시 요청하려면 삭제 후 추가해주세요." }, { status: 400 });
+    }
+    // 발송 쿨다운 60초 — 확인 메일도 남의 메일함으로 나가는 메일이라 연타를 막는다
+    const { data: last } = await admin
+      .from("report_recipient_consents")
+      .select("last_sent_at")
+      .eq("account_user_id", user.id)
+      .eq("recipient_email", email)
+      .maybeSingle();
+    if (last?.last_sent_at && Date.now() - new Date(last.last_sent_at).getTime() < 60 * 1000) {
+      return NextResponse.json({ error: "잠시 후 다시 시도해주세요. (재발송은 1분에 한 번)" }, { status: 429 });
+    }
+    const r = await requestConsent(admin, user.id, email, await companyNameOf(), baseUrl);
     if (!r.mailed) mailNote = r.error || "확인 메일을 보내지 못했습니다.";
   }
 

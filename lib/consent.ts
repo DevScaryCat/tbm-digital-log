@@ -98,6 +98,13 @@ export async function requestConsent(
     html: consentEmailHtml(site, link),
   });
   if (!sent.ok) return { ok: true, mailed: false, error: sent.error };
+
+  // 재발송 쿨다운 기준 — 실제로 나간 메일만 기록한다 (발송 실패는 쿨다운을 소비하지 않음)
+  await admin
+    .from("report_recipient_consents")
+    .update({ last_sent_at: new Date().toISOString() })
+    .eq("account_user_id", accountUserId)
+    .eq("recipient_email", email);
   return { ok: true, mailed: true };
 }
 
