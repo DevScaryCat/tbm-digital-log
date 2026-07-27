@@ -6,9 +6,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Sparkles } from "lucide-react"
-import { SAMPLE_MINUTES_HTML, SAMPLE_EDU_HTML } from "@/components/reportSampleHtml"
-import { HtmlPreview } from "@/components/HtmlPreview"
+import { ExternalLink, Loader2, Sparkles } from "lucide-react"
 
 type ConsentStatus = "pending" | "approved" | "declined"
 type Recipient = { email: string; status: ConsentStatus }
@@ -31,7 +29,6 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     const [saving, setSaving] = useState(false)
     const [loaded, setLoaded] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
 
     const authToken = async () => {
         const { data } = await supabase.auth.getSession()
@@ -154,22 +151,29 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
                 </div>
             )}
 
-            {/* 미리보기 — TBM 회의록 종합 / 안전보건교육일지 종합 2개 탭 */}
-            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-2">
-                <Label className="text-[13px]">보고서 미리보기</Label>
-                <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                    {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
-                        <button
-                            key={key}
-                            onClick={() => setPreviewTab(key)}
-                            className={`flex-1 h-9 rounded-md text-[13px] font-semibold transition-colors ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
+            {/* 미리보기 — 인라인 축소 렌더는 작아서 안 읽히므로 새 탭 전체 화면으로 연다 */}
+            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                <div>
+                    <Label className="text-[13px]">보고서 미리보기</Label>
+                    <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
+                        실제로는 지난달 데이터로 채워져 발송됩니다. 예시를 새 탭에서 크게 볼 수 있어요.
+                    </p>
+                </div>
+                <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                    {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([kind, label]) => (
+                        <a
+                            key={kind}
+                            href={`/report/sample/${kind}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 px-3 py-3 hover:bg-cur-elevated/50 transition-colors"
                         >
-                            {label}
-                        </button>
+                            <span className="text-[14px] text-cur-ink flex-1 min-w-0 truncate">{label}</span>
+                            <span className="text-[12px] text-cur-primary font-semibold shrink-0">예시 보기</span>
+                            <ExternalLink className="w-3.5 h-3.5 text-cur-muted-soft shrink-0" />
+                        </a>
                     ))}
                 </div>
-                <HtmlPreview html={previewTab === "minutes" ? SAMPLE_MINUTES_HTML : SAMPLE_EDU_HTML} />
-                <p className="text-[12px] text-cur-muted-soft">실제로는 이번 데이터로 채워져 발송됩니다. (위는 예시)</p>
             </div>
         </div>
     )
