@@ -101,8 +101,6 @@ export default function OrgMembersPage() {
     }, [])
 
     const activeCount = members.filter((m) => m.status === "active").length
-    // 상한이 없다 — 필요한 만큼 만들고 만든 만큼 낸다
-    const seatsLeft = Number.POSITIVE_INFINITY
 
     // 한글·띄어쓰기를 입력해도 아이디 규칙으로 자동 변환 ("하이 물류" → hai_mulryu)
     const effStem = sanitizeStem(stem)
@@ -342,6 +340,19 @@ export default function OrgMembersPage() {
                                 링크 하나로 여러 담당자가 가입할 수 있어요 (14일 유효).
                                 가입이 끝나면 아래 목록에 자동으로 나타납니다.
                             </p>
+                            {/* 편입은 드문 일이라(기존 안톡 계정 데려오기) 상시 노출하지 않고 여기서만 */}
+                            <details className="group">
+                                <summary className="text-[13px] font-medium text-cur-muted cursor-pointer list-none hover:text-cur-ink">
+                                    이미 안톡을 쓰던 계정을 데려오려면 →
+                                </summary>
+                                <div className="flex gap-2 mt-2">
+                                    <Input value={attachId} onChange={(e) => setAttachId(e.target.value)} placeholder="기존 계정 아이디" className={inputCls + " flex-1"} />
+                                    <Button onClick={requestAttach} disabled={busy === "attach" || !attachId.trim()} className="h-11 px-4 rounded-lg bg-cur-ink text-white text-[13px] font-bold shrink-0">
+                                        {busy === "attach" ? <Loader2 className="w-4 h-4 animate-spin" /> : "편입 초대"}
+                                    </Button>
+                                </div>
+                                <p className="text-[11px] text-cur-muted-soft mt-1.5">그 계정이 다음 로그인 때 수락하면 편입돼요. 기존 기록은 그대로 유지됩니다.</p>
+                            </details>
                             <Button onClick={() => setAddStep(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
                         </div>
                     ) : (
@@ -380,17 +391,6 @@ export default function OrgMembersPage() {
                         </div>
                     )}
 
-                    {/* 기존 계정 편입 */}
-                    <div className="pt-3 border-t border-cur-hairline space-y-2">
-                        <Label className="text-[13px] font-semibold text-cur-ink">이미 안톡을 쓰던 현장이 있나요?</Label>
-                        <p className="text-[12px] text-cur-muted-soft">그 계정의 아이디를 입력하면 편입 초대가 가요. 기존 기록은 그대로 유지됩니다.</p>
-                        <div className="flex gap-2">
-                            <Input value={attachId} onChange={(e) => setAttachId(e.target.value)} placeholder="기존 계정 아이디" className={inputCls + " flex-1"} />
-                            <Button onClick={requestAttach} disabled={busy === "attach" || !attachId.trim() || seatsLeft <= 0} className="h-11 px-4 rounded-lg bg-cur-ink text-white text-[13px] font-bold shrink-0">
-                                {busy === "attach" ? <Loader2 className="w-4 h-4 animate-spin" /> : "편입 초대"}
-                            </Button>
-                        </div>
-                    </div>
                 </section>
 
                 {/* 현장 목록 */}

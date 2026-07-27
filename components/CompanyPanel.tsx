@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchSubscription, isProActive, type SubscriptionRow } from "@/lib/useSubscription"
 import {
-    Loader2, ChevronRight, FileBarChart2, Settings2, Users, Sparkles,
+    Loader2, ChevronRight, FileBarChart2, Users,
     CheckCircle2, CircleDashed, Lock, CreditCard, Plus,
 } from "lucide-react"
 
@@ -432,9 +432,9 @@ export function CompanyPanel() {
                 소속 현장에게는 같은 자리·잠긴 모습으로 보인다. */}
             <section className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                 {[
-                    { href: "/org/reports", label: "월간 보고서", icon: <FileBarChart2 className="w-5 h-5" /> },
-                    { href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="w-5 h-5" /> },
-                    { href: "/report-settings", label: "보고서 설정", icon: <Settings2 className="w-5 h-5" /> },
+                    // AI 분석은 위험요인 카드의 버튼이 유일한 문 — 메뉴 중복 제거.
+                    // 보고서 설정은 보고서 화면 안으로 흡수.
+                    { href: "/org/reports", label: "보고서", icon: <FileBarChart2 className="w-5 h-5" /> },
                     { href: "/org/members", label: "현장 계정 관리", icon: <Users className="w-5 h-5" /> },
                     { href: "/account", label: "구독 및 결제", icon: <CreditCard className="w-5 h-5" /> },
                 ].map((q) => (

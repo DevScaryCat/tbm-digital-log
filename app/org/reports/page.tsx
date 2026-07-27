@@ -9,6 +9,8 @@ import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, FileBarChart2, ChevronRight } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
+import { ReportSettingsPanel } from "@/components/ReportSettingsPanel"
+import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 
 interface ReportRow {
     period_year: number
@@ -22,12 +24,14 @@ export default function OrgReportsPage() {
     const { ctx, loading: ctxLoading } = useOrgContext()
     const [rows, setRows] = useState<ReportRow[]>([])
     const [loading, setLoading] = useState(true)
+    const [pro, setPro] = useState(false)
 
     useEffect(() => {
         if (ctxLoading) return
         if (!ctx || ctx.kind === "member") { router.replace("/"); return }
         ;(async () => {
             try {
+                setPro(isProActive(await fetchSubscription()))
                 const { data } = await supabase
                     .from("monthly_reports")
                     .select("period_year, period_month, token, sent_at")
@@ -44,7 +48,7 @@ export default function OrgReportsPage() {
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
             <div className="max-w-lg mx-auto px-4 pt-4">
-                <TBMHeader title="월간 보고서" backHref="/" />
+                <TBMHeader title="보고서" backHref="/" />
             </div>
             <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                 {loading || ctxLoading ? (
@@ -79,6 +83,10 @@ export default function OrgReportsPage() {
                         ))}
                     </div>
                 )}
+
+                {/* 받는 사람 설정 — '보고서 설정'을 별도 화면으로 두지 않고 여기서 끝낸다.
+                    보는 곳과 받는 사람 정하는 곳이 갈라져 있으면 설정할 게 많아 보인다. */}
+                <ReportSettingsPanel pro={pro} />
             </main>
         </div>
     )

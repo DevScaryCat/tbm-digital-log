@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HardHat, Loader2, Users, ChevronRight, CalendarDays, PlayCircle, X } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
-import { NoticeBanner } from "@/components/NoticeBanner"
 import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
@@ -68,7 +67,6 @@ export default function MainPage() {
   const [minuteDates, setMinuteDates] = useState<string[]>(cached?.stats?.minuteDates ?? [])
   const [suggestionDates, setSuggestionDates] = useState<string[]>(cached?.stats?.suggestionDates ?? [])
   const [unreadSuggestions, setUnreadSuggestions] = useState(cached?.stats?.unreadSuggestions ?? 0)
-  const [selectedMonth, setSelectedMonth] = useState("all")
 
   // 문서 출력 형식 최초 설정 모달 (user_metadata.preferred_export_format 없을 때 1회)
   // 구 가입 플로우 유저는 worker_type도 없을 수 있어(온보딩 모달 제거로 유도 경로 상실) 같은 모달에서 함께 수집한다.
@@ -321,13 +319,9 @@ export default function MainPage() {
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [statsLoading, baseFill, overFill])
 
-  // 월 선택 옵션(데이터가 있는 달, 최신순 — 제안만 있는 달도 포함) + 선택 월 기준 건수
-  const monthOptions = [...new Set([...logDates, ...minuteDates, ...suggestionDates].map(d => d.slice(0, 7)))].sort().reverse()
-  const countInMonth = (dates: string[]) => selectedMonth === "all" ? dates.length : dates.filter(d => d.startsWith(selectedMonth)).length
-  const shownMinutes = countInMonth(minuteDates)
-  const shownLogs = countInMonth(logDates)
-  const shownSuggestions = countInMonth(suggestionDates)
-  const monthLabel = (m: string) => `${m.slice(0, 4)}년 ${parseInt(m.slice(5, 7), 10)}월`
+  const shownMinutes = minuteDates.length
+  const shownLogs = logDates.length
+  const shownSuggestions = suggestionDates.length
 
   // 활동 현황 카드 키보드 접근성: Enter/Space가 onClick과 동일하게 동작
   const cardKeyDown = (go: () => void) => (e: KeyboardEvent) => {
@@ -510,8 +504,6 @@ export default function MainPage() {
         {/* ── TBM 탭 ──────────────────────────────────────────────── */}
         {tab === "tbm" && (<>
         <div className="p-4 sm:p-6 space-y-5">
-          <NoticeBanner />
-
           {/* 조직 소속인데 실이메일 미인증 — 월간 보고서 수신 불가 안내 (버튼 최소 원칙의 유일한 잔소리) */}
           {user && orgCtx?.kind === "member" && !user.user_metadata?.real_email_verified_at && (
             <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25">
@@ -568,20 +560,8 @@ export default function MainPage() {
           )}
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px]">활동 현황</h3>
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="h-8 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-cur-card border-cur-hairline text-cur-body">
-                  <SelectItem value="all">전체</SelectItem>
-                  {monthOptions.map(m => (
-                    <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* 월 필터는 뺐다 — 조작 요소 값을 못 한다. 월별 확인은 목록 화면에서. */}
+            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
 
             {/* gap-px + bg-cur-hairline 트릭: 모바일 2×2, sm 4열 양방향 hairline 구분선 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
