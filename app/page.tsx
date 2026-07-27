@@ -8,17 +8,15 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, CalendarDays, PlayCircle, X } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, CalendarDays, PlayCircle, X, Plus } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
-import { cn } from "@/lib/utils"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
-import { BottomTabs, readLastTab, writeLastTab, type TabKey } from "@/components/BottomTabs"
-import { CompanyPanel } from "@/components/CompanyPanel"
+import { SiteMonitor } from "@/components/SiteMonitor"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
 // 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
@@ -77,10 +75,13 @@ export default function MainPage() {
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const formatModalRef = useRef<HTMLDivElement>(null)
 
-  // 역할 판정 — pendingAttach면 편입 수락 모달, 회사 소유 여부로 첫 탭을 고른다
+  // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 홈 상단에 관제 섹션(SiteMonitor)
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
-  const [tab, setTab] = useState<TabKey>(() => (typeof window !== "undefined" && readLastTab()) || "tbm")
-  const [tabReady, setTabReady] = useState(!!cached)
+  // 온보딩에서 '여러 현장'을 고르고 셋업을 건너뛴 솔로 — 홈에서 현장 추가 입구를 이어준다
+  const [hintAddSite, setHintAddSite] = useState(false)
+  useEffect(() => {
+    try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
+  }, [])
   // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
   const [showUsageStep, setShowUsageStep] = useState(false)
   // 일괄 발급된 현장 계정의 첫 로그인 — 새 비밀번호·현장명을 정하기 전엔 앱을 열지 않는다
@@ -134,26 +135,11 @@ export default function MainPage() {
         const ctx = await fetchOrgContext()
         setOrgCtx(ctx)
         if (homeCache?.userId === currentUser.id) homeCache.orgCtx = ctx
-
-        // 첫 탭: 마지막으로 본 탭을 기억한다. 기억이 없고 아직 현장을 하나도 안 만든
-        // 감독자라면 현장관리부터 열어 '현장 만들기'로 유도한다.
-        // 캐시 재진입 때는 이미 맞는 탭이 떠 있으므로 건드리지 않는다(깜빡임 방지).
-        if (!hadCache) {
-          const last = readLastTab()
-          const freshOwnerWithNoSites = ctx?.kind === "owner" && (ctx.org?.seatCount ?? 1) <= 1
-          setTab(last ?? (freshOwnerWithNoSites ? "company" : "tbm"))
-        }
-        setTabReady(true)
       }
       setIsLoading(false)
     }
     checkSession()
   }, [])
-
-  const selectTab = (t: TabKey) => {
-    setTab(t)
-    writeLastTab(t)
-  }
 
   // 모달이 뜨면 대화상자로 초점 이동 (배경 카드들이 tabIndex를 가져 오버레이 뒤로 초점이 새는 것 방지)
   useEffect(() => {
@@ -286,18 +272,14 @@ export default function MainPage() {
     }
   }
 
-  // '여러 현장'은 전용 셋업 페이지로 보낸다 — 탭 안에 셋업을 끼워 넣으면
-  // 현장 목록·추가 버튼과 역할이 겹쳐 난잡해진다 (홈은 돌아왔을 때 현장관리 탭)
-  const chooseUsage = (t: TabKey) => {
+  // '여러 현장'은 전용 셋업 페이지로 보낸다 — 홈에 셋업을 끼워 넣으면 역할이 겹쳐 난잡해진다
+  const chooseUsage = (t: "tbm" | "company") => {
     setShowUsageStep(false)
-    writeLastTab(t)
     if (t === "company") {
-      // 셋업을 건너뛰고 돌아와도 현장관리 탭의 '현장 추가하기'가 눈에 띄게 힌트를 남긴다
+      // 셋업을 건너뛰고 돌아와도 홈 관제 섹션의 '현장 추가' 칩이 눈에 띄게 힌트를 남긴다
       try { window.localStorage.setItem("antok_hint_add_site", "1") } catch { /* 무시 */ }
       router.push("/org/setup")
-      return
     }
-    setTab(t)
   }
 
   const rawPercent = (secondsToHours(totalEducationSeconds) / requiredHours) * 100
@@ -480,7 +462,7 @@ export default function MainPage() {
   }
 
   return (
-    <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-body pb-20">
+    <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-body pb-8">
       <div className="max-w-lg w-full mx-auto bg-cur-card sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
 
         <div className="p-4 bg-cur-card/90 backdrop-blur-sm border-b border-cur-hairline sticky top-0 z-50">
@@ -496,15 +478,7 @@ export default function MainPage() {
           />
         )}
 
-        {/* ── 현장관리 탭 ─────────────────────────────────────────── */}
-        {tab === "company" && (
-          <div className="flex-1 p-4 sm:p-6">
-            <CompanyPanel />
-          </div>
-        )}
-
-        {/* ── TBM 탭 ──────────────────────────────────────────────── */}
-        {tab === "tbm" && (<>
+        {/* ── 단일 홈 — 탭 없이 한 스크롤: (감독자) 관제 → 내 기록 → 작성 ── */}
         <div className="p-4 sm:p-6 space-y-5">
           {/* 조직 소속인데 실이메일 미인증 — 월간 보고서 수신 불가 안내 (버튼 최소 원칙의 유일한 잔소리) */}
           {user && orgCtx?.kind === "member" && !user.user_metadata?.real_email_verified_at && (
@@ -561,9 +535,35 @@ export default function MainPage() {
             </div>
           )}
 
+          {/* 감독자 관제 섹션 — 구 현장관리 탭의 대시보드. 칩(전체/현장별)이 활동 카드를 지배 */}
+          {orgCtx?.kind === "owner" && <SiteMonitor />}
+
+          {/* 솔로가 온보딩에서 '여러 현장'을 골라둔 경우만 — 첫 현장 추가 입구 (그 외 솔로에겐 소음이라 숨김) */}
+          {orgCtx?.kind === "solo" && hintAddSite && (
+            <button
+              type="button"
+              onClick={() => {
+                try { window.localStorage.removeItem("antok_hint_add_site") } catch { /* 무시 */ }
+                setHintAddSite(false)
+                router.push("/org/members?new=1")
+              }}
+              className="relative w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+            >
+              <span aria-hidden className="absolute inset-1 rounded-[10px] border-2 border-cur-primary pointer-events-none animate-pulse" />
+              <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                <Plus className="w-4 h-4" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold text-cur-ink">현장 계정 추가하기</span>
+                <span className="block text-[12px] text-cur-muted mt-0.5">첫 현장을 만들면 이 계정이 회사 감독자가 돼요</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+            </button>
+          )}
+
           <div className="space-y-2">
             {/* 월 필터는 뺐다 — 조작 요소 값을 못 한다. 월별 확인은 목록 화면에서. */}
-            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
+            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">내 활동 기록</h3>
 
             {/* gap-px + bg-cur-hairline 트릭: 모바일 2×2, sm 4열 양방향 hairline 구분선 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
@@ -715,11 +715,7 @@ export default function MainPage() {
           </div>
 
         </div>
-        </>)}
       </div>
-
-      {/* 하단 탭 — TBM(작성) / 현장관리. 마지막으로 본 탭이 다음 진입의 기본값 */}
-      <BottomTabs value={tab} onChange={selectTab} loading={!tabReady} companyDot={!!orgCtx?.pendingAttach} />
 
       {/* 출력 형식 최초 설정 모달 — preferred_export_format이 없을 때 1회 표시 */}
       {showFormatModal && (

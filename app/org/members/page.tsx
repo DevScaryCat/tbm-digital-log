@@ -447,13 +447,19 @@ export default function OrgMembersPage() {
                         <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                             {members.map((m) => (
                                 <div key={m.userId} className="flex items-center gap-3 p-4">
-                                    <div className="flex-1 min-w-0">
+                                    {/* 현장 목록 카드가 홈에서 빠지면서 여기가 현장 상세(/org/sites)의 입구가 됐다 */}
+                                    <button
+                                        type="button"
+                                        disabled={m.status !== "active"}
+                                        onClick={() => router.push(`/org/sites/${m.userId}`)}
+                                        className="flex-1 min-w-0 text-left rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary disabled:cursor-default"
+                                    >
                                         <p className={`text-[14px] font-semibold truncate ${m.status === "active" ? "text-cur-ink" : "text-cur-muted-soft line-through"}`}>{m.siteName || "현장명 미설정"}</p>
                                         <p className="text-[12px] text-cur-muted mt-0.5">
                                             {m.managerName && `${m.managerName} · `}
-                                            {m.status === "active" ? `연결 ${m.joinedAt?.slice(0, 10)}` : "해제됨"}
+                                            {m.status === "active" ? `연결 ${m.joinedAt?.slice(0, 10)} · 기록 보기` : "해제됨"}
                                         </p>
-                                    </div>
+                                    </button>
                                     {m.status === "active" && (
                                         <>
                                             <button onClick={() => resetPassword(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="비밀번호 변경" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">

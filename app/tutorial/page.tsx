@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabaseClient"
-import { AlertCircle, BookOpen, Building2, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, Printer, QrCode, Save, Square, Users } from "lucide-react"
+import { AlertCircle, BookOpen, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, Printer, QrCode, Save, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
 import { MinutesView } from "@/components/MinutesView"
@@ -437,16 +437,6 @@ export default function TutorialPage() {
                                                     <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted" />
                                                 </span>
                                             </div>
-                                        </div>
-                                        {/* 하단 2탭 — 실제 셸 (표시 전용) */}
-                                        <div className="grid grid-cols-2 border-t border-cur-hairline" aria-hidden>
-                                            <span className="relative h-11 flex flex-col items-center justify-center gap-0.5 text-cur-primary">
-                                                <span className="absolute top-0 w-8 h-[2px] bg-cur-primary rounded-full" />
-                                                <HardHat className="w-4 h-4" /><span className="text-[9px] font-bold leading-none">TBM</span>
-                                            </span>
-                                            <span className="h-11 flex flex-col items-center justify-center gap-0.5 text-cur-muted">
-                                                <Building2 className="w-4 h-4" /><span className="text-[9px] font-medium leading-none">현장관리</span>
-                                            </span>
                                         </div>
                                     </div>
                                 )}

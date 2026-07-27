@@ -7,6 +7,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
 import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
@@ -50,6 +51,12 @@ export default function AccountPage() {
         } = await supabase.auth.getUser()
         if (!user) {
             router.replace("/login")
+            return
+        }
+        // 소속 현장 계정은 결제 주체가 아니다 — 헤더 잠금을 뚫고 들어와도(역할 로딩 틈) 홈으로
+        const ctx = await fetchOrgContext()
+        if (ctx?.kind === "member") {
+            router.replace("/")
             return
         }
         const s = await fetchSubscription()
