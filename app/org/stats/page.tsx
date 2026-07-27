@@ -123,7 +123,7 @@ export default function OrgStatsPage() {
                                 </span>
                             </SelectTrigger>
                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                <SelectItem value="all" className="text-[15px] py-2.5">모든 현장</SelectItem>
+                                <SelectItem value="all" className="text-[15px] py-2.5">전체</SelectItem>
                                 {memberSites.map((s) => (
                                     <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-2.5">{s.siteName}</SelectItem>
                                 ))}
@@ -192,45 +192,83 @@ export default function OrgStatsPage() {
                                     </div>
                                 </section>
 
-                                {/* 확인이 필요한 현장 — 3일 이상 기록 없음 (현장 2곳 이상일 때만 의미) */}
-                                {activeSites.length > 1 && (() => {
-                                    const dayDiff = (d: string | null) => {
-                                        if (!d) return Infinity
-                                        return Math.round((new Date(`${data.today}T00:00:00`).getTime() - new Date(`${d}T00:00:00`).getTime()) / 864e5)
-                                    }
-                                    const attention = activeSites
-                                        .map((x) => ({ ...x, gap: dayDiff(x.lastActivity) }))
-                                        .filter((x) => x.gap >= 3)
-                                        .sort((a, b) => b.gap - a.gap)
-                                    if (attention.length === 0) {
-                                        return (
-                                            <div className="flex items-center gap-2.5 px-4 py-3 rounded-[12px] bg-cur-success/5 border border-cur-success/20">
-                                                <CheckCircle2 className="w-4 h-4 shrink-0 text-cur-success" />
-                                                <p className="text-[13px] text-cur-body">모든 현장이 최근 3일 안에 기록했어요.</p>
-                                            </div>
-                                        )
-                                    }
+                                {/* 이번 달 위험요인 — 등급 분포 + 키워드. 데이터가 없으면 예시 스켈레톤으로
+                                    이 자리가 무엇으로 채워지는지 보여준다 (확인이 필요한 현장 카드는 Chris 지시로 제거) */}
+                                {(() => {
+                                    const r = data.risk
+                                    const total = r ? r.levels.high + r.levels.mid + r.levels.low : 0
                                     return (
-                                        <section className="bg-cur-card rounded-[12px] border border-cur-error/25 overflow-hidden">
-                                            <p className="px-4 pt-3.5 pb-1 text-[14px] font-bold text-cur-ink">확인이 필요한 현장 <span className="text-cur-error">{attention.length}</span></p>
-                                            <div className="divide-y divide-cur-hairline">
-                                                {attention.slice(0, 3).map((x) => (
-                                                    <button
-                                                        key={x.userId}
-                                                        disabled={x.isSelf}
-                                                        onClick={() => setSel(x.userId)}
-                                                        className="w-full flex items-center gap-3 px-4 py-3 text-left enabled:hover:bg-cur-elevated/50 transition-colors disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                                                    >
-                                                        <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-ink truncate">
-                                                            {x.siteName}{x.isSelf && <span className="text-[11px] text-cur-muted font-medium ml-1">내 현장</span>}
-                                                        </span>
-                                                        <span className="shrink-0 text-[12px] font-semibold text-cur-error">
-                                                            {/* lastActivity는 이번 달 범위 집계라 '기록 없음'이라고 단정하면 지난달 말 기록자를 억울하게 만든다 */}
-                                                            {x.gap === Infinity ? "이번 달 기록 없음" : `${x.gap}일째 기록 없음`}
-                                                        </span>
-                                                    </button>
-                                                ))}
+                                        <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <h2 className="text-[14px] font-bold text-cur-ink">이번 달 위험요인</h2>
+                                                {total > 0 ? (
+                                                    <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-cur-muted bg-cur-elevated border border-cur-hairline rounded-full px-2 py-0.5">예시</span>
+                                                )}
                                             </div>
+                                            {total === 0 ? (
+                                                <div className="relative">
+                                                    <div aria-hidden className="space-y-4 opacity-40 grayscale-[0.3] select-none pointer-events-none">
+                                                        <div className="space-y-2">
+                                                            <div className="flex h-2.5 rounded-full overflow-hidden bg-cur-elevated">
+                                                                <div className="bg-cur-error" style={{ width: "22%" }} />
+                                                                <div className="bg-cur-primary" style={{ width: "50%" }} />
+                                                                <div className="bg-cur-success" style={{ width: "28%" }} />
+                                                            </div>
+                                                            <div className="flex items-center gap-4 text-[12px]">
+                                                                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-error" /><span className="text-cur-body">상 <b className="text-cur-ink">2</b></span></span>
+                                                                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-primary" /><span className="text-cur-body">중 <b className="text-cur-ink">5</b></span></span>
+                                                                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-success" /><span className="text-cur-body">하 <b className="text-cur-ink">3</b></span></span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {[["추락", 4], ["끼임", 3], ["지게차", 3], ["개구부", 2], ["감전", 1]].map(([w, c]) => (
+                                                                    <span key={String(w)} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
+                                                                        {w} <span className="text-cur-muted-soft">{c}</span>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-[12px] text-cur-muted mt-3">TBM 회의록이 쌓이면 실제 데이터로 채워져요.</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="space-y-2">
+                                                        <div className="flex h-2.5 rounded-full overflow-hidden bg-cur-elevated">
+                                                            {r!.levels.high > 0 && <div className="bg-cur-error" style={{ width: `${(r!.levels.high / total) * 100}%` }} />}
+                                                            {r!.levels.mid > 0 && <div className="bg-cur-primary" style={{ width: `${(r!.levels.mid / total) * 100}%` }} />}
+                                                            {r!.levels.low > 0 && <div className="bg-cur-success" style={{ width: `${(r!.levels.low / total) * 100}%` }} />}
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-[12px]">
+                                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-error" /><span className="text-cur-body">상 <b className="text-cur-ink">{r!.levels.high}</b></span></span>
+                                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-primary" /><span className="text-cur-body">중 <b className="text-cur-ink">{r!.levels.mid}</b></span></span>
+                                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-success" /><span className="text-cur-body">하 <b className="text-cur-ink">{r!.levels.low}</b></span></span>
+                                                        </div>
+                                                    </div>
+                                                    {r!.keywords.length > 0 && (
+                                                        <div className="space-y-1.5">
+                                                            <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {r!.keywords.map((k) => (
+                                                                    <span key={k.word} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
+                                                                        {k.word} <span className="text-cur-muted-soft">{k.count}</span>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={() => router.push("/risk-assessment")}
+                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                            >
+                                                현장별 AI 분석 보고서 만들기
+                                            </button>
                                         </section>
                                     )
                                 })()}
@@ -275,50 +313,6 @@ export default function OrgStatsPage() {
                                     </div>
                                 </section>
 
-                                {/* 이번 달 위험요인 — 등급 분포 + 키워드 + AI 분석 진입 */}
-                                {(() => {
-                                    const r = data.risk
-                                    const total = r ? r.levels.high + r.levels.mid + r.levels.low : 0
-                                    if (total === 0) return null
-                                    return (
-                                        <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <h2 className="text-[14px] font-bold text-cur-ink">이번 달 위험요인</h2>
-                                                <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <div className="flex h-2.5 rounded-full overflow-hidden bg-cur-elevated">
-                                                    {r!.levels.high > 0 && <div className="bg-cur-error" style={{ width: `${(r!.levels.high / total) * 100}%` }} />}
-                                                    {r!.levels.mid > 0 && <div className="bg-cur-primary" style={{ width: `${(r!.levels.mid / total) * 100}%` }} />}
-                                                    {r!.levels.low > 0 && <div className="bg-cur-success" style={{ width: `${(r!.levels.low / total) * 100}%` }} />}
-                                                </div>
-                                                <div className="flex items-center gap-4 text-[12px]">
-                                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-error" /><span className="text-cur-body">상 <b className="text-cur-ink">{r!.levels.high}</b></span></span>
-                                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-primary" /><span className="text-cur-body">중 <b className="text-cur-ink">{r!.levels.mid}</b></span></span>
-                                                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-success" /><span className="text-cur-body">하 <b className="text-cur-ink">{r!.levels.low}</b></span></span>
-                                                </div>
-                                            </div>
-                                            {r!.keywords.length > 0 && (
-                                                <div className="space-y-1.5">
-                                                    <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {r!.keywords.map((k) => (
-                                                            <span key={k.word} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
-                                                                {k.word} <span className="text-cur-muted-soft">{k.count}</span>
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <button
-                                                onClick={() => router.push("/risk-assessment")}
-                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                                            >
-                                                현장별 AI 분석 보고서 만들기
-                                            </button>
-                                        </section>
-                                    )
-                                })()}
                             </>
                         )}
                     </>
