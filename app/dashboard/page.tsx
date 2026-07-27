@@ -19,13 +19,11 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText } from "lucide-react"
-import { useOrgContext } from "@/lib/useOrgContext"
 
 export default function DashboardPage() {
     const router = useRouter()
     useRequireSubscription()
     // 조직 하위(member)는 AI 분석 보고서 진입점을 숨긴다 — 안전관리자 전용 (§4-C)
-    const { ctx: orgCtx } = useOrgContext()
     const [logs, setLogs] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
