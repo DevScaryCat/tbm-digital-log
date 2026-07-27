@@ -45,7 +45,6 @@ interface Overview {
     sites: SiteRow[]
     daily?: { date: string; minutes: number; logs: number }[]
     risk?: { levels: { high: number; mid: number; low: number }; keywords: { word: string; count: number }[] }
-    trend?: { weeklyRate: number; thisMonthTotal: number; prevMonthTotal: number }
 }
 
 const SEAT_PRICE = 3900
@@ -171,23 +170,6 @@ export function CompanyPanel() {
                                 <p className="text-[24px] leading-none font-bold text-cur-ink font-mono">{mLogs}</p>
                             </div>
                         </div>
-                        {(() => {
-                            const t = data.trend
-                            if (!t) return null
-                            const diff = t.thisMonthTotal - t.prevMonthTotal
-                            return (
-                                <div className="flex items-center gap-2 text-[12px]">
-                                    <span className="flex-1 rounded-[8px] bg-cur-elevated px-3 py-2">
-                                        <span className="text-cur-muted">이번 주 실시율 </span>
-                                        <b className={`tabular-nums ${t.weeklyRate >= 70 ? "text-cur-success" : t.weeklyRate >= 40 ? "text-cur-ink" : "text-cur-error"}`}>{t.weeklyRate}%</b>
-                                    </span>
-                                    <span className="flex-1 rounded-[8px] bg-cur-elevated px-3 py-2">
-                                        <span className="text-cur-muted">지난달 대비 </span>
-                                        <b className={`tabular-nums ${diff > 0 ? "text-cur-success" : diff < 0 ? "text-cur-error" : "text-cur-ink"}`}>{diff > 0 ? `+${diff}` : diff}건</b>
-                                    </span>
-                                </div>
-                            )
-                        })()}
                         {daily.length > 0 && (
                             <div className="flex items-end justify-between gap-1.5 h-20 pt-1" aria-label="최근 7일 기록 수">
                                 {daily.map((d) => {
