@@ -43,6 +43,8 @@ export default function AccountPage() {
     const [changingMethod, setChangingMethod] = useState(false)
     const [showRegister, setShowRegister] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 과금 계정 수(감독자 본인 1 + 활성 현장) — 여기가 '회사 전체 결제'라는 걸 명시하기 위한 값
+    const [accountCount, setAccountCount] = useState<number>(1)
 
 
     const load = async () => {
@@ -59,6 +61,7 @@ export default function AccountPage() {
             router.replace("/")
             return
         }
+        setAccountCount(ctx?.kind === "owner" ? 1 + (ctx.memberIds?.length ?? 0) : 1)
         const s = await fetchSubscription()
         setSub(s)
         const { data } = await supabase
@@ -115,14 +118,21 @@ export default function AccountPage() {
     const cardlessTrialExpired = cardlessTrial && !active
     // 카드가 붙은 체험 = 결제일 자동청구 확정 구독 → 상태 헤더를 '무료체험 중'이 아니라 '이용 중'으로
     const committedTrial = sub?.status === "trialing" && !!sub?.card_info
-    // 단일 요금제 — 표시 금액은 실제 청구 스냅샷(sub.amount)을 쓴다.
-    // 감독자는 계정 수만큼 곱해지므로 고정 문구를 박으면 실제 청구액과 어긋난다.
+    // 단일 요금제 — 유료(pro)면 '지난번 청구 스냅샷'이 아니라 실시간 계정 수로 계산해 보여준다.
+    // 크론이 청구 시점에 같은 식(계정 수 × 3,900)으로 재계산하므로 이쪽이 다음 청구액의 진실이고,
+    // 스냅샷을 보여주면 계정을 추가한 직후 금액이 달라 "내 것만 결제하는 화면"처럼 읽힌다 (혼란의 원인).
+    const SEAT_PRICE = 3900
+    const seatBilled = pro && sub?.plan !== "grandfather" && sub?.plan !== "org_seat"
     const planLabel =
         sub?.plan === "grandfather"
             ? "영구 무료"
             : sub?.plan === "org_seat"
               ? "소속 현장 (회사에서 결제)"
-              : `월 ${(sub?.amount ?? 3900).toLocaleString()}원`
+              : seatBilled
+                ? accountCount > 1
+                    ? `계정 ${accountCount}개 × 3,900원 = 월 ${(accountCount * SEAT_PRICE).toLocaleString()}원`
+                    : "계정 1개 · 월 3,900원"
+                : `월 ${(sub?.amount ?? 3900).toLocaleString()}원`
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
@@ -218,6 +228,21 @@ export default function AccountPage() {
                                     {sub?.pending_plan && sub.pending_plan !== sub.plan && (
                                         <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-3 py-2 text-[13px] text-cur-primary">
                                             다음 결제일부터 요금제가 변경될 예정입니다
+                                        </div>
+                                    )}
+                                    {/* 여기가 '회사 전체 결제'라는 걸 못 박는다 — 현장 계정 관리의 계산기와
+                                        이 화면이 서로 다른 결제처럼 읽히던 혼란의 해소 지점 */}
+                                    {seatBilled && accountCount > 1 && (
+                                        <div className="rounded-lg bg-cur-elevated border border-cur-hairline px-3 py-2.5 text-[13px] text-cur-body leading-relaxed">
+                                            이 결제 하나로 <b className="text-cur-ink">감독자 본인 + 현장 계정 {accountCount - 1}개</b>의
+                                            이용료가 함께 청구돼요. 현장 계정에는 별도 결제가 없습니다.
+                                            <button
+                                                type="button"
+                                                onClick={() => router.push("/org/members")}
+                                                className="block mt-1 text-cur-primary font-semibold hover:opacity-70 transition-opacity"
+                                            >
+                                                계정 추가·해제는 현장 계정 관리에서 →
+                                            </button>
                                         </div>
                                     )}
                                 </div>

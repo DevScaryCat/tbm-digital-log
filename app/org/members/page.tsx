@@ -238,6 +238,14 @@ export default function OrgMembersPage() {
                                     ? `무료체험 중엔 결제되지 않아요 · ${nextDate ?? "체험 종료일"}부터 결제`
                                     : "추가는 남은 기간만큼 즉시 결제 · 해제는 다음 결제일부터 제외"}
                             </p>
+                            {/* 결제의 전모는 구독 및 결제 한 곳에서 — 여기는 계정 관리 화면이고 이 숫자는 미리보기다 */}
+                            <button
+                                type="button"
+                                onClick={() => router.push("/account")}
+                                className="text-[12px] text-cur-primary font-semibold hover:opacity-70 transition-opacity"
+                            >
+                                요금은 감독자 결제 하나로 합산 청구 · 결제 상세 보기 →
+                            </button>
                         </section>
                     )
                 })()}
