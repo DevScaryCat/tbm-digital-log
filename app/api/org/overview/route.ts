@@ -136,8 +136,30 @@ export async function GET(request: Request) {
     const day = dailyMap.get(r.date); if (day) day.logs++;
   }
 
+  // 홈 활동 그리드(전체/현장별 선택)용 전체 기간 건수 — 월 집계와 별개의 head-count 3종.
+  // 홈 개인 그리드가 전체 기간 기준이라, 선택을 바꿔도 기간 의미가 같아야 숫자가 비교된다.
+  const totals = new Map<string, { minutes: number; logs: number; suggestions: number }>();
+  {
+    const CHUNK = 10;
+    for (let i = 0; i < activeIds.length; i += CHUNK) {
+      const chunk = activeIds.slice(i, i + CHUNK);
+      const rows = await Promise.all(
+        chunk.map(async (id) => {
+          const [m, l, s] = await Promise.all([
+            admin.from("tbm_minutes").select("id", { count: "exact", head: true }).eq("user_id", id),
+            admin.from("tbm_logs").select("id", { count: "exact", head: true }).eq("user_id", id),
+            admin.from("worker_suggestions").select("id", { count: "exact", head: true }).eq("user_id", id),
+          ]);
+          return [id, { minutes: m.count ?? 0, logs: l.count ?? 0, suggestions: s.count ?? 0 }] as const;
+        })
+      );
+      for (const [id, t] of rows) totals.set(id, t);
+    }
+  }
+
   const sites = roster.map((m) => {
     const s = byUser.get(m.userId);
+    const t = totals.get(m.userId);
     return {
       userId: m.userId,
       siteName: m.siteName,
@@ -151,6 +173,9 @@ export async function GET(request: Request) {
       monthMinutes: s?.minutesMonth ?? 0,
       monthLogs: s?.logsMonth ?? 0,
       lastActivity: s?.lastDate ?? null,
+      totalMinutes: t?.minutes ?? 0,
+      totalLogs: t?.logs ?? 0,
+      suggestions: t?.suggestions ?? 0,
     };
   });
 

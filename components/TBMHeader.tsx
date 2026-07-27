@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, FileBarChart2, Users, CreditCard, Lock } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, FileBarChart2, Users, CreditCard, Lock, Sparkles } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
@@ -185,6 +185,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     소속 현장에게는 같은 자리를 잠긴 모습으로 보여준다: 어디서 관리되는지 알게. */}
                 <DropdownMenuSeparator className="bg-cur-hairline" />
                 {[
+                    // AI 분석은 위험요인 카드 버튼이 유일한 입구였는데 카드가 빠지면서 여기로
+                    { href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> },
                     { href: "/org/reports", label: "보고서", icon: <FileBarChart2 className="mr-2 h-4 w-4 text-cur-muted" /> },
                     { href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> },
                     { href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> },

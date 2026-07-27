@@ -10,6 +10,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, FileBarChart2, ChevronRight, ExternalLink } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { ReportSettingsPanel } from "@/components/ReportSettingsPanel"
+import { CompanyDocFormatCard } from "@/components/CompanyDocFormatCard"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 
 interface ReportRow {
@@ -109,7 +110,9 @@ export default function OrgReportsPage() {
                 )}
 
                 {/* 패널은 항상 마운트(hidden 토글) — 탭을 오가도 입력 중이던 수신자 이메일·목록이 유지되고 재조회도 없다 */}
-                <div className={tab === "settings" ? undefined : "hidden"}>
+                <div className={tab === "settings" ? "space-y-4" : "hidden"}>
+                    {/* 문서 형식은 문서·보고서 계열 설정이라 여기(발송 설정)에 둔다 — 현장 계정 관리에서 이동 */}
+                    <CompanyDocFormatCard />
                     <ReportSettingsPanel pro={pro} />
                 </div>
             </main>

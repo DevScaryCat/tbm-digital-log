@@ -21,7 +21,7 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    // 문서 출력 형식은 회사 공통 양식 — 소속 현장 계정은 여기서 못 바꾼다 (감독자가 현장 계정 관리에서 설정)
+    // 문서 출력 형식은 회사 공통 양식 — 소속 현장 계정은 여기서 못 바꾼다 (감독자가 보고서 발송 설정에서 설정)
     const isMember = ctx?.kind === "member"
 
     const [fullName, setFullName] = useState("")
@@ -186,7 +186,7 @@ export default function ProfilePage() {
                                         {exportFormat && <span className="text-[12px] text-cur-muted font-normal ml-1.5">{EXPORT_FORMATS.find((f) => f.value === exportFormat)?.sub}</span>}
                                     </p>
                                 </div>
-                                <p className="text-[12px] text-cur-muted">회사 공통 형식이에요. 변경은 감독자가 현장 계정 관리에서 해요.</p>
+                                <p className="text-[12px] text-cur-muted">회사 공통 형식이에요. 변경은 감독자가 보고서 설정에서 해요.</p>
                             </>
                         ) : (
                             <>

@@ -1,14 +1,14 @@
 // app/page.tsx
 "use client"
 
-import { useState, useEffect, useRef, type KeyboardEvent } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, CalendarDays, PlayCircle, X, Plus } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
@@ -16,7 +16,7 @@ import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
-import { SiteMonitor } from "@/components/SiteMonitor"
+import { HomeActivity } from "@/components/HomeActivity"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
 // 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
@@ -75,7 +75,7 @@ export default function MainPage() {
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const formatModalRef = useRef<HTMLDivElement>(null)
 
-  // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 홈 상단에 관제 섹션(SiteMonitor)
+  // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 활동 현황에 현장 셀렉트(HomeActivity)
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
   // 온보딩에서 '여러 현장'을 고르고 셋업을 건너뛴 솔로 — 홈에서 현장 추가 입구를 이어준다
   const [hintAddSite, setHintAddSite] = useState(false)
@@ -276,7 +276,7 @@ export default function MainPage() {
   const chooseUsage = (t: "tbm" | "company") => {
     setShowUsageStep(false)
     if (t === "company") {
-      // 셋업을 건너뛰고 돌아와도 홈 관제 섹션의 '현장 추가' 칩이 눈에 띄게 힌트를 남긴다
+      // 셋업을 건너뛰고 돌아와도 홈의 '현장 계정 추가하기' 힌트 카드가 입구를 이어준다
       try { window.localStorage.setItem("antok_hint_add_site", "1") } catch { /* 무시 */ }
       router.push("/org/setup")
     }
@@ -306,11 +306,6 @@ export default function MainPage() {
   const shownMinutes = minuteDates.length
   const shownLogs = logDates.length
   const shownSuggestions = suggestionDates.length
-
-  // 활동 현황 카드 키보드 접근성: Enter/Space가 onClick과 동일하게 동작
-  const cardKeyDown = (go: () => void) => (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() }
-  }
 
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
@@ -535,9 +530,6 @@ export default function MainPage() {
             </div>
           )}
 
-          {/* 감독자 관제 섹션 — 구 현장관리 탭의 대시보드. 칩(전체/현장별)이 활동 카드를 지배 */}
-          {orgCtx?.kind === "owner" && <SiteMonitor />}
-
           {/* 솔로가 온보딩에서 '여러 현장'을 골라둔 경우만 — 첫 현장 추가 입구 (그 외 솔로에겐 소음이라 숨김) */}
           {orgCtx?.kind === "solo" && hintAddSite && (
             <button
@@ -561,45 +553,15 @@ export default function MainPage() {
             </button>
           )}
 
-          <div className="space-y-2">
-            {/* 월 필터는 뺐다 — 조작 요소 값을 못 한다. 월별 확인은 목록 화면에서. */}
-            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">내 활동 기록</h3>
-
-            {/* gap-px + bg-cur-hairline 트릭: 모바일 2×2, sm 4열 양방향 hairline 구분선 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
-              <div onClick={() => router.push('/analytics')} role="button" tabIndex={0} aria-label="TBM 회의록 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">TBM 회의록</div>
-                <div className="text-[32px] leading-none font-bold text-cur-ink font-mono">
-                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownMinutes}
-                </div>
-              </div>
-              <div onClick={() => router.push('/analytics/education')} role="button" tabIndex={0} aria-label="안전보건교육일지 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics/education'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">안전보건교육일지</div>
-                <div className="text-[32px] leading-none font-bold text-cur-ink font-mono">
-                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownLogs}
-                </div>
-              </div>
-              <div onClick={() => router.push('/suggestions')} role="button" tabIndex={0} aria-label="근로자 제안함 보기" onKeyDown={cardKeyDown(() => router.push('/suggestions'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
-                {!statsLoading && unreadSuggestions > 0 && (
-                  <span className="absolute top-2 right-2 bg-cur-primary text-cur-on-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">{unreadSuggestions}</span>
-                )}
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">근로자 제안함</div>
-                <div className="text-[32px] leading-none font-bold text-cur-ink font-mono">
-                  {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : shownSuggestions}
-                </div>
-              </div>
-              <div onClick={() => router.push('/dashboard')} role="button" tabIndex={0} aria-label="안전문서 달력 보기" onKeyDown={cardKeyDown(() => router.push('/dashboard'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
-                <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">안전문서 달력</div>
-                <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
-                  <CalendarDays className="w-5 h-5" />
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* 활동 현황 — 감독자는 셀렉트(디폴트 전체/현장별)가 그리드를 지배, 그 외는 개인 그리드 */}
+          <HomeActivity
+            isOwner={orgCtx?.kind === "owner"}
+            statsLoading={statsLoading}
+            myMinutes={shownMinutes}
+            myLogs={shownLogs}
+            mySuggestions={shownSuggestions}
+            myUnread={unreadSuggestions}
+          />
 
           <div
             onClick={() => router.push('/education-progress')}
