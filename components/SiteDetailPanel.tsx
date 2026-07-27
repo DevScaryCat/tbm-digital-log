@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
-import { Loader2, FileText, BookOpen, Sparkles, ChevronRight } from "lucide-react"
+import { Loader2, FileText, BookOpen, ChevronRight } from "lucide-react"
 
 interface SiteStats {
     siteName: string
@@ -100,31 +100,22 @@ export function SiteDetailPanel({ userId, siteName }: { userId: string; siteName
         </>
     )
 
-    const emptyDocs = (label: string) => (
-        <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4 mx-4 mb-4">
-            아직 {label}이 없어요 — 현장에서 기록하면 여기에 쌓입니다
+    // 조사까지 포함한 완성 문구를 받는다 — "교육일지이 없어요" 같은 기계 조사 방지
+    const emptyDocs = (phrase: string) => (
+        <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4 mx-5 mb-5">
+            {phrase} — 현장에서 기록하면 여기에 쌓입니다
         </p>
     )
 
     return (
         <div className="space-y-4">
-            {/* 현장 헤더 — 이니셜 아바타 + 오늘 상태 칩으로 '누구 화면인지'가 한눈에 */}
+            {/* 전체 뷰의 '활동 기록' 카드와 같은 문법 — 제목 행 + 타일 그리드 + 보조 버튼 (화면 간 UI 통일) */}
             <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                    <span aria-hidden className="w-11 h-11 rounded-[10px] bg-cur-primary/10 text-cur-primary flex items-center justify-center shrink-0 text-[17px] font-bold">
-                        {(data.siteName || "현").slice(0, 1)}
+                <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-[14px] font-bold text-cur-ink truncate">{data.siteName}</h2>
+                    <span className="shrink-0 text-[12px] text-cur-muted-soft">
+                        {data.managerName ? `담당 ${data.managerName} · ` : ""}{data.month.replace("-", "년 ")}월
                     </span>
-                    <div className="flex-1 min-w-0">
-                        <h3 className="text-[17px] font-bold text-cur-ink truncate tracking-[-0.2px]">{data.siteName}</h3>
-                        <p className="text-[12px] text-cur-muted mt-0.5 truncate">
-                            {data.managerName ? `담당 ${data.managerName} · ` : ""}{data.month.replace("-", "년 ")}월
-                        </p>
-                    </div>
-                    {data.recentMinutes[0]?.date || data.recentLogs[0]?.date ? (
-                        <span className="shrink-0 text-[11px] font-semibold text-cur-body bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
-                            최근 {dayLabel((data.recentMinutes[0]?.date ?? "") > (data.recentLogs[0]?.date ?? "") ? data.recentMinutes[0]!.date : data.recentLogs[0]!.date)}
-                        </span>
-                    ) : null}
                 </div>
                 <div className="grid grid-cols-2 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
                     <div className="bg-cur-card py-3.5">
@@ -139,23 +130,24 @@ export function SiteDetailPanel({ userId, siteName }: { userId: string; siteName
                 <button
                     type="button"
                     onClick={goRiskAssessment}
-                    className="w-full h-11 rounded-[8px] bg-cur-primary text-cur-on-primary text-[14px] font-bold flex items-center justify-center gap-1.5 hover:bg-cur-primary-active transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                    className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                 >
-                    <Sparkles className="w-4 h-4" /> 이 현장 AI 분석 보고서
+                    이 현장 AI 분석 보고서 만들기
                 </button>
             </section>
 
-            {/* 최근 문서 — 제목을 카드 안으로 넣어 섹션이 흩어져 보이지 않게 */}
+            {/* 최근 문서 — 전체 뷰 카드와 같은 p-5 리듬, 제목은 카드 안에 */}
             <section className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
-                <h3 className="px-4 pt-4 pb-2 text-[14px] font-bold text-cur-ink flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-cur-muted" /> 최근 TBM 회의록
-                </h3>
+                <div className="px-5 pt-4 pb-2 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-cur-muted" />
+                    <h2 className="text-[14px] font-bold text-cur-ink">최근 TBM 회의록</h2>
+                </div>
                 {data.recentMinutes.length === 0 ? (
-                    emptyDocs("회의록")
+                    emptyDocs("아직 회의록이 없어요")
                 ) : (
                     <div className="divide-y divide-cur-hairline border-t border-cur-hairline">
                         {data.recentMinutes.slice(0, 5).map((m) => (
-                            <div key={m.id} className="px-4 py-3 flex items-center gap-2.5">
+                            <div key={m.id} className="px-5 py-3 flex items-center gap-2.5">
                                 {docRow(m.work_name || m.process_name || "TBM 회의록", m.date)}
                             </div>
                         ))}
@@ -164,15 +156,16 @@ export function SiteDetailPanel({ userId, siteName }: { userId: string; siteName
             </section>
 
             <section className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
-                <h3 className="px-4 pt-4 pb-2 text-[14px] font-bold text-cur-ink flex items-center gap-1.5">
-                    <BookOpen className="w-4 h-4 text-cur-muted" /> 최근 안전보건교육일지
-                </h3>
+                <div className="px-5 pt-4 pb-2 flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4 text-cur-muted" />
+                    <h2 className="text-[14px] font-bold text-cur-ink">최근 안전보건교육일지</h2>
+                </div>
                 {data.recentLogs.length === 0 ? (
-                    emptyDocs("교육일지")
+                    emptyDocs("아직 교육일지가 없어요")
                 ) : (
                     <div className="divide-y divide-cur-hairline border-t border-cur-hairline">
                         {data.recentLogs.slice(0, 5).map((l) => (
-                            <div key={l.id} className="px-4 py-3 flex items-center gap-2.5">
+                            <div key={l.id} className="px-5 py-3 flex items-center gap-2.5">
                                 {docRow(l.education_type || "안전보건교육", l.date)}
                             </div>
                         ))}
@@ -183,7 +176,7 @@ export function SiteDetailPanel({ userId, siteName }: { userId: string; siteName
             <button
                 type="button"
                 onClick={() => router.push(`/org/sites/${userId}`)}
-                className="w-full flex items-center justify-center gap-1 h-11 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-body hover:border-cur-primary/40 hover:text-cur-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                className="w-full flex items-center justify-center gap-1 h-10 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-body hover:border-cur-primary/40 hover:text-cur-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
             >
                 이 현장 기록 전체 보기 <ChevronRight className="w-3.5 h-3.5" />
             </button>

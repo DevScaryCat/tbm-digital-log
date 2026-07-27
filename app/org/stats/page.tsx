@@ -15,9 +15,9 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { SiteDetailPanel } from "@/components/SiteDetailPanel"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrgContext } from "@/lib/useOrgContext"
-import { Loader2, CheckCircle2, CircleDashed, ChevronRight, Building2 } from "lucide-react"
+import { Loader2, Building2 } from "lucide-react"
 
 interface SiteRow {
     userId: string
@@ -112,21 +112,27 @@ export default function OrgStatsPage() {
                     </div>
                 ) : (
                     <>
-                        {/* 현장 선택 — 이 페이지의 조종간이라 크고 분명하게 */}
+                        {/* 현장 선택 — 이 페이지의 조종간이라 크고 분명하게. 전체와 현장 목록은 구분선+라벨로 나눈다 */}
                         <Select value={sel} onValueChange={setSel}>
-                            <SelectTrigger className="w-full h-12 text-[15px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                            <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                                 <span className="flex items-center gap-2.5 min-w-0">
-                                    <span className="w-7 h-7 rounded-[8px] bg-cur-primary/10 text-cur-primary flex items-center justify-center shrink-0">
-                                        <Building2 className="w-4 h-4" />
-                                    </span>
+                                    <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
                                     <SelectValue />
                                 </span>
                             </SelectTrigger>
                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                <SelectItem value="all" className="text-[15px] py-2.5">전체</SelectItem>
-                                {memberSites.map((s) => (
-                                    <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-2.5">{s.siteName}</SelectItem>
-                                ))}
+                                <SelectItem value="all" className="text-[15px] py-3 font-semibold">전체</SelectItem>
+                                {memberSites.length > 0 && (
+                                    <>
+                                        <SelectSeparator className="bg-cur-hairline" />
+                                        <SelectGroup>
+                                            <SelectLabel className="text-[11px] font-semibold text-cur-muted-soft px-8 pt-1.5">소속 현장</SelectLabel>
+                                            {memberSites.map((s) => (
+                                                <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-3">{s.siteName}</SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </>
+                                )}
                             </SelectContent>
                         </Select>
 
@@ -272,46 +278,6 @@ export default function OrgStatsPage() {
                                         </section>
                                     )
                                 })()}
-
-                                {/* 현장별 현황 — 이 페이지의 본론. 행을 누르면 그 현장 대시보드로 */}
-                                <section className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
-                                    <div className="px-5 pt-4 pb-2 flex items-center justify-between">
-                                        <h2 className="text-[14px] font-bold text-cur-ink">현장별 현황</h2>
-                                        <span className="text-[12px] text-cur-muted-soft">현장 {activeSites.length}곳</span>
-                                    </div>
-                                    <div className="divide-y divide-cur-hairline">
-                                        {activeSites.map((s) => (
-                                            <button
-                                                key={s.userId}
-                                                disabled={s.isSelf}
-                                                onClick={() => setSel(s.userId)}
-                                                className="w-full flex items-center gap-3 px-5 py-3.5 text-left enabled:hover:bg-cur-elevated/50 enabled:active:bg-cur-elevated transition-colors disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                                            >
-                                                {s.todayDone ? (
-                                                    <span className="w-9 h-9 rounded-full bg-cur-success/10 text-cur-success flex items-center justify-center shrink-0">
-                                                        <CheckCircle2 className="w-5 h-5" />
-                                                    </span>
-                                                ) : (
-                                                    <span className="w-9 h-9 rounded-full bg-cur-elevated text-cur-muted-soft flex items-center justify-center shrink-0">
-                                                        <CircleDashed className="w-5 h-5" />
-                                                    </span>
-                                                )}
-                                                <span className="flex-1 min-w-0">
-                                                    <span className="flex items-center gap-1.5">
-                                                        <span className="text-[14px] font-semibold text-cur-ink truncate">{s.siteName}</span>
-                                                        {s.isSelf && (
-                                                            <span className="shrink-0 text-[10px] font-bold text-cur-primary bg-cur-primary/10 px-1.5 py-0.5 rounded-[4px]">내 현장</span>
-                                                        )}
-                                                    </span>
-                                                    <span className="block text-[12px] text-cur-muted mt-0.5">
-                                                        {s.todayDone ? "오늘 실시 완료" : "오늘 미실시"} · 이번 달 회의록 {s.monthMinutes} · 일지 {s.monthLogs}
-                                                    </span>
-                                                </span>
-                                                {!s.isSelf && <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </section>
 
                             </>
                         )}

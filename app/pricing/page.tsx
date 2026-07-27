@@ -135,9 +135,9 @@ export default function PricingPage() {
                             <Sparkles className="w-4 h-4 text-cur-primary" /> 무료체험 중{nextDate ? ` · 체험 종료일 ${nextDate}` : ""}
                         </p>
                         <p className="mt-1 text-cur-muted">
-                            지금은 무료로 이용 중입니다. 체험이 끝난 뒤에도 계속 쓰려면 결제수단을 등록해 주세요.
-                            등록하면 <b className="text-cur-ink">체험 종료일부터 월 {SEAT_PRICE.toLocaleString()}원이 자동 결제</b>됩니다.
-                            등록 전에는 결제되지 않습니다.
+                            {/* 금액은 계정 수 반영 — 고정 3,900원 표기는 다계정 감독자에게 거짓말이 된다 */}
+                            계속 쓰려면 결제수단을 등록하세요 — 체험 종료일부터{" "}
+                            <b className="text-cur-ink">월 {(accountCount * SEAT_PRICE).toLocaleString()}원 자동 결제</b>, 등록 전에는 결제되지 않아요.
                         </p>
                     </div>
                     <SubscribeButtons
@@ -222,11 +222,12 @@ export default function PricingPage() {
                         </p>
                     </div>
 
-                    <div className="rounded-[8px] bg-cur-elevated p-3.5 text-[13px] text-cur-body leading-relaxed">
-                        현장이 여러 곳이면 <b className="text-cur-ink">현장 계정을 추가한 만큼만</b> 더 냅니다.
-                        예를 들어 내 현장 + 다른 현장 2곳이면 계정 3개 —
-                        월 {(SEAT_PRICE * 3).toLocaleString()}원.
-                    </div>
+                    {/* 계정이 여럿이면 위 실계산 문구가 이미 설명한다 — 예시 박스는 1계정일 때만 */}
+                    {accountCount === 1 && (
+                        <div className="rounded-[8px] bg-cur-elevated p-3.5 text-[13px] text-cur-body leading-relaxed">
+                            현장이 여러 곳이면 <b className="text-cur-ink">현장 계정을 추가한 만큼만</b> 더 냅니다.
+                        </div>
+                    )}
 
                     <ul className="space-y-2.5">
                         {FEATURES.map((f) => (
