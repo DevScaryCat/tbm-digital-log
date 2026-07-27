@@ -61,6 +61,7 @@ export function CompanyPanel() {
     // 온보딩에서 '여러 현장을 관리해요'를 고른 사람에게만 '현장 추가하기'를 강조한다.
     // 혼자 쓰는 사람에게는 광고성 소음이라 띄우지 않는다.
     const [hintAddSite, setHintAddSite] = useState(false)
+    const [showAllSites, setShowAllSites] = useState(false)
     useEffect(() => {
         try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
     }, [])
@@ -115,7 +116,11 @@ export function CompanyPanel() {
     // legacy(구 베이직 1,900·영구무료)는 현장 추가가 요금제에 없다 — 서버가 402로 막으므로
     // 여기서 추가 UI 대신 안내를 보여준다 (가격까지 보여주고 마지막에 거절하면 그게 더 나쁘다)
     const canAddSites = managed && isProActive(sub)
-    const activeSites = data.sites.filter((s) => s.status === "active")
+    // 현장이 수십 곳이어도 문제 현장부터 보이게: 오늘 미실시 우선, 그다음 최근 활동순.
+    // 기본 5곳만 보여주고 나머지는 접는다.
+    const activeSites = data.sites
+        .filter((s) => s.status === "active")
+        .sort((a, b) => Number(a.todayDone) - Number(b.todayDone) || (b.lastActivity ?? "").localeCompare(a.lastActivity ?? ""))
 
 
     return (
@@ -140,101 +145,6 @@ export function CompanyPanel() {
                 </span>
             </section>
 
-            {/* 현장 목록 — 혼자 쓰면 본인 현장 하나, 감독자면 본인이 맨 위 */}
-            <section className="space-y-2">
-                <h2 className="text-[14px] font-bold text-cur-ink px-1">현장 목록</h2>
-                <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
-                    {activeSites.map((s) => {
-                        const openable = managed && data.memberCount > 0
-                        const Row = openable ? "button" : "div"
-                        return (
-                            <Row
-                                key={s.userId}
-                                {...(openable
-                                    ? {
-                                          onClick: () => router.push(`/org/sites/${s.userId}`),
-                                          className:
-                                              "w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset",
-                                      }
-                                    : { className: "w-full flex items-center gap-3 p-4 text-left" })}
-                            >
-                                {s.todayDone ? (
-                                    <span className="w-9 h-9 rounded-full bg-cur-success/10 text-cur-success flex items-center justify-center shrink-0">
-                                        <CheckCircle2 className="w-5 h-5" />
-                                    </span>
-                                ) : (
-                                    <span className="w-9 h-9 rounded-full bg-cur-elevated text-cur-muted-soft flex items-center justify-center shrink-0">
-                                        <CircleDashed className="w-5 h-5" />
-                                    </span>
-                                )}
-                                <span className="flex-1 min-w-0">
-                                    <span className="flex items-center gap-1.5">
-                                        <span className="text-[15px] font-semibold text-cur-ink truncate">{s.siteName}</span>
-                                        {s.isSelf && (
-                                            <span className="shrink-0 text-[10px] font-bold text-cur-primary bg-cur-primary/10 px-1.5 py-0.5 rounded-[4px]">
-                                                내 현장
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="block text-[12px] text-cur-muted mt-0.5">
-                                        {s.todayDone
-                                            ? `오늘 회의록 ${s.todayMinutes} · 일지 ${s.todayLogs}`
-                                            : s.lastActivity
-                                              ? `마지막 활동 ${s.lastActivity}`
-                                              : "이번 달 기록 없음"}
-                                        {" · "}이번 달 {s.monthMinutes + s.monthLogs}건
-                                    </span>
-                                </span>
-                                {openable && <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />}
-                            </Row>
-                        )
-                    })}
-
-                    {/* 현장 추가 — 목록의 마지막 행. 처음이면 청구 미리보기 셋업을 펼친다 */}
-                    {managed && !canAddSites && (
-                        <button
-                            onClick={() => router.push("/pricing")}
-                            className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                        >
-                            <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
-                                <Plus className="w-4 h-4" />
-                            </span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[14px] font-semibold text-cur-body">현장 추가는 유료 요금제에서</span>
-                                <span className="block text-[12px] text-cur-muted-soft mt-0.5">
-                                    계정 1개당 월 {SEAT_PRICE.toLocaleString()}원 — 요금제 보기
-                                </span>
-                            </span>
-                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-                        </button>
-                    )}
-                    {canAddSites && (
-                        <button
-                            onClick={() => { clearHint(); router.push("/org/members?new=1") }}
-                            className="relative w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                        >
-                            {hintAddSite && data.memberCount === 0 && (
-                                <>
-                                    <span aria-hidden className="absolute inset-1 rounded-[10px] border-2 border-cur-primary pointer-events-none animate-pulse" />
-                                    <span aria-hidden className="absolute -top-2.5 right-3 z-10 flex items-center gap-1 rounded-full bg-cur-primary text-cur-on-primary text-[10px] font-bold px-2 py-[3px] shadow-[0_4px_12px_rgba(245,78,0,0.35)] animate-bounce pointer-events-none">
-                                        여기서 현장을 추가해요
-                                    </span>
-                                </>
-                            )}
-                            <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
-                                <Plus className="w-4 h-4" />
-                            </span>
-                            <span className="flex-1 min-w-0">
-                                <span className="block text-[14px] font-semibold text-cur-body">현장 추가하기</span>
-                                <span className="block text-[12px] text-cur-muted-soft mt-0.5">
-                                    다른 현장 담당자에게 계정을 만들어 줄 수 있어요
-                                </span>
-                            </span>
-                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-                        </button>
-                    )}
-                </div>
-            </section>
 
 
             {/* 이번 달 활동 대시보드 — 설정은 온보딩·계정 관리에서 끝내므로, 들어왔을 때
@@ -298,9 +208,35 @@ export function CompanyPanel() {
                             {total > 0 && <span className="text-[12px] text-cur-muted-soft">{total}건 식별</span>}
                         </div>
                         {total === 0 ? (
-                            <p className="text-[13px] text-cur-muted leading-relaxed">
-                                아직 분석할 기록이 없어요. TBM 회의록이 쌓이면<br />위험등급 분포와 자주 나온 위험 키워드를 보여드려요.
-                            </p>
+                            /* 예시 스켈레톤 — 데이터가 쌓이면 이 자리가 무엇으로 채워지는지 미리 보여준다 */
+                            <div className="relative">
+                                <div aria-hidden className="space-y-4 opacity-40 grayscale-[0.3] select-none pointer-events-none">
+                                    <div className="space-y-2">
+                                        <div className="flex h-2.5 rounded-full overflow-hidden bg-cur-elevated">
+                                            <div className="bg-cur-error" style={{ width: "22%" }} />
+                                            <div className="bg-cur-primary" style={{ width: "50%" }} />
+                                            <div className="bg-cur-success" style={{ width: "28%" }} />
+                                        </div>
+                                        <div className="flex items-center gap-4 text-[12px]">
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-error" /><span className="text-cur-body">상 <b className="text-cur-ink">2</b></span></span>
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-primary" /><span className="text-cur-body">중 <b className="text-cur-ink">5</b></span></span>
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-cur-success" /><span className="text-cur-body">하 <b className="text-cur-ink">3</b></span></span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {[["추락", 4], ["끼임", 3], ["지게차", 3], ["개구부", 2], ["감전", 1]].map(([w, c]) => (
+                                                <span key={String(w)} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
+                                                    {w} <span className="text-cur-muted-soft">{c}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <span className="absolute top-0 right-0 text-[10px] font-bold text-cur-muted bg-cur-elevated border border-cur-hairline rounded-full px-2 py-0.5">예시</span>
+                                <p className="text-[12px] text-cur-muted mt-3">TBM 회의록이 쌓이면 실제 데이터로 채워져요.</p>
+                            </div>
                         ) : (
                             <>
                                 {/* 등급 분포 — 누적 막대 + 수치 */}
@@ -343,6 +279,111 @@ export function CompanyPanel() {
                     </section>
                 )
             })()}
+
+            {/* 현장 목록 — 혼자 쓰면 본인 현장 하나, 감독자면 본인이 맨 위 */}
+            <section className="space-y-2">
+                <h2 className="text-[14px] font-bold text-cur-ink px-1">현장 목록</h2>
+                <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                    {(showAllSites ? activeSites : activeSites.slice(0, 5)).map((s) => {
+                        const openable = managed && data.memberCount > 0
+                        const Row = openable ? "button" : "div"
+                        return (
+                            <Row
+                                key={s.userId}
+                                {...(openable
+                                    ? {
+                                          onClick: () => router.push(`/org/sites/${s.userId}`),
+                                          className:
+                                              "w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset",
+                                      }
+                                    : { className: "w-full flex items-center gap-3 p-4 text-left" })}
+                            >
+                                {s.todayDone ? (
+                                    <span className="w-9 h-9 rounded-full bg-cur-success/10 text-cur-success flex items-center justify-center shrink-0">
+                                        <CheckCircle2 className="w-5 h-5" />
+                                    </span>
+                                ) : (
+                                    <span className="w-9 h-9 rounded-full bg-cur-elevated text-cur-muted-soft flex items-center justify-center shrink-0">
+                                        <CircleDashed className="w-5 h-5" />
+                                    </span>
+                                )}
+                                <span className="flex-1 min-w-0">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="text-[15px] font-semibold text-cur-ink truncate">{s.siteName}</span>
+                                        {s.isSelf && (
+                                            <span className="shrink-0 text-[10px] font-bold text-cur-primary bg-cur-primary/10 px-1.5 py-0.5 rounded-[4px]">
+                                                내 현장
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="block text-[12px] text-cur-muted mt-0.5">
+                                        {s.todayDone
+                                            ? `오늘 회의록 ${s.todayMinutes} · 일지 ${s.todayLogs}`
+                                            : s.lastActivity
+                                              ? `마지막 활동 ${s.lastActivity}`
+                                              : "이번 달 기록 없음"}
+                                        {" · "}이번 달 {s.monthMinutes + s.monthLogs}건
+                                    </span>
+                                </span>
+                                {openable && <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />}
+                            </Row>
+                        )
+                    })}
+
+                    {activeSites.length > 5 && (
+                        <button
+                            onClick={() => setShowAllSites((v) => !v)}
+                            className="w-full h-11 text-[13px] font-semibold text-cur-muted hover:text-cur-ink hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                        >
+                            {showAllSites ? "접기" : `현장 ${activeSites.length}곳 모두 보기`}
+                        </button>
+                    )}
+
+                    {/* 현장 추가 — 목록의 마지막 행. 처음이면 청구 미리보기 셋업을 펼친다 */}
+                    {managed && !canAddSites && (
+                        <button
+                            onClick={() => router.push("/pricing")}
+                            className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                        >
+                            <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                                <Plus className="w-4 h-4" />
+                            </span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[14px] font-semibold text-cur-body">현장 추가는 유료 요금제에서</span>
+                                <span className="block text-[12px] text-cur-muted-soft mt-0.5">
+                                    계정 1개당 월 {SEAT_PRICE.toLocaleString()}원 — 요금제 보기
+                                </span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        </button>
+                    )}
+                    {canAddSites && (
+                        <button
+                            onClick={() => { clearHint(); router.push("/org/members?new=1") }}
+                            className="relative w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                        >
+                            {hintAddSite && data.memberCount === 0 && (
+                                <>
+                                    <span aria-hidden className="absolute inset-1 rounded-[10px] border-2 border-cur-primary pointer-events-none animate-pulse" />
+                                    <span aria-hidden className="absolute -top-2.5 right-3 z-10 flex items-center gap-1 rounded-full bg-cur-primary text-cur-on-primary text-[10px] font-bold px-2 py-[3px] shadow-[0_4px_12px_rgba(245,78,0,0.35)] animate-bounce pointer-events-none">
+                                        여기서 현장을 추가해요
+                                    </span>
+                                </>
+                            )}
+                            <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                                <Plus className="w-4 h-4" />
+                            </span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[14px] font-semibold text-cur-body">현장 추가하기</span>
+                                <span className="block text-[12px] text-cur-muted-soft mt-0.5">
+                                    다른 현장 담당자에게 계정을 만들어 줄 수 있어요
+                                </span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                        </button>
+                    )}
+                </div>
+            </section>
 
             {/* 관리 메뉴 — 내 안톡 탭의 카드 문법(아이콘 좌·라벨·셰브론)과 동일한 리스트 한 장.
                 소속 현장에게는 같은 자리·잠긴 모습으로 보인다. */}

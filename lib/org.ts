@@ -107,22 +107,29 @@ export async function listOrgMembers(orgId: string, adminClient?: SupabaseClient
     .select("member_user_id, status, joined_at")
     .eq("org_id", orgId)
     .order("joined_at", { ascending: true });
+  // 메타데이터 조회를 병렬 배치로 — 순차 호출이면 현장 100곳에서 이 함수 하나가
+  // 수십 초를 먹는다 (현장 수 상한이 없는 과금 모델이라 대량 케이스가 정상 경로다).
+  const list = (rows ?? []) as { member_user_id: string; status: string; joined_at: string }[];
   const out: OrgMemberSummary[] = [];
-  for (const r of rows ?? []) {
-    let siteName = "";
-    let managerName = "";
-    try {
-      const { data: u } = await admin.auth.admin.getUserById(r.member_user_id as string);
-      const meta = (u?.user?.user_metadata ?? {}) as Record<string, unknown>;
-      siteName = String(meta.company_name ?? "");
-      managerName = String(meta.full_name ?? "");
-    } catch { /* 메타데이터 없으면 빈 값 */ }
-    out.push({
-      userId: r.member_user_id as string,
-      siteName,
-      managerName,
-      status: r.status as "active" | "detached",
-      joinedAt: r.joined_at as string,
+  const CHUNK = 20;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const chunk = list.slice(i, i + CHUNK);
+    const metas = await Promise.all(
+      chunk.map((r) =>
+        admin.auth.admin
+          .getUserById(r.member_user_id)
+          .then((u) => (u.data?.user?.user_metadata ?? {}) as Record<string, unknown>)
+          .catch(() => ({} as Record<string, unknown>))
+      )
+    );
+    chunk.forEach((r, j) => {
+      out.push({
+        userId: r.member_user_id,
+        siteName: String(metas[j].company_name ?? ""),
+        managerName: String(metas[j].full_name ?? ""),
+        status: r.status as "active" | "detached",
+        joinedAt: r.joined_at,
+      });
     });
   }
   return out;
