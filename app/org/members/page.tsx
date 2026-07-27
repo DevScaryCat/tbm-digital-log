@@ -13,6 +13,8 @@ import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, Chec
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
 import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
+import { ExportFormatPicker } from "@/components/ExportFormatPicker"
+import { type ExportFormat } from "@/lib/exportFormats"
 
 const inputCls =
     "h-11 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -48,6 +50,9 @@ export default function OrgMembersPage() {
     const [attachId, setAttachId] = useState("")
     // 초대 링크
     const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+    // 회사 공통 문서 출력 형식 — 감독자 값이 원본, 저장 시 전 현장 계정에 전파
+    const [docFormat, setDocFormat] = useState<string>("")
+    const [fmtBusy, setFmtBusy] = useState(false)
 
     const authHeaders = async () => {
         const { data } = await supabase.auth.getSession()
@@ -96,9 +101,35 @@ export default function OrgMembersPage() {
             const sugg = suggestIdStems(name)
             setStem((cur) => cur || sugg[0] || "")
             setInitPw((cur) => cur || suggestInitialPassword())
+            setDocFormat(String(data?.user?.user_metadata?.preferred_export_format ?? ""))
             setSub(await fetchSubscription())
         })()
     }, [])
+
+    const changeDocFormat = async (v: ExportFormat) => {
+        if (fmtBusy || v === docFormat) return
+        const prev = docFormat
+        setDocFormat(v)
+        setFmtBusy(true)
+        setMsg(null)
+        try {
+            const res = await fetch("/api/org/export-format", {
+                method: "POST",
+                headers: await authHeaders(),
+                body: JSON.stringify({ format: v }),
+            })
+            // 게이트웨이 5xx는 HTML 본문일 수 있어 json 파싱을 ok 판정보다 방어적으로
+            const j = await res.json().catch(() => ({}))
+            if (!res.ok) { setDocFormat(prev); setMsg({ type: "err", text: j.error || "형식 변경 실패" }); return }
+            setMsg({ type: "ok", text: j.total > 0 ? `문서 형식을 바꿨어요. 현장 계정 ${j.updated}개에도 함께 적용했습니다.` : "문서 형식을 바꿨어요." })
+        } catch {
+            // 오프라인·네트워크 실패 — 되돌리지 않으면 저장 안 된 형식이 화면에 남고 재클릭도 막힌다
+            setDocFormat(prev)
+            setMsg({ type: "err", text: "네트워크 오류로 형식을 바꾸지 못했어요. 다시 시도해주세요." })
+        } finally {
+            setFmtBusy(false)
+        }
+    }
 
     const activeCount = members.filter((m) => m.status === "active").length
 
@@ -425,6 +456,23 @@ export default function OrgMembersPage() {
                             ))}
                         </div>
                     )}
+                </section>
+
+                {/* 회사 공통 문서 출력 형식 — 형식은 개인 취향이 아니라 회사 양식이라 여기(회사 관리)서 정한다.
+                    바꾸면 감독자 본인 + 전 현장 계정에 즉시 전파. 현장 계정의 내 정보 수정에서는 읽기 전용. */}
+                <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-3">
+                    <div>
+                        <h2 className="text-[15px] font-bold text-cur-ink">문서 출력 형식 (회사 공통)</h2>
+                        <p className="text-[12px] text-cur-muted mt-1 leading-relaxed">
+                            회의록·교육일지를 저장하는 형식이에요.{" "}
+                            {activeCount > 0
+                                ? `내 계정과 현장 계정 ${activeCount}개에 함께 적용됩니다.`
+                                : "나중에 만드는 현장 계정에도 함께 적용됩니다."}
+                        </p>
+                    </div>
+                    <div className={fmtBusy ? "opacity-60 pointer-events-none" : undefined}>
+                        <ExportFormatPicker value={(docFormat || null) as ExportFormat | null} onChange={changeDocFormat} />
+                    </div>
                 </section>
             </main>
         </div>

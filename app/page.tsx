@@ -234,9 +234,11 @@ export default function MainPage() {
   const handleSaveFormat = async () => {
     if (!selectedFormat) return
     setIsSavingFormat(true)
+    // 소속 현장 계정이 회사 형식을 이미 상속받았으면 형식은 다시 쓰지 않는다 (회사 공통 유지)
+    const memberHasFormat = orgCtx?.kind === "member" && !!user?.user_metadata?.preferred_export_format
     const { data, error } = await supabase.auth.updateUser({
       data: {
-        preferred_export_format: selectedFormat,
+        ...(memberHasFormat ? {} : { preferred_export_format: selectedFormat }),
         ...(needsWorkerType ? { worker_type: workerTypeInput } : {}),
       }
     })
@@ -730,10 +732,20 @@ export default function MainPage() {
             tabIndex={-1}
             className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
           >
-            <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">문서 출력 형식</h3>
-            <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">회의록·일지 등 결과물을 어떤 형식으로 받을지 선택하세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
-            <ExportFormatPicker value={selectedFormat} onChange={setSelectedFormat} />
-            <p className="text-[12px] text-cur-muted-soft mt-3 leading-relaxed">PDF는 편집이 불가능한 출력 전용 형식입니다.</p>
+            {orgCtx?.kind === "member" && user?.user_metadata?.preferred_export_format ? (
+              /* 소속 현장 계정 + 회사 형식 이미 보유 — 형식은 회사 공통이라 여기서 고르지 않는다 (근로자 구분만) */
+              <>
+                <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">근로자 구분</h3>
+                <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">교육시간 산정 기준을 선택해주세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
+              </>
+            ) : (
+              <>
+                <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">문서 출력 형식</h3>
+                <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">회의록·일지 등 결과물을 어떤 형식으로 받을지 선택하세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
+                <ExportFormatPicker value={selectedFormat} onChange={setSelectedFormat} />
+                <p className="text-[12px] text-cur-muted-soft mt-3 leading-relaxed">PDF는 편집이 불가능한 출력 전용 형식입니다.</p>
+              </>
+            )}
             {needsWorkerType && (
               <div className="mt-5 space-y-2">
                 <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>

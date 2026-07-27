@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     // 초대 경로는 개인 구독 upsert·휴대폰 무료체험(trial_redemptions)을 만들지 않고(§3 3-skip),
     // 좌석 점유 + org_seat 미러 구독으로 대체한다.
     let invite: { id: string; org_id: string } | null = null;
+    let inviteOwnerFormat: string | null = null; // 회사 공통 문서 형식 — 감독자 값을 복사
     if (inviteToken) {
       const { data: inv } = await supabaseAdmin
         .from("org_invites")
@@ -59,6 +60,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "이메일 형식이 올바르지 않습니다." }, { status: 400 });
       }
       invite = { id: inv.id, org_id: inv.org_id };
+      try {
+        const { data: ownerUser } = await supabaseAdmin.auth.admin.getUserById(ownerId);
+        inviteOwnerFormat = String((ownerUser?.user?.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
+      } catch { inviteOwnerFormat = null; }
     }
 
     // 업종/공종: 데이터 분석용 프로필(선택 목록 외 임의 값 방지, 최대 40자 — KSIC 분류명 수용)
@@ -116,6 +121,8 @@ export async function POST(request: Request) {
         worker_type: workerTypeStr,
         phone: verifiedOtpId ? normalizedPhone : null,
         phone_verified_at: verifiedOtpId ? new Date().toISOString() : null,
+        // 초대 가입은 회사 공통 문서 형식을 상속 (첫 로그인 형식 선택 생략)
+        ...(invite && inviteOwnerFormat ? { preferred_export_format: inviteOwnerFormat } : {}),
       },
     });
 

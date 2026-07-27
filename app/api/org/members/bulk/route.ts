@@ -70,6 +70,7 @@ export async function POST(request: Request) {
     }
 
     // 연번은 01부터 비어있는 번호를 찾아 배정 — 이미 쓰는 아이디는 건너뛴다
+    const ownerFormat = String((user.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
     const created: { userId: string; loginId: string }[] = [];
     const rollback = async () => {
       for (const c of created) {
@@ -98,6 +99,8 @@ export async function POST(request: Request) {
             company_name: loginId,
             role: "site_supervisor",
             must_set_password: true,
+            // 문서 출력 형식은 회사 공통 양식 — 감독자 값 복사 (첫 로그인 형식 선택 생략)
+            ...(ownerFormat ? { preferred_export_format: ownerFormat } : {}),
           },
         });
         if (userErr || !createdUser?.user) {

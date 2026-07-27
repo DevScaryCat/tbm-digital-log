@@ -100,6 +100,8 @@ export async function POST(request: Request) {
     const manager = typeof managerName === "string" ? managerName.trim().slice(0, 30) : "";
 
     // 계정 생성 — 초대/발급 경로는 개인 구독·휴대폰 무료체험을 만들지 않는다 (§3 signup 3-skip)
+    // 문서 출력 형식은 회사 공통 양식 — 감독자 값을 복사해 첫 로그인 형식 선택을 건너뛰게 한다
+    const ownerFormat = String((user.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
     const { data: created, error: userErr } = await admin.auth.admin.createUser({
       email: `${id}@tbm.com`,
       password,
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
         full_name: manager || site,
         company_name: site,
         role: "site_supervisor", // 표시용 — 분기 키는 DB org_members
+        ...(ownerFormat ? { preferred_export_format: ownerFormat } : {}),
       },
     });
     if (userErr || !created?.user) {

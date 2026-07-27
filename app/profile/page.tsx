@@ -9,16 +9,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { type ExportFormat } from "@/lib/exportFormats"
+import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
+import { useOrgContext } from "@/lib/useOrgContext"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 
 export default function ProfilePage() {
     const router = useRouter()
+    const { ctx, loading: ctxLoading } = useOrgContext()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 문서 출력 형식은 회사 공통 양식 — 소속 현장 계정은 여기서 못 바꾼다 (감독자가 현장 계정 관리에서 설정)
+    const isMember = ctx?.kind === "member"
 
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
@@ -87,12 +91,23 @@ export default function ProfilePage() {
                     full_name: fullName.trim(),
                     company_name: companyName.trim(),
                     worker_type: workerType,
-                    ...(exportFormat ? { preferred_export_format: exportFormat } : {}),
+                    ...(exportFormat && !isMember ? { preferred_export_format: exportFormat } : {}),
                     industry: industry || null,
                     work_category: workCategory || null,
                 },
             })
             if (error) throw error
+            // 감독자의 형식 변경은 회사 공통 — 전 현장 계정에 전파 (실패해도 본인 저장은 유지)
+            if (!isMember && ctx?.kind === "owner" && exportFormat && (ctx.memberIds?.length ?? 0) > 0) {
+                try {
+                    const { data: sess } = await supabase.auth.getSession()
+                    await fetch("/api/org/export-format", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess?.session?.access_token}` },
+                        body: JSON.stringify({ format: exportFormat }),
+                    })
+                } catch { /* 비치명 — 현장 계정 관리에서 다시 저장하면 동기화된다 */ }
+            }
             setWorkCategory(data.user.user_metadata.work_category ?? "")
             setInitial(snapshot({
                 fullName: fullName.trim(), companyName: companyName.trim(), workerType,
@@ -162,12 +177,32 @@ export default function ProfilePage() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식</Label>
-                        <ExportFormatPicker
-                            value={(exportFormat || null) as ExportFormat | null}
-                            onChange={(v) => setExportFormat(v)}
-                        />
-                        <p className="text-[12px] text-cur-muted">한글(.hwpx)·워드(.docx)·엑셀(.xlsx)은 문서 보기 화면에서 해당 형식으로 저장돼요. PDF는 편집 불가·출력 전용.</p>
+                        <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식{!isMember && ctx?.kind === "owner" ? " (회사 공통)" : ""}</Label>
+                        {isMember ? (
+                            <>
+                                <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated px-4 py-3">
+                                    <p className="text-[14px] font-semibold text-cur-ink">
+                                        {EXPORT_FORMATS.find((f) => f.value === exportFormat)?.label ?? "회사 공통 형식"}
+                                        {exportFormat && <span className="text-[12px] text-cur-muted font-normal ml-1.5">{EXPORT_FORMATS.find((f) => f.value === exportFormat)?.sub}</span>}
+                                    </p>
+                                </div>
+                                <p className="text-[12px] text-cur-muted">회사 공통 형식이에요. 변경은 감독자가 현장 계정 관리에서 해요.</p>
+                            </>
+                        ) : (
+                            <>
+                                {/* 역할 판정 전에는 잠가둔다 — 소속 현장 계정이 이 틈에 개인 형식을 써버리는 창 차단 */}
+                                <div className={ctxLoading ? "opacity-60 pointer-events-none" : undefined}>
+                                    <ExportFormatPicker
+                                        value={(exportFormat || null) as ExportFormat | null}
+                                        onChange={(v) => setExportFormat(v)}
+                                    />
+                                </div>
+                                <p className="text-[12px] text-cur-muted">
+                                    한글(.hwpx)·워드(.docx)·엑셀(.xlsx)은 문서 보기 화면에서 해당 형식으로 저장돼요. PDF는 편집 불가·출력 전용.
+                                    {ctx?.kind === "owner" && (ctx.memberIds?.length ?? 0) > 0 ? " 저장하면 모든 현장 계정에 함께 적용됩니다." : ""}
+                                </p>
+                            </>
+                        )}
                     </div>
                 </div>
 
