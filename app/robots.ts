@@ -8,6 +8,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/api/", "/admin/", "/report/", "/consent/", "/verify-email/", "/join/"],
     },
-    sitemap: "https://safetalk.kr/sitemap.xml",
+    sitemap: "https://www.safetalk.kr/sitemap.xml",
   };
 }

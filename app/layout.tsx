@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://safetalk.kr"),
+  metadataBase: new URL("https://www.safetalk.kr"),
   title: "안톡 — 현장 안전관리 AI",
   description: "더 많은 대화로 더 안전한 현장을. TBM 회의록·안전보건교육일지·AI 분석 보고서·월간 안전 보고서까지 AI로 한 번에.",
   applicationName: "안톡",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "안톡 — 현장 안전관리 AI",
     description: "더 많은 대화로 더 안전한 현장을. TBM 회의록·안전보건교육일지·AI 분석 보고서·월간 안전 보고서까지 AI로 한 번에.",
-    url: "https://safetalk.kr",
+    url: "https://www.safetalk.kr",
     siteName: "안톡",
     locale: "ko_KR",
     type: "website",
@@ -37,7 +37,7 @@ const SITE_JSONLD = {
   "@type": "WebSite",
   name: "안톡",
   alternateName: ["안전톡톡", "안전톡톡e", "AnTok"],
-  url: "https://safetalk.kr",
+  url: "https://www.safetalk.kr",
 };
 
 export default function RootLayout({
