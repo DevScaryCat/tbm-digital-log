@@ -22,7 +22,7 @@ const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
  * 전용 페이지(/report-settings)에서 사용. 보고서는 매월 1일 지난달 종합으로 발송.
  * pro=false면 '예시 화면' 모드: 미리보기는 보이되 저장은 막고 업그레이드를 유도.
  */
-export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
+export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?: boolean; onRecipientsChange?: (count: number) => void }) {
     const router = useRouter()
     const [recipients, setRecipients] = useState<Recipient[]>([])
     const [newEmail, setNewEmail] = useState("")
@@ -36,7 +36,10 @@ export function ReportSettingsPanel({ pro = false }: { pro?: boolean }) {
     }
 
     const applyResponse = (j: any) => {
-        if (Array.isArray(j.recipients)) setRecipients(j.recipients)
+        if (Array.isArray(j.recipients)) {
+            setRecipients(j.recipients)
+            onRecipientsChange?.(j.recipients.length) // 보고서 설정 위저드의 완료 판정용
+        }
     }
 
     useEffect(() => {

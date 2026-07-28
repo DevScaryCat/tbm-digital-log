@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { type ExportFormat } from "@/lib/exportFormats"
 
-export function CompanyDocFormatCard() {
+export function CompanyDocFormatCard({ onSaved }: { onSaved?: (format: ExportFormat) => void } = {}) {
     const [docFormat, setDocFormat] = useState<string>("")
     const [busy, setBusy] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -37,6 +37,7 @@ export function CompanyDocFormatCard() {
             const j = await res.json().catch(() => ({}))
             if (!res.ok) { setDocFormat(prev); setMsg({ type: "err", text: j.error || "형식 변경 실패" }); return }
             setMsg({ type: "ok", text: j.total > 0 ? `문서 형식을 바꿨어요. 현장 계정 ${j.updated}개에도 함께 적용했습니다.` : "문서 형식을 바꿨어요." })
+            onSaved?.(v) // 보고서 설정 위저드가 '다음' 활성화 판정에 쓴다
         } catch {
             // 오프라인·네트워크 실패 — 되돌리지 않으면 저장 안 된 형식이 남고 재클릭도 막힌다
             setDocFormat(prev)

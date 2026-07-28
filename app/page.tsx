@@ -12,8 +12,6 @@ import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus } from "luci
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
-import { type ExportFormat } from "@/lib/exportFormats"
-import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
@@ -70,7 +68,6 @@ export default function MainPage() {
   // 문서 출력 형식 최초 설정 모달 (user_metadata.preferred_export_format 없을 때 1회)
   // 구 가입 플로우 유저는 worker_type도 없을 수 있어(온보딩 모달 제거로 유도 경로 상실) 같은 모달에서 함께 수집한다.
   const [showFormatModal, setShowFormatModal] = useState(false)
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat | null>(null)
   const [needsWorkerType, setNeedsWorkerType] = useState(false)
   const [workerTypeInput, setWorkerTypeInput] = useState("현장 근로자 (비사무직)")
   const [isSavingFormat, setIsSavingFormat] = useState(false)
@@ -83,8 +80,6 @@ export default function MainPage() {
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
   }, [])
-  // 온보딩 2단계: 출력 형식 저장 후 사용 형태(혼자/여러 현장)를 묻는다
-  const [showUsageStep, setShowUsageStep] = useState(false)
   // 일괄 발급된 현장 계정의 첫 로그인 — 새 비밀번호·현장명을 정하기 전엔 앱을 열지 않는다
   const [mustSetup, setMustSetup] = useState(false)
   const [setupPw, setSetupPw] = useState("")
@@ -154,9 +149,24 @@ export default function MainPage() {
 
         const meta = currentUser.user_metadata
         if (!meta?.preferred_export_format || !meta?.worker_type) {
-          if (meta?.preferred_export_format) setSelectedFormat(meta.preferred_export_format)
-          setNeedsWorkerType(!meta?.worker_type)
-          setShowFormatModal(true)
+          // 형식은 보고서 설정 위저드가 admin API로 저장해 로컬 세션 스냅샷이 낡을 수 있다 —
+          // 모달 판정만은 서버 기준으로. 아니면 설정을 마치고 돌아와도 모달이 다시 떠서 깜빡인다.
+          try {
+            const { data: fresh } = await supabase.auth.getUser()
+            const fm = (fresh?.user?.user_metadata ?? {}) as Record<string, unknown>
+            if (fresh?.user && homeCache?.userId === fresh.user.id) {
+              homeCache.user = fresh.user
+              setUser(fresh.user)
+            }
+            if (!fm?.preferred_export_format || !fm?.worker_type) {
+              setNeedsWorkerType(!fm?.worker_type)
+              setShowFormatModal(true)
+            }
+          } catch {
+            // 서버 확인 실패 — 첫 가입자가 모달을 못 보는 것보다 낡은 판정이 낫다
+            setNeedsWorkerType(!meta?.worker_type)
+            setShowFormatModal(true)
+          }
         }
         // 캐시로 이미 그렸으면 통계는 조용히 갱신 (스피너 없이 숫자만 바뀐다)
         fetchUserStats(currentUser.id, meta?.worker_type || "현장 근로자 (비사무직)", hadCache)
@@ -259,27 +269,35 @@ export default function MainPage() {
     setUnreadSuggestions(0)
   }
 
-  // 출력 형식(+구 유저의 근로자 구분) 저장 → user_metadata (내 정보 수정에서 언제든 변경 가능)
-  const handleSaveFormat = async () => {
-    if (!selectedFormat) return
-    setIsSavingFormat(true)
-    // 소속 현장 계정이 회사 형식을 이미 상속받았으면 형식은 다시 쓰지 않는다 (회사 공통 유지)
-    const memberHasFormat = orgCtx?.kind === "member" && !!user?.user_metadata?.preferred_export_format
-    const { data, error } = await supabase.auth.updateUser({
-      data: {
-        ...(memberHasFormat ? {} : { preferred_export_format: selectedFormat }),
-        ...(needsWorkerType ? { worker_type: workerTypeInput } : {}),
-      }
-    })
-    if (error) { alert("저장 실패: " + error.message); setIsSavingFormat(false); return; }
+  // 근로자 구분 저장만 (형식 선택은 온보딩에서 제거 — 보고서 설정 위저드로 이동)
+  const saveWorkerTypeIfNeeded = async (): Promise<boolean> => {
+    if (!needsWorkerType) return true
+    const { data, error } = await supabase.auth.updateUser({ data: { worker_type: workerTypeInput } })
+    if (error) { alert("저장 실패: " + error.message); return false }
     commitUser(data.user)
-    if (needsWorkerType) setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
-    setShowFormatModal(false)
-    setIsSavingFormat(false)
-    // 다음 온보딩: 사용 형태(혼자/여러 현장). 소속 현장은 관리 권한이 없고,
-    // 이미 현장을 거느린 감독자에게는 물을 이유가 없다.
-    if (orgCtx?.kind !== "member" && (orgCtx?.memberIds?.length ?? 0) === 0) {
-      setShowUsageStep(true)
+    setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
+    return true
+  }
+
+  // 근로자 구분만 없는 경우(소속 현장 계정 등) — 저장하고 시작
+  const handleSaveWorkerType = async () => {
+    setIsSavingFormat(true)
+    try {
+      if (await saveWorkerTypeIfNeeded()) setShowFormatModal(false)
+    } finally {
+      setIsSavingFormat(false)
+    }
+  }
+
+  // 문서 형식이 없는 감독자/솔로 — 근로자 구분(있다면) 저장 후 보고서 설정 위저드로
+  const handleGoReportSetup = async () => {
+    setIsSavingFormat(true)
+    try {
+      if (!(await saveWorkerTypeIfNeeded())) return
+      setShowFormatModal(false)
+      router.push("/org/reports")
+    } finally {
+      setIsSavingFormat(false)
     }
   }
 
@@ -316,16 +334,6 @@ export default function MainPage() {
       window.location.reload() // 메타데이터·역할을 처음부터 다시 로드
     } finally {
       setSetupBusy(false)
-    }
-  }
-
-  // '여러 현장'은 전용 셋업 페이지로 보낸다 — 홈에 셋업을 끼워 넣으면 역할이 겹쳐 난잡해진다
-  const chooseUsage = (t: "tbm" | "company") => {
-    setShowUsageStep(false)
-    if (t === "company") {
-      // 셋업을 건너뛰고 돌아와도 홈의 '현장 계정 추가하기' 힌트 카드가 입구를 이어준다
-      try { window.localStorage.setItem("antok_hint_add_site", "1") } catch { /* 무시 */ }
-      router.push("/org/setup")
     }
   }
 
@@ -756,94 +764,61 @@ export default function MainPage() {
         </div>
       </div>
 
-      {/* 출력 형식 최초 설정 모달 — preferred_export_format이 없을 때 1회 표시 */}
-      {showFormatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div
-            ref={formatModalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="format-modal-title"
-            tabIndex={-1}
-            className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
-          >
-            {orgCtx?.kind === "member" && user?.user_metadata?.preferred_export_format ? (
-              /* 소속 현장 계정 + 회사 형식 이미 보유 — 형식은 회사 공통이라 여기서 고르지 않는다 (근로자 구분만) */
-              <>
-                <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">근로자 구분</h3>
-                <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">교육시간 산정 기준을 선택해주세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
-              </>
-            ) : (
-              <>
-                <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">문서 출력 형식</h3>
-                <p className="text-cur-muted text-[14px] mb-6 leading-[1.5]">회의록·일지 등 결과물을 어떤 형식으로 받을지 선택하세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
-                <ExportFormatPicker value={selectedFormat} onChange={setSelectedFormat} />
-                <p className="text-[12px] text-cur-muted-soft mt-3 leading-relaxed">PDF는 편집이 불가능한 출력 전용 형식입니다.</p>
-              </>
-            )}
-            {needsWorkerType && (
-              <div className="mt-5 space-y-2">
-                <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>
-                <Select value={workerTypeInput} onValueChange={setWorkerTypeInput}>
-                  <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
-                    <SelectValue placeholder="직군 선택" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                    <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                    <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <Button
-              onClick={handleSaveFormat}
-              disabled={!selectedFormat || isSavingFormat}
-              className="w-full h-12 mt-5 text-[15px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px]"
+      {/* 최초 설정 모달 — 형식 선택은 온보딩에서 뺐다(Chris): 감독자/솔로는 보고서 설정 위저드로 보내고,
+          여기서는 근로자 구분(없을 때만)만 수집한다. 소속 현장 계정은 형식이 회사 공통이라 근로자 구분만. */}
+      {showFormatModal && (() => {
+        // 역할 판정 전(orgCtx null)에는 CTA를 띄우지 않는다 — 소속 현장 계정에 감독자용 모달이 비치는 것 방지
+        const needsSetupCta = !user?.user_metadata?.preferred_export_format && !!orgCtx && orgCtx.kind !== "member"
+        if (!needsSetupCta && !needsWorkerType) return null
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div
+              ref={formatModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="format-modal-title"
+              tabIndex={-1}
+              className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
             >
-              {isSavingFormat ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null} 저장하고 시작하기
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 온보딩 2단계 — 사용 형태. 여기서 고른 건 여는 탭뿐이고, 나중에 언제든 바꿀 수 있다. */}
-      {showUsageStep && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="usage-modal-title"
-            className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
-          >
-            <h3 id="usage-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">어떻게 쓰실 건가요?</h3>
-            <p className="text-cur-muted text-[14px] mb-5 leading-[1.5]">나중에 언제든 바꿀 수 있어요.</p>
-            <div className="space-y-3">
-              <button
-                onClick={() => chooseUsage("tbm")}
-                className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+              {needsSetupCta ? (
+                <>
+                  <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">보고서 설정을 하러 갑시다</h3>
+                  <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">
+                    문서 출력 형식과 매월 1일 자동 발송되는 보고서의 받는 사람을 정해요. 1분이면 끝나요.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">근로자 구분</h3>
+                  <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">교육시간 산정 기준을 선택해주세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
+                </>
+              )}
+              {needsWorkerType && (
+                <div className="mt-5 space-y-2">
+                  <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>
+                  <Select value={workerTypeInput} onValueChange={setWorkerTypeInput}>
+                    <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
+                      <SelectValue placeholder="직군 선택" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                      <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
+                      <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <Button
+                onClick={needsSetupCta ? handleGoReportSetup : handleSaveWorkerType}
+                disabled={isSavingFormat}
+                className="w-full h-12 mt-5 text-[15px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px]"
               >
-                <span className="w-11 h-11 rounded-[10px] bg-cur-primary/12 text-cur-primary flex items-center justify-center shrink-0"><HardHat className="w-5 h-5" /></span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[15px] font-bold text-cur-ink">내 현장 하나만 써요</span>
-                  <span className="block text-[13px] text-cur-body mt-1 leading-snug">바로 TBM 회의록부터 시작해요</span>
-                </span>
-                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-              </button>
-              <button
-                onClick={() => chooseUsage("company")}
-                className="w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
-              >
-                <span className="w-11 h-11 rounded-[10px] bg-cur-ink/8 text-cur-ink flex items-center justify-center shrink-0"><Users className="w-5 h-5" /></span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[15px] font-bold text-cur-ink">여러 현장을 관리해요</span>
-                  <span className="block text-[13px] text-cur-body mt-1 leading-snug">현장마다 계정을 만들어 주고 기록을 한 곳에서 봐요</span>
-                </span>
-                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-              </button>
+                {isSavingFormat ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null}
+                {needsSetupCta ? "보고서 설정 하러 가기" : "저장하고 시작하기"}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

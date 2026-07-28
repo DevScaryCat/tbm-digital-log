@@ -63,6 +63,8 @@ export default function RiskAssessmentPage() {
     const [checking, setChecking] = useState(true)
     const [pro, setPro] = useState(false)
     const [companyName, setCompanyName] = useState("")
+    // 보고서 설정(문서 형식·수신자) 미완료면 진행 차단 — "설정을 마치고 와주세요" (Chris)
+    const [setupNeeded, setSetupNeeded] = useState(false)
 
     const [step, setStep] = useState<0 | 1 | 2 | 3>(1)
     const [analyzing, setAnalyzing] = useState(false)
@@ -105,6 +107,29 @@ export default function RiskAssessmentPage() {
             setPro(p)
             if (!p && kind !== "owner") setStep(0) // 베이직: 설명 화면 먼저
             setCompanyName(user.user_metadata?.company_name || "")
+
+            // 보고서 설정 완료 판정 — 문서 형식 + (Pro면) 수신자 1명 이상. 판정 실패 시엔 막지 않는다.
+            {
+                let needs = !user.user_metadata?.preferred_export_format
+                if (!needs && p) {
+                    try {
+                        const { data: sess } = await supabase.auth.getSession()
+                        const rres = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
+                        if (rres.ok) {
+                            const rj = await rres.json()
+                            needs = ((rj.recipients ?? []) as unknown[]).length === 0
+                        }
+                    } catch { /* 네트워크 실패로 기능을 잠그지 않는다 */ }
+                }
+                if (needs) {
+                    // 게이트로 나가면 현장 선택 의도(ra_target)는 소비되지 않는다 — 남겨두면
+                    // 다음 방문에서 엉뚱한 현장이 자동 선택되므로 지운다
+                    try { sessionStorage.removeItem("ra_target") } catch { /* 무시 */ }
+                    setSetupNeeded(true)
+                    setChecking(false)
+                    return
+                }
+            }
 
             if (kind === "owner") {
                 // 현장 목록 = 감독자 본인 현장 + 소속 현장. 본인을 빼면 회사관리의
@@ -369,6 +394,32 @@ export default function RiskAssessmentPage() {
     const restart = () => { setStep(1); setItems([]); setMsg(null); setSendMsg(null) }
 
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+
+    // 보고서 설정 미완료 — AI 분석은 설정을 끝내야 진행할 수 있다
+    if (setupNeeded) {
+        return (
+            <div className="min-h-screen bg-cur-canvas font-sans">
+                <div className="max-w-lg mx-auto px-4 pt-4">
+                    <TBMHeader title="AI 분석 보고서" backHref="/" />
+                </div>
+                <main className="max-w-lg mx-auto px-5 py-10">
+                    <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-8 text-center space-y-3">
+                        <p className="text-[16px] font-bold text-cur-ink">보고서 설정을 마치고 와주세요</p>
+                        <p className="text-[13px] text-cur-muted leading-relaxed">
+                            문서 출력 형식과 보고서 받는 사람을 먼저 설정해야
+                            <br />AI 분석 보고서를 만들 수 있어요. 1분이면 끝나요.
+                        </p>
+                        <Button
+                            onClick={() => router.push("/org/reports")}
+                            className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                        >
+                            보고서 설정 하러 가기
+                        </Button>
+                    </div>
+                </main>
+            </div>
+        )
+    }
 
     // 이메일 형식 보고서 미리보기 — 탭으로 하나씩, iframe 없이 인라인으로 전체 펼침(실제 발송 형식과 동일). step 2·3 공용
     const activePreviewHtml = previewTab === "minutes" ? minutesHtml : eduHtml

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, FileBarChart2, Users, CreditCard, Lock, Sparkles, BarChart3 } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Sparkles, BarChart3, Settings } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
@@ -195,7 +195,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     return (
                         <>
                             {groupLabel("보고서·분석")}
-                            {item({ href: "/org/reports", label: "보고서", icon: <FileBarChart2 className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                            {item({ href: "/org/reports", label: "보고서 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
                             {item({ href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> })}
                             <DropdownMenuSeparator className="bg-cur-hairline" />
                             {groupLabel("회사 관리")}
