@@ -1,12 +1,17 @@
 {
-  "name": "안전톡톡",
-  "short_name": "안전톡톡",
-  "description": "TBM 일지 작성 및 AI 현장 제안 플랫폼",
+  "name": "안톡",
+  "short_name": "안톡",
+  "description": "현장 안전관리 AI — TBM 회의록·교육일지·AI 분석 보고서",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0f172a",
+  "theme_color": "#f54e00",
   "icons": [
+    {
+      "src": "/brand/antok-icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
     {
       "src": "/favicon.ico",
       "sizes": "64x64 32x32 24x24 16x16",
