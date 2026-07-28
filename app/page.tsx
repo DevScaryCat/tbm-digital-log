@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus } from "lucide-react"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
-import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
+import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
@@ -653,7 +653,7 @@ export default function MainPage() {
               </h3>
               <span className="flex items-center gap-1 whitespace-nowrap shrink-0">
                 <span className="text-[14px] font-bold text-cur-primary font-mono">
-                  {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatDuration(totalEducationSeconds)} / ${requiredHours}시간`}
+                  {statsLoading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatHoursProgress(totalEducationSeconds)} / ${requiredHours}시간`}
                 </span>
                 <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors" />
               </span>

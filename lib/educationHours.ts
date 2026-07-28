@@ -65,3 +65,12 @@ export function formatDuration(seconds: number): string {
   if (s < 3600) return `${Math.round(s / 60)}분`
   return `${(s / 3600).toFixed(1)}시간`
 }
+
+/**
+ * 진행도 헤드라인용 표기 — 목표(12시간)와 같은 단위의 소수 시간.
+ * "12분 / 12시간"처럼 분 단위로 새면 다 채워야 한다는 압박으로 읽힌다(Chris) —
+ * "0.2시간 / 12시간"이 같은 자로 잰 진행처럼 읽힌다. 반올림은 판정(secondsToHours)과 동일 0.1h.
+ */
+export function formatHoursProgress(seconds: number): string {
+  return `${secondsToHours(seconds)}시간`
+}

@@ -5,7 +5,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
-import { totalSeconds, secondsToHours, formatDuration, isRegularEducationType } from "@/lib/educationHours"
+import { totalSeconds, secondsToHours, formatDuration, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, CheckCircle2, ClipboardList } from "lucide-react"
@@ -125,7 +125,7 @@ export default function EducationProgressPage() {
                 <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold shrink-0">{workerType}</span>
               </div>
               <span className="text-[14px] font-bold text-cur-primary font-mono whitespace-nowrap shrink-0">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatDuration(totalSec)} / ${requiredHours}시간`}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin inline-block" /> : `${formatHoursProgress(totalSec)} / ${requiredHours}시간`}
               </span>
             </div>
 
