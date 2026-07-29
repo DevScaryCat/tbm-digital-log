@@ -155,11 +155,11 @@ export default function AccountPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
-            <div className="w-full max-w-md mx-auto px-4 pt-4">
+            <div className="w-full max-w-lg mx-auto px-4 pt-4">
                 <TBMHeader title="구독 및 결제" />
             </div>
 
-            <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 space-y-5">
+            <div className="flex-1 w-full max-w-lg mx-auto px-4 py-6 space-y-5">
                 {/* 모바일 결제수단 등록(리디렉션) 복귀 처리 */}
                 <BillingRedirectHandler />
                 {loading ? (

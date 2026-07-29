@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, FileBarChart2, ChevronRight, ExternalLink, CheckCircle2 } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
-import { ReportSettingsPanel } from "@/components/ReportSettingsPanel"
+import { ReportSettingsPanel, ReportPreviewCard } from "@/components/ReportSettingsPanel"
 import { CompanyDocFormatCard } from "@/components/CompanyDocFormatCard"
 import { ReportScheduleCard } from "@/components/ReportScheduleCard"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
@@ -238,11 +238,13 @@ export default function OrgReportsPage() {
                             )
                         )}
 
-                        {/* 패널은 항상 마운트(hidden 토글) — 탭을 오가도 입력 중이던 수신자 이메일·목록이 유지되고 재조회도 없다 */}
+                        {/* 패널은 항상 마운트(hidden 토글) — 탭을 오가도 입력 중이던 수신자 이메일·목록이 유지되고 재조회도 없다.
+                            순서: 형식 → 받는 사람 → 주기 → 미리보기(맨 아래, 참고용 — Chris) */}
                         <div className={tab === "settings" ? "space-y-4" : "hidden"}>
                             <CompanyDocFormatCard onSaved={(f) => setDocFormat(f)} />
                             <ReportSettingsPanel pro={pro} onRecipientsChange={setRecipientCount} />
                             <ReportScheduleCard pro={pro} />
+                            <ReportPreviewCard />
                         </div>
                     </>
                 )}

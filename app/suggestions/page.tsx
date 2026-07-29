@@ -52,7 +52,7 @@ export default function SuggestionsPage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
-            <div className="max-w-md mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline flex flex-col">
+            <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline flex flex-col">
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10">
                     <TBMHeader title="근로자 제안함" />
                 </div>

@@ -108,10 +108,6 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                     </Button>
                 </div>
             )}
-            <p className="text-[13px] text-cur-muted leading-relaxed">
-                매월 1일, 지난달 안전활동(TBM 회의록·안전보건교육일지)을 분석한 보고서를 승인한 수신자에게 자동 발송합니다.
-            </p>
-
             {msg && (
                 <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
             )}
@@ -122,7 +118,9 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                     <div>
                         <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
                         <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
-                            수신자를 추가하면 <b>확인 메일</b>이 가고, 수신자가 승인해야 발송됩니다. 여러 현장이 같은 이메일을 등록하면 <b>한 통으로 합쳐</b> 보내드려요.
+                            설정한 주기에 맞춰 지난 기간 안전활동(TBM 회의록·교육일지) 보고서가 자동 발송돼요.
+                            수신자를 추가하면 <b>확인 메일</b>이 가고, 수신자가 승인해야 발송됩니다.
+                            여러 현장이 같은 이메일을 등록하면 <b>한 통으로 합쳐</b> 보내드려요.
                         </p>
                     </div>
                     {!loaded ? (
@@ -154,29 +152,35 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                 </div>
             )}
 
-            {/* 미리보기 — 인라인 축소 렌더는 작아서 안 읽히므로 새 탭 전체 화면으로 연다 */}
-            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
-                <div>
-                    <Label className="text-[13px]">보고서 미리보기</Label>
-                    <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
-                        실제로는 지난달 데이터로 채워져 발송됩니다. 예시를 새 탭에서 크게 볼 수 있어요.
-                    </p>
-                </div>
-                <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
-                    {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([kind, label]) => (
-                        <a
-                            key={kind}
-                            href={`/report/sample/${kind}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-2 px-3 py-3 hover:bg-cur-elevated/50 transition-colors"
-                        >
-                            <span className="text-[14px] text-cur-ink flex-1 min-w-0 truncate">{label}</span>
-                            <span className="text-[12px] text-cur-primary font-semibold shrink-0">예시 보기</span>
-                            <ExternalLink className="w-3.5 h-3.5 text-cur-muted-soft shrink-0" />
-                        </a>
-                    ))}
-                </div>
+        </div>
+    )
+}
+
+/** 보고서 미리보기 — 설정 화면 맨 아래 전용 (설정을 다 끝낸 뒤 참고용, Chris).
+ *  인라인 축소 렌더는 작아서 안 읽히므로 새 탭 전체 화면으로 연다. */
+export function ReportPreviewCard() {
+    return (
+        <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+            <div>
+                <Label className="text-[13px]">보고서 미리보기</Label>
+                <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
+                    실제로는 지난 기간 데이터로 채워져 발송됩니다. 예시를 새 탭에서 크게 볼 수 있어요.
+                </p>
+            </div>
+            <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([kind, label]) => (
+                    <a
+                        key={kind}
+                        href={`/report/sample/${kind}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 px-3 py-3 hover:bg-cur-elevated/50 transition-colors"
+                    >
+                        <span className="text-[14px] text-cur-ink flex-1 min-w-0 truncate">{label}</span>
+                        <span className="text-[12px] text-cur-primary font-semibold shrink-0">예시 보기</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-cur-muted-soft shrink-0" />
+                    </a>
+                ))}
             </div>
         </div>
     )

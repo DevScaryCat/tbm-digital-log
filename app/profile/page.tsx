@@ -131,10 +131,10 @@ export default function ProfilePage() {
 
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
-            <div className="w-full max-w-md mx-auto px-4 pt-4">
+            <div className="w-full max-w-lg mx-auto px-4 pt-4">
                 <TBMHeader title="내 정보 수정" backHref="/" />
             </div>
-            <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 pb-16 space-y-4">
+            <div className="flex-1 w-full max-w-lg mx-auto px-4 py-6 pb-16 space-y-4">
                 {msg && (
                     <div
                         className={`text-[13px] rounded-lg p-3 ${
