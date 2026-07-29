@@ -74,9 +74,9 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
                         {statsLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto text-cur-muted" /> : mySuggestions}
                     </div>
                 </div>
-                <div onClick={() => router.push('/dashboard')} role="button" tabIndex={0} aria-label="안전문서 달력 보기" onKeyDown={cardKeyDown(() => router.push('/dashboard'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
+                <div onClick={() => router.push('/dashboard')} role="button" tabIndex={0} aria-label="보고서 달력 보기" onKeyDown={cardKeyDown(() => router.push('/dashboard'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors flex flex-col items-center justify-center">
                     <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
-                    <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">안전문서 달력</div>
+                    <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">보고서</div>
                     <div className="bg-cur-elevated w-10 h-10 rounded-[8px] flex items-center justify-center text-cur-ink mx-auto">
                         <CalendarDays className="w-5 h-5" />
                     </div>

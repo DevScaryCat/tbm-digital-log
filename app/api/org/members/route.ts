@@ -173,23 +173,49 @@ export async function POST(request: Request) {
   }
 }
 
+// PATCH: 하위 계정 수정 — 비밀번호 리셋(newPassword) 또는 현장명·담당자 수정(siteName/managerName).
+// 계정 발급자는 감독자이므로 표시 정보의 수정 권한도 감독자에게 있다 (Chris).
 export async function PATCH(request: Request) {
   const r = await requireOwner(request);
   if ("error" in r) return r.error;
   if (!r.org) return NextResponse.json({ error: "회사 정보가 없습니다." }, { status: 404 });
   try {
-    const { userId, newPassword } = await request.json();
+    const { userId, newPassword, siteName, managerName } = await request.json();
     if (!(r.ctx.memberIds ?? []).includes(String(userId))) {
       return NextResponse.json({ error: "우리 조직의 현장 계정이 아닙니다." }, { status: 403 });
     }
-    if (typeof newPassword !== "string" || newPassword.length < 8) {
-      return NextResponse.json({ error: "비밀번호는 8자 이상 입력해주세요." }, { status: 400 });
+
+    if (newPassword !== undefined) {
+      if (typeof newPassword !== "string" || newPassword.length < 8) {
+        return NextResponse.json({ error: "비밀번호는 8자 이상 입력해주세요." }, { status: 400 });
+      }
+      const { error } = await r.admin.auth.admin.updateUserById(String(userId), { password: newPassword });
+      if (error) return NextResponse.json({ error: "비밀번호 변경 실패" }, { status: 500 });
+      return NextResponse.json({ success: true });
     }
-    const { error } = await r.admin.auth.admin.updateUserById(String(userId), { password: newPassword });
-    if (error) return NextResponse.json({ error: "비밀번호 변경 실패" }, { status: 500 });
-    return NextResponse.json({ success: true });
+
+    if (siteName !== undefined || managerName !== undefined) {
+      const site = typeof siteName === "string" ? siteName.trim().slice(0, 60) : undefined;
+      if (siteName !== undefined && !site) {
+        return NextResponse.json({ error: "현장명을 입력해주세요." }, { status: 400 });
+      }
+      // admin update는 metadata 전체 치환 — 최신 값을 읽어 병합한다 (다른 키 유실 방지)
+      const { data: u } = await r.admin.auth.admin.getUserById(String(userId));
+      const meta = { ...((u?.user?.user_metadata ?? {}) as Record<string, unknown>) };
+      if (site) meta.company_name = site;
+      if (managerName !== undefined) {
+        const manager = String(managerName).trim().slice(0, 30);
+        // 담당자를 비우면 현장명을 표시명으로 (계정 생성 규칙과 동일)
+        meta.full_name = manager || String(meta.company_name ?? "");
+      }
+      const { error } = await r.admin.auth.admin.updateUserById(String(userId), { user_metadata: meta });
+      if (error) return NextResponse.json({ error: "정보 수정 실패" }, { status: 500 });
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: "변경할 항목이 없습니다." }, { status: 400 });
   } catch (e) {
-    console.error("member password reset error:", e);
+    console.error("member patch error:", e);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
   }
 }

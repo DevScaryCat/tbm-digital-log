@@ -9,7 +9,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2, ChevronRight } from "lucide-react"
+import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2, ChevronRight, Pencil } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
 import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
@@ -169,6 +169,29 @@ export default function OrgMembersPage() {
             if (!res.ok) { setMsg({ type: "err", text: j.error || "편입 초대 실패" }); return }
             setMsg({ type: "ok", text: `편입 초대를 보냈어요. [${attachId}] 계정이 다음 로그인 때 수락하면 연결됩니다.` })
             setAttachId("")
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    // 현장명·담당자 수정 — 계정을 발급한 감독자가 표시 정보도 고칠 수 있어야 한다 (Chris)
+    const editInfo = async (m: MemberRow) => {
+        const site = window.prompt(`[${m.siteName || "현장명 미설정"}] 현장명 수정`, m.siteName || "")
+        if (site === null) return
+        if (!site.trim()) { setMsg({ type: "err", text: "현장명을 입력해주세요." }); return }
+        const manager = window.prompt("담당자 이름 (비우면 현장명으로 표시)", m.managerName || "")
+        if (manager === null) return
+        setBusy(m.userId)
+        setMsg(null)
+        try {
+            const res = await fetch("/api/org/members", {
+                method: "PATCH",
+                headers: await authHeaders(),
+                body: JSON.stringify({ userId: m.userId, siteName: site.trim(), managerName: manager }),
+            })
+            const j = await res.json()
+            if (!res.ok) { setMsg({ type: "err", text: j.error || "수정 실패" }); return }
+            await load()
         } finally {
             setBusy(null)
         }
@@ -411,6 +434,9 @@ export default function OrgMembersPage() {
                                     </button>
                                     {m.status === "active" && (
                                         <>
+                                            <button onClick={() => editInfo(m)} disabled={busy === m.userId} aria-label="현장명·담당자 수정" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
                                             <button onClick={() => resetPassword(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="비밀번호 변경" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">
                                                 <KeyRound className="w-4 h-4" />
                                             </button>

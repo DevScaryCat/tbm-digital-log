@@ -9,32 +9,24 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2 } from "lucide-react"
-import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
-import { ExportFormatPicker } from "@/components/ExportFormatPicker"
-import { useOrgContext } from "@/lib/useOrgContext"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 
 export default function ProfilePage() {
     const router = useRouter()
-    const { ctx, loading: ctxLoading } = useOrgContext()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    // 문서 출력 형식은 회사 공통 양식 — 소속 현장 계정은 여기서 못 바꾼다 (감독자가 보고서 발송 설정에서 설정)
-    const isMember = ctx?.kind === "member"
 
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
-    // ""=미설정. 미설정 상태로 저장해도 값을 쓰지 않아야 홈의 최초 설정 모달이 유지된다(임의 pdf 확정 방지).
-    const [exportFormat, setExportFormat] = useState<string>("")
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
     // 저장 활성화 판정용 초기 스냅샷 — 아무것도 안 바꿨는데 '저장'이 눌리면 이상하다
     const [initial, setInitial] = useState<string>("")
 
-    const snapshot = (v: { fullName: string; companyName: string; workerType: string; exportFormat: string; industry: string; workCategory: string }) =>
+    const snapshot = (v: { fullName: string; companyName: string; workerType: string; industry: string; workCategory: string }) =>
         JSON.stringify(v)
 
     useEffect(() => {
@@ -50,7 +42,6 @@ export default function ProfilePage() {
             setFullName(meta.full_name ?? "")
             setCompanyName(meta.company_name ?? "")
             setWorkerType(meta.worker_type ?? "현장 근로자 (비사무직)")
-            setExportFormat(meta.preferred_export_format ?? "")
             setIndustry(meta.industry ?? "")
             // 저장 키는 snake_case(work_category) — 가입 API와 동일
             setWorkCategory(meta.work_category ?? "")
@@ -58,7 +49,6 @@ export default function ProfilePage() {
                 fullName: meta.full_name ?? "",
                 companyName: meta.company_name ?? "",
                 workerType: meta.worker_type ?? "현장 근로자 (비사무직)",
-                exportFormat: meta.preferred_export_format ?? "",
                 industry: meta.industry ?? "",
                 workCategory: meta.work_category ?? "",
             }))
@@ -72,7 +62,7 @@ export default function ProfilePage() {
     const minors = selectedMajor?.minors ?? []
     const isLegacyWorkCategory = !!workCategory && !minors.some((mi) => mi.name === workCategory)
 
-    const dirty = initial !== snapshot({ fullName, companyName, workerType, exportFormat, industry, workCategory })
+    const dirty = initial !== snapshot({ fullName, companyName, workerType, industry, workCategory })
 
     const handleSave = async () => {
         if (!fullName.trim()) {
@@ -91,27 +81,15 @@ export default function ProfilePage() {
                     full_name: fullName.trim(),
                     company_name: companyName.trim(),
                     worker_type: workerType,
-                    ...(exportFormat && !isMember ? { preferred_export_format: exportFormat } : {}),
                     industry: industry || null,
                     work_category: workCategory || null,
                 },
             })
             if (error) throw error
-            // 감독자의 형식 변경은 회사 공통 — 전 현장 계정에 전파 (실패해도 본인 저장은 유지)
-            if (!isMember && ctx?.kind === "owner" && exportFormat && (ctx.memberIds?.length ?? 0) > 0) {
-                try {
-                    const { data: sess } = await supabase.auth.getSession()
-                    await fetch("/api/org/export-format", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sess?.session?.access_token}` },
-                        body: JSON.stringify({ format: exportFormat }),
-                    })
-                } catch { /* 비치명 — 현장 계정 관리에서 다시 저장하면 동기화된다 */ }
-            }
             setWorkCategory(data.user.user_metadata.work_category ?? "")
             setInitial(snapshot({
                 fullName: fullName.trim(), companyName: companyName.trim(), workerType,
-                exportFormat, industry, workCategory: data.user.user_metadata.work_category ?? "",
+                industry, workCategory: data.user.user_metadata.work_category ?? "",
             }))
             setMsg({ type: "ok", text: "내 정보가 저장되었습니다." })
         } catch (err: unknown) {
@@ -176,34 +154,7 @@ export default function ProfilePage() {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식{!isMember && ctx?.kind === "owner" ? " (회사 공통)" : ""}</Label>
-                        {isMember ? (
-                            <>
-                                <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated px-4 py-3">
-                                    <p className="text-[14px] font-semibold text-cur-ink">
-                                        {EXPORT_FORMATS.find((f) => f.value === exportFormat)?.label ?? "회사 공통 형식"}
-                                        {exportFormat && <span className="text-[12px] text-cur-muted font-normal ml-1.5">{EXPORT_FORMATS.find((f) => f.value === exportFormat)?.sub}</span>}
-                                    </p>
-                                </div>
-                                <p className="text-[12px] text-cur-muted">회사 공통 형식이에요. 변경은 감독자가 보고서 설정에서 해요.</p>
-                            </>
-                        ) : (
-                            <>
-                                {/* 역할 판정 전에는 잠가둔다 — 소속 현장 계정이 이 틈에 개인 형식을 써버리는 창 차단 */}
-                                <div className={ctxLoading ? "opacity-60 pointer-events-none" : undefined}>
-                                    <ExportFormatPicker
-                                        value={(exportFormat || null) as ExportFormat | null}
-                                        onChange={(v) => setExportFormat(v)}
-                                    />
-                                </div>
-                                <p className="text-[12px] text-cur-muted">
-                                    한글(.hwpx)·워드(.docx)·엑셀(.xlsx)은 문서 보기 화면에서 해당 형식으로 저장돼요. PDF는 편집 불가·출력 전용.
-                                    {ctx?.kind === "owner" && (ctx.memberIds?.length ?? 0) > 0 ? " 저장하면 모든 현장 계정에 함께 적용됩니다." : ""}
-                                </p>
-                            </>
-                        )}
-                    </div>
+                    {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
                 </div>
 
                 <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
