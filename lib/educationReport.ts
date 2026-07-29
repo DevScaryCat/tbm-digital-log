@@ -193,8 +193,18 @@ export async function buildMergedEducationContent(
   const p = (n: number) => String(n).padStart(2, "0");
   const from = `${year}-${p(month)}-01`;
   const to = `${year}-${p(month)}-${p(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
-  const periodLabel = `${year}년 ${month}월`;
+  return buildMergedEducationForRange(admin, userIds, from, to, `${year}년 ${month}월`, companyName);
+}
 
+/** 통합 교육일지 콘텐츠 — 임의 기간(주간/월간 공용) */
+export async function buildMergedEducationForRange(
+  admin: SupabaseClient,
+  userIds: string[],
+  from: string,
+  to: string,
+  periodLabel: string,
+  companyName: string | null
+): Promise<EducationReportContent | null> {
   const { data: rows } = await admin
     .from("tbm_logs")
     .select("id, date, education_type, education_content")

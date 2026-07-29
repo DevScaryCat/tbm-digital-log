@@ -11,6 +11,7 @@ import { Loader2, FileBarChart2, ChevronRight, ExternalLink, CheckCircle2 } from
 import { useOrgContext } from "@/lib/useOrgContext"
 import { ReportSettingsPanel } from "@/components/ReportSettingsPanel"
 import { CompanyDocFormatCard } from "@/components/CompanyDocFormatCard"
+import { ReportScheduleCard } from "@/components/ReportScheduleCard"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 
 interface ReportRow {
@@ -154,6 +155,7 @@ export default function OrgReportsPage() {
                         ) : (
                             <>
                                 <ReportSettingsPanel pro={pro} onRecipientsChange={setRecipientCount} />
+                                <ReportScheduleCard pro={pro} />
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setWizStep(1)}
@@ -240,6 +242,7 @@ export default function OrgReportsPage() {
                         <div className={tab === "settings" ? "space-y-4" : "hidden"}>
                             <CompanyDocFormatCard onSaved={(f) => setDocFormat(f)} />
                             <ReportSettingsPanel pro={pro} onRecipientsChange={setRecipientCount} />
+                            <ReportScheduleCard pro={pro} />
                         </div>
                     </>
                 )}

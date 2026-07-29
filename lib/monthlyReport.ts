@@ -126,7 +126,7 @@ async function buildMinutesContent(
   return { companyName, periodLabel, stats, keywords, hazards, aiSummary };
 }
 
-/** 여러 현장(계정)을 합친 통합 회의록 콘텐츠 — 현장별 소계 포함 */
+/** 여러 현장(계정)을 합친 통합 회의록 콘텐츠 — 현장별 소계 + 지난달 대비 개선 포함 (월간 전용) */
 export async function buildMergedMinutesContent(
   admin: SupabaseClient,
   accounts: { userId: string; siteName: string }[],
@@ -137,7 +137,22 @@ export async function buildMergedMinutesContent(
   const from = `${year}-${pad(month)}-01`;
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const to = `${year}-${pad(month)}-${pad(lastDay)}`;
+  return buildMergedMinutesForRange(admin, accounts, from, to, `${year}년 ${month}월`, companyName, { year, month });
+}
 
+/**
+ * 여러 현장 통합 회의록 콘텐츠 — 임의 기간(fromDate~toDate). 주간/월간 공용.
+ * monthCtx가 주어지면 '지난달 대비 개선'을 계산(월간 전용). 주간은 생략한다.
+ */
+export async function buildMergedMinutesForRange(
+  admin: SupabaseClient,
+  accounts: { userId: string; siteName: string }[],
+  from: string,
+  to: string,
+  periodLabel: string,
+  companyName: string | null,
+  monthCtx?: { year: number; month: number }
+): Promise<ReportContent> {
   const items: HazardRow[] = [];
   const sites: { name: string; total: number; high: number; mid: number }[] = [];
   let totalMinutes = 0;
@@ -182,13 +197,10 @@ export async function buildMergedMinutesContent(
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
   const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 40);
-  const periodLabel = `${year}년 ${month}월`;
   const stats: ReportStats = { total: totalMinutes, high, mid };
-  const improvements = await computeImprovements(admin, accounts, year, month, {
-    total: totalMinutes,
-    days: curDays.size,
-    high,
-  });
+  const improvements = monthCtx
+    ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
+    : [];
   const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
 
   return { companyName, periodLabel, stats, keywords, hazards, aiSummary, sites, improvements };
