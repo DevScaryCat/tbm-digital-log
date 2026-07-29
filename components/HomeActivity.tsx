@@ -6,13 +6,14 @@
  */
 
 // 홈 활동 현황 — 홈에는 토글·셀렉트를 두지 않는다 (Chris: 홈은 개인 화면).
-// 감독자의 '모든 현장 통계' 진입은 헤더(구 요금 배지 자리)가 담당 — 여기는 개인 그리드만.
+// 감독자는 탭 모양 두 개(내 활동 | 모든 현장 통계↗)로 구성 — 두 번째는 통계 페이지로 이동한다.
 
 import { type KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, ChevronRight, CalendarDays } from "lucide-react"
+import { Loader2, ChevronRight, CalendarDays, ArrowUpRight } from "lucide-react"
 
 interface Props {
+    isOwner: boolean
     statsLoading: boolean
     myMinutes: number
     myLogs: number
@@ -20,7 +21,7 @@ interface Props {
     myUnread: number
 }
 
-export function HomeActivity({ statsLoading, myMinutes, myLogs, mySuggestions, myUnread }: Props) {
+export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySuggestions, myUnread }: Props) {
     const router = useRouter()
 
     // 카드 키보드 접근성: Enter/Space가 onClick과 동일하게 동작
@@ -30,7 +31,23 @@ export function HomeActivity({ statsLoading, myMinutes, myLogs, mySuggestions, m
 
     return (
         <div className="space-y-2">
-            <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
+            {isOwner ? (
+                /* 감독자: 탭 구성 — '내 활동'은 이 화면, '모든 현장 통계'는 이동(↗) */
+                <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
+                    <span className="flex-1 h-9 rounded-md bg-cur-card text-cur-ink shadow-sm text-[13px] font-semibold flex items-center justify-center">
+                        내 활동
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => router.push("/org/stats")}
+                        className="flex-1 h-9 rounded-md text-[13px] font-semibold text-cur-muted hover:text-cur-ink transition-colors flex items-center justify-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                    >
+                        모든 현장 통계 <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            ) : (
+                <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
                 <div onClick={() => router.push('/analytics')} role="button" tabIndex={0} aria-label="TBM 회의록 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">

@@ -220,44 +220,12 @@ export default function OrgMembersPage() {
                     <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
                 )}
 
-                {/* 계정 현황 = 계산기 — 발급 폼의 개수를 바꾸면 여기 숫자가 바로 바뀐다 */}
-                {(() => {
-                    const pending = addStep && !createdIds ? count : 0
-                    const sites = activeCount + pending
-                    const total = (1 + sites) * 3900
-                    const isTrial = sub?.status === "trialing"
-                    const nextDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
-                    return (
-                        <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-1">
-                            <p className="text-[13px] text-cur-muted">현장 계정</p>
-                            <p className="text-[20px] font-bold text-cur-ink">
-                                내 계정 1 + 현장 {sites}개 · <span className="text-cur-primary">월 {total.toLocaleString()}원</span>
-                            </p>
-                            <p className="text-[12px] text-cur-muted-soft leading-relaxed pt-1">
-                                {isTrial
-                                    ? `무료체험 중엔 결제되지 않아요 · ${nextDate ?? "체험 종료일"}부터 결제`
-                                    : "추가는 남은 기간만큼 즉시 결제 · 해제는 다음 결제일부터 제외"}
-                            </p>
-                            {/* 결제의 전모는 구독 및 결제 한 곳에서 — 여기는 계정 관리 화면이고 이 숫자는 미리보기다 */}
-                            <button
-                                type="button"
-                                onClick={() => router.push("/account")}
-                                className="text-[12px] text-cur-primary font-semibold hover:opacity-70 transition-opacity"
-                            >
-                                요금은 감독자 결제 하나로 합산 청구 · 결제 상세 보기 →
-                            </button>
-                        </section>
-                    )
-                })()}
-
-                {/* 현장 계정 추가 (3경로) */}
+                {/* 이 화면은 계정 관리 하나만 한다 (Chris) — 요금 계산기·별도 추가 카드는 삭제,
+                    목록(수정·삭제) + 목록 끝의 추가 행으로 통합. 요금 얘기는 구독 및 결제가 담당.
+                    위저드는 추가 행을 눌렀을 때만 나타난다. */}
+                {(addStep !== null || createdIds) && (
                 <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
-                    </div>
-
-                    {/* 승급 인지 — 아직 회사가 없는 단독 계정이 첫 현장을 만들면 이 계정이 감독자가 된다.
-                        회사 공통 설정(문서 형식 등)의 결정권이 본인에게 생긴다는 걸 만들기 전에 알려준다. */}
+                    <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
                     {ctx?.kind === "solo" && addStep !== null && !createdIds && (
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/25 px-4 py-3 space-y-1">
                             <p className="text-[13px] font-bold text-cur-primary">첫 현장 계정을 만들면 이 계정이 회사 감독자가 돼요</p>
@@ -290,12 +258,8 @@ export default function OrgMembersPage() {
                                 <Button onClick={() => { setCreatedIds(null); setAddStep(null) }} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                             </div>
                         </div>
-                    ) : addStep === null ? (
-                        <Button onClick={() => setAddStep("count")} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
-                            <UserPlus2 className="w-4 h-4 mr-2" /> 현장 계정 추가
-                        </Button>
                     ) : addStep === "count" ? (
-                        /* 1단계 — 몇 개? (위 요약 카드의 금액이 함께 움직인다) */
+                        /* 1단계 — 몇 개? */
                         <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
                             <p className="text-[14px] font-semibold text-cur-ink">몇 개 현장을 추가할까요?</p>
                             <div className="flex items-center justify-center gap-5">
@@ -305,6 +269,10 @@ export default function OrgMembersPage() {
                                 <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
                                     className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
                             </div>
+                            {/* 요금 계산기 카드가 사라진 자리 — 청구 규칙 한 줄만 남긴다 */}
+                            <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
+                                계정 1개당 월 3,900원 · {sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}
+                            </p>
                             <div className="flex gap-2">
                                 <Button onClick={() => setAddStep(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
                                 <Button onClick={() => setAddStep("method")} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
@@ -412,16 +380,20 @@ export default function OrgMembersPage() {
                     )}
 
                 </section>
+                )}
 
-                {/* 현장 목록 */}
+                {/* 현장 목록 — 수정(비번)·삭제(해제)·추가가 전부 이 카드 하나에서 */}
                 <section className="space-y-2">
-                    <h2 className="text-[14px] font-bold text-cur-ink px-1">연결된 현장</h2>
+                    <h2 className="text-[14px] font-bold text-cur-ink px-1">
+                        연결된 현장{activeCount > 0 && <span className="text-cur-muted-soft font-medium ml-1.5">{activeCount}곳</span>}
+                    </h2>
                     {loading ? (
                         <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-cur-muted" /></div>
-                    ) : members.length === 0 ? (
-                        <p className="text-[13px] text-cur-muted-soft text-center py-8">아직 연결된 현장이 없어요.</p>
                     ) : (
                         <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                            {members.length === 0 && (
+                                <p className="text-[13px] text-cur-muted-soft text-center py-6">아직 연결된 현장이 없어요.</p>
+                            )}
                             {members.map((m) => (
                                 <div key={m.userId} className="flex items-center gap-3 p-4">
                                     {/* 현장 목록 카드가 홈에서 빠지면서 여기가 현장 상세(/org/sites)의 입구가 됐다 */}
@@ -449,6 +421,18 @@ export default function OrgMembersPage() {
                                     )}
                                 </div>
                             ))}
+                            {/* 추가는 목록의 마지막 행 — 별도 카드 대신 (Chris 스케치) */}
+                            <button
+                                type="button"
+                                onClick={() => { setCreatedIds(null); setAddStep("count") }}
+                                className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                            >
+                                <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                                    <UserPlus2 className="w-4 h-4" />
+                                </span>
+                                <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-body">현장 계정 추가하기</span>
+                                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                            </button>
                         </div>
                     )}
                 </section>

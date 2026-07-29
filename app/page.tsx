@@ -639,8 +639,9 @@ export default function MainPage() {
             </button>
           )}
 
-          {/* 활동 현황 — 개인 그리드. 모든 현장 통계 진입은 헤더 버튼(구 요금 배지 자리) */}
+          {/* 활동 현황 — 개인 그리드. 감독자는 탭(내 활동 | 모든 현장 통계↗) 구성 */}
           <HomeActivity
+            isOwner={orgCtx?.kind === "owner"}
             statsLoading={statsLoading}
             myMinutes={shownMinutes}
             myLogs={shownLogs}
@@ -723,44 +724,37 @@ export default function MainPage() {
           </div>
         </div>
 
-        <div className="flex-1 p-6 space-y-4">
-
-          <div
-            onClick={() => router.push('/tbm-minutes')}
-            className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
-          >
-            <div className="p-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-                  <Users className="w-6 h-6" />
-                </div>
-                <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-cur-ink">TBM 회의록 작성</h3>
-                  <p className="text-cur-muted text-[14px]">현장과의 더많은 소통으로 사전에 위험을 통제하세요</p>
-                </div>
+        {/* 작성 카드 2종 — 병렬 배치 (Chris): 홈의 두 핵심 행동이라 나란히 */}
+        <div className="flex-1 p-6">
+          <div className="grid grid-cols-2 gap-3">
+            <div
+              onClick={() => router.push('/tbm-minutes')}
+              className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
+            >
+              <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
+                <Users className="w-6 h-6" />
               </div>
-              <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />
+              <div className="space-y-1 flex-1">
+                <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">TBM 회의록<br />작성</h3>
+                <p className="text-cur-muted text-[12px] leading-snug">현장과의 더 많은 소통으로 사전에 위험을 통제하세요</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
+            </div>
+
+            <div
+              onClick={() => router.push('/safety-log')}
+              className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
+            >
+              <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
+                <HardHat className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">안전보건교육일지<br />작성</h3>
+                <p className="text-cur-muted text-[12px] leading-snug">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
             </div>
           </div>
-
-          <div
-            onClick={() => router.push('/safety-log')}
-            className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group"
-          >
-            <div className="p-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-                  <HardHat className="w-6 h-6" />
-                </div>
-                <div className="space-y-0.5">
-                  <h3 className="text-[16px] font-semibold text-cur-ink">안전보건교육일지 작성</h3>
-                  <p className="text-cur-muted text-[14px]">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-cur-muted group-hover:text-cur-primary transition-colors" />
-            </div>
-          </div>
-
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Sparkles, BarChart3, Settings } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Sparkles, Settings } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
@@ -137,46 +137,21 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
         }
     }
 
-    const userProfileDropdown = (
-        <div className="flex items-center gap-2">
-            {/* 요금 배지 자리 — 단일 요금제라 배지의 정보 가치가 낮아, 감독자의 상시 동선인
-                통계 버튼으로 교체 (Chris). 결제 상태는 드롭다운 '구독 및 결제'가 담당. */}
-            {orgKind === "owner" && (
-                <button
-                    onClick={() => router.push("/org/stats")}
-                    className="h-9 px-2.5 rounded-[8px] border border-cur-hairline bg-cur-card text-[12px] font-bold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center gap-1.5"
-                >
-                    <BarChart3 className="w-4 h-4 text-cur-muted" /> 모든 현장 통계
-                </button>
-            )}
-        <DropdownMenu onOpenChange={(open) => { if (open) loadUsage() }}>
+    // 설정(기어) 메뉴 — 관리 항목만. 이름 메뉴가 길어서 못 읽히던 것을 둘로 쪼갬 (Chris).
+    // 소속 현장에게는 같은 자리를 잠긴 모습으로 보여준다: 어디서 관리되는지 알게.
+    const settingsDropdown = (
+        <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body">
-                    <span className="text-[14px] font-medium text-cur-body">{userName}</span>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="설정 메뉴"
+                    className="h-10 w-10 shrink-0 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px] transition-colors"
+                >
+                    <Settings className="w-5 h-5 text-cur-body" />
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                {usage && (
-                    <>
-                        <div className="px-3 py-2.5 space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[11px] text-cur-muted-soft font-semibold">사용량</span>
-                                <span className="text-[11px] text-cur-muted-soft">{resetLabel}</span>
-                            </div>
-                            {badge?.trial && (
-                                <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-2.5 py-1.5 text-[11px] font-medium text-cur-primary">
-                                    무료체험 중
-                                </div>
-                            )}
-                            <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
-                            <UsageBar label="안전보건교육일지" used={usage.log} limit={limitFor(plan, "log")} />
-                            <UsageBar label="AI 분석 보고서" used={usage.ra} limit={limitFor(plan, "ra")} />
-                        </div>
-                    </>
-                )}
-                <DropdownMenuSeparator className="bg-cur-hairline" />
-                {/* 메뉴는 성격별 3그룹 — 보고서·분석(하는 일) / 회사 관리(설정) / 계정.
-                    소속 현장에게는 같은 자리를 잠긴 모습으로 보여준다: 어디서 관리되는지 알게. */}
                 {(() => {
                     const item = (m: { href: string; label: string; icon: ReactNode }) =>
                         orgKind === "member" ? (
@@ -204,19 +179,52 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                             {orgKind === "member" && (
                                 <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
                             )}
-                            <DropdownMenuSeparator className="bg-cur-hairline" />
-                            {groupLabel("계정")}
-                            <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                                <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
-                                <LogOut className="mr-2 h-4 w-4" /> 로그아웃
-                            </DropdownMenuItem>
                         </>
                     )
                 })()}
             </DropdownMenuContent>
         </DropdownMenu>
+    )
+
+    const userProfileDropdown = (
+        <div className="flex items-center gap-2">
+            {settingsDropdown}
+            <DropdownMenu onOpenChange={(open) => { if (open) loadUsage() }}>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body">
+                        <span className="text-[14px] font-medium text-cur-body">{userName}</span>
+                    </Button>
+                </DropdownMenuTrigger>
+                {/* 이름 메뉴는 간결하게 — 사용량(legacy만) + 계정 항목만 (관리 메뉴는 기어 아이콘으로 분리) */}
+                <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
+                    {usage && (
+                        <>
+                            <div className="px-3 py-2.5 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] text-cur-muted-soft font-semibold">사용량</span>
+                                    <span className="text-[11px] text-cur-muted-soft">{resetLabel}</span>
+                                </div>
+                                {badge?.trial && (
+                                    <div className="rounded-lg bg-cur-primary/[0.06] border border-cur-primary/30 px-2.5 py-1.5 text-[11px] font-medium text-cur-primary">
+                                        무료체험 중
+                                    </div>
+                                )}
+                                <UsageBar label="TBM 회의록" used={usage.minutes} limit={limitFor(plan, "minutes")} />
+                                <UsageBar label="안전보건교육일지" used={usage.log} limit={limitFor(plan, "log")} />
+                                <UsageBar label="AI 분석 보고서" used={usage.ra} limit={limitFor(plan, "ra")} />
+                            </div>
+                            <DropdownMenuSeparator className="bg-cur-hairline" />
+                        </>
+                    )}
+                    <DropdownMenuLabel className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-cur-muted-soft">계정</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
+                        <LogOut className="mr-2 h-4 w-4" /> 로그아웃
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
         </div>
     )
 
