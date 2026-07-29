@@ -44,34 +44,48 @@ interface Overview {
     risk?: RiskAgg
 }
 
+// 재진입 시 풀 로딩(수 초)을 없애는 SWR 캐시 — 캐시로 즉시 그리고 뒤에서 조용히 갱신
+let statsCache: { userId: string; data: Overview } | null = null
+if (typeof window !== "undefined") {
+    supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT" || event === "SIGNED_IN") statsCache = null
+    })
+}
+
 export default function OrgStatsPage() {
     const router = useRouter()
     const { ctx, loading: ctxLoading } = useOrgContext()
-    const [data, setData] = useState<Overview | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [failed, setFailed] = useState(false)
+    const [data, setData] = useState<Overview | null>(statsCache?.data ?? null)
+    const [loading, setLoading] = useState(!statsCache)
     // "all" 또는 소속 현장 userId — 내 현장은 목록에 없다
     const [sel, setSel] = useState<string>("all")
 
+    // 실패 판정은 '로딩 끝났는데 data 없음' — 캐시가 있으면 조용한 갱신 실패는 화면을 건드리지 않는다
     const load = useCallback(async () => {
-        setFailed(false)
         try {
             const { data: s } = await supabase.auth.getSession()
+            const uid = s?.session?.user?.id
+            if (!uid) return
+            if (statsCache && statsCache.userId !== uid) {
+                statsCache = null
+                setData(null)
+                setLoading(true)
+            }
             const res = await fetch("/api/org/overview", { headers: { Authorization: `Bearer ${s?.session?.access_token}` } })
-            if (!res.ok) { setFailed(true); return }
-            setData((await res.json()) as Overview)
-        } catch {
-            setFailed(true)
-        } finally {
+            if (!res.ok) return
+            const j = (await res.json()) as Overview
+            setData(j)
+            statsCache = { userId: uid, data: j }
+        } catch { /* 아래 !data 카드가 재시도를 제공 */ } finally {
             setLoading(false)
         }
     }, [])
 
+    // 데이터 로드는 역할 판정과 병렬로 시작 — 직렬 대기(ctx → fetch)가 첫 진입을 느리게 했다
+    useEffect(() => { load() }, [load])
     useEffect(() => {
-        if (ctxLoading) return
-        if (!ctx || ctx.kind !== "owner") { router.replace("/"); return }
-        load()
-    }, [ctx, ctxLoading, router, load])
+        if (!ctxLoading && (!ctx || ctx.kind !== "owner")) router.replace("/")
+    }, [ctx, ctxLoading, router])
 
     const activeSites = (data?.sites ?? []).filter((s) => s.status === "active")
     const memberSites = activeSites.filter((s) => !s.isSelf)
@@ -115,7 +129,7 @@ export default function OrgStatsPage() {
             <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                 {loading || ctxLoading ? (
                     <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
-                ) : failed || !data ? (
+                ) : !data ? (
                     <div className="bg-cur-card rounded-[12px] border border-cur-hairline px-4 py-3.5 flex items-center justify-between gap-3">
                         <p className="text-[13px] text-cur-muted">통계를 불러오지 못했어요.</p>
                         <button

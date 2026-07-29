@@ -38,19 +38,54 @@ export async function GET(request: Request) {
   const ownerUserId = ctx.org?.ownerUserId ?? (ctx.kind === "solo" ? user.id : null);
   const canManage = ctx.kind === "owner" || ctx.kind === "solo";
 
-  let members: OrgMemberSummary[] = [];
-  if (orgId) members = await listOrgMembers(orgId, admin);
+  const today = kstToday();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  // 대시보드 미니 차트용 최근 7일 (월 경계를 넘을 수 있어 조회 시작은 둘 중 이른 날짜)
+  const last7: string[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${today}T00:00:00+09:00`);
+    d.setDate(d.getDate() - (6 - i));
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  });
+  const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
+
+  // 활성 계정 id는 owner면 ctx(memberIds)만으로 확정된다 — 메타데이터 조회(listOrgMembers,
+  // 현장 수만큼 admin API 호출)를 기다렸다가 데이터 쿼리를 시작하던 직렬 구조가 통계 화면
+  // 4초 지연의 주범. id를 먼저 확정하고 [메타데이터 | 회의록/일지 | 누적 RPC]를 전부 병렬로.
+  // member는 ctx에 명단이 없어 종전처럼 명단을 먼저 받는다 (UI 미사용 경로 — 속도보다 정합성).
+  let preMembers: OrgMemberSummary[] | null = null;
+  let activeIds: string[];
+  if (ctx.kind === "member" && orgId) {
+    preMembers = await listOrgMembers(orgId, admin);
+    activeIds = ownerUserId
+      ? [ownerUserId, ...preMembers.filter((m) => m.status === "active").map((m) => m.userId)]
+      : [];
+  } else {
+    activeIds = ownerUserId ? [ownerUserId, ...(ctx.memberIds ?? [])] : [];
+  }
+
+  const [members, ownerMeta, minutesRes, logsRes, countsRes] = await Promise.all([
+    preMembers ? Promise.resolve(preMembers) : orgId ? listOrgMembers(orgId, admin) : Promise.resolve([] as OrgMemberSummary[]),
+    ownerUserId
+      ? ownerUserId === user.id
+        ? Promise.resolve((user.user_metadata ?? {}) as Record<string, any>)
+        : admin.auth.admin
+            .getUserById(ownerUserId)
+            .then((r) => (r.data?.user?.user_metadata ?? {}) as Record<string, any>)
+            .catch(() => ({} as Record<string, any>))
+      : Promise.resolve({} as Record<string, any>),
+    activeIds.length
+      ? admin.from("tbm_minutes").select("user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart)
+      : Promise.resolve({ data: [] as any[] }),
+    activeIds.length
+      ? admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart)
+      : Promise.resolve({ data: [] as any[] }),
+    // 누적 카운트 — 현장 수 × 3개의 head-count 대신 RPC 1회 (20260729010000)
+    activeIds.length
+      ? admin.rpc("org_doc_counts", { p_ids: activeIds })
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
 
   // 감독자 본인도 하나의 현장 — 목록 맨 앞에 둔다.
-  const ownerMeta = ownerUserId
-    ? ownerUserId === user.id
-      ? ((user.user_metadata ?? {}) as Record<string, any>)
-      : await admin.auth.admin
-          .getUserById(ownerUserId)
-          .then((r) => (r.data?.user?.user_metadata ?? {}) as Record<string, any>)
-          .catch(() => ({} as Record<string, any>))
-    : ({} as Record<string, any>);
-
   const roster: { userId: string; siteName: string; managerName: string; status: "active" | "detached"; isOwner: boolean }[] = [];
   if (ownerUserId) {
     roster.push({
@@ -66,25 +101,6 @@ export async function GET(request: Request) {
   for (const m of members) {
     roster.push({ userId: m.userId, siteName: m.siteName || "현장명 미설정", managerName: m.managerName, status: m.status, isOwner: false });
   }
-
-  const activeIds = roster.filter((r) => r.status === "active").map((r) => r.userId);
-  const today = kstToday();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  // 대시보드 미니 차트용 최근 7일 (월 경계를 넘을 수 있어 조회 시작은 둘 중 이른 날짜)
-  const last7: string[] = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(`${today}T00:00:00+09:00`);
-    d.setDate(d.getDate() - (6 - i));
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-  });
-  const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
-
-  // 이번 달+최근 7일 회의록/일지를 한 번에 긁어 현장별·일별·위험요인 집계 (현장 수 규모에서 충분)
-  const [minutesRes, logsRes] = activeIds.length
-    ? await Promise.all([
-        admin.from("tbm_minutes").select("user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart),
-        admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart),
-      ])
-    : [{ data: [] }, { data: [] }];
 
   // 위험요인 대시보드 — 감독자가 실제로 보고 싶은 건 "우리 현장들, 뭐가 위험한가"다.
   // 등급 분포(상/중/하)와 자주 등장한 키워드를 이번 달 회의록에서 뽑는다.
@@ -149,25 +165,15 @@ export async function GET(request: Request) {
     const mine = dailyByUser.get(r.user_id)?.get(r.date); if (mine) mine.logs++;
   }
 
-  // 홈 활동 그리드(전체/현장별 선택)용 전체 기간 건수 — 월 집계와 별개의 head-count 3종.
-  // 홈 개인 그리드가 전체 기간 기준이라, 선택을 바꿔도 기간 의미가 같아야 숫자가 비교된다.
+  // 전체 기간 누적 건수 — RPC 1회 결과를 맵으로 (기존: 현장 수 × 3개의 head-count 쿼리)
   const totals = new Map<string, { minutes: number; logs: number; suggestions: number }>();
-  {
-    const CHUNK = 10;
-    for (let i = 0; i < activeIds.length; i += CHUNK) {
-      const chunk = activeIds.slice(i, i + CHUNK);
-      const rows = await Promise.all(
-        chunk.map(async (id) => {
-          const [m, l, s] = await Promise.all([
-            admin.from("tbm_minutes").select("id", { count: "exact", head: true }).eq("user_id", id),
-            admin.from("tbm_logs").select("id", { count: "exact", head: true }).eq("user_id", id),
-            admin.from("worker_suggestions").select("id", { count: "exact", head: true }).eq("user_id", id),
-          ]);
-          return [id, { minutes: m.count ?? 0, logs: l.count ?? 0, suggestions: s.count ?? 0 }] as const;
-        })
-      );
-      for (const [id, t] of rows) totals.set(id, t);
-    }
+  if ((countsRes as any)?.error) console.error("org_doc_counts rpc error:", (countsRes as any).error);
+  for (const r of (((countsRes as any)?.data as any[]) ?? [])) {
+    totals.set(String(r.user_id), {
+      minutes: Number(r.minutes) || 0,
+      logs: Number(r.logs) || 0,
+      suggestions: Number(r.suggestions) || 0,
+    });
   }
 
   const sites = roster.map((m) => {
