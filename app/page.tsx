@@ -371,6 +371,45 @@ export default function MainPage() {
   const shownLogs = logDates.length
   const shownSuggestions = suggestionDates.length
 
+  // 신규 유저 빈 상태 — 기록 0건이면 0짜리 통계와 0% 진행도(숙제 고지서처럼 읽힌다) 대신
+  // 첫 행동(작성)을 맨 위에 안내한다. 첫 기록이 저장되는 순간부터 평소 홈으로 전환.
+  // 자식 현장을 거느린 감독자는 본인 기록이 없어도 신규가 아니다(관제 목적 사용) — 제외.
+  const ownerWithSites = orgCtx?.kind === "owner" && (orgCtx.memberIds?.length ?? 0) > 0
+  const isEmptyStart = !statsLoading && shownMinutes === 0 && shownLogs === 0 && !ownerWithSites
+
+  // 작성 카드 2종 — 평소 홈(하단)과 빈 상태(최상단) 두 자리에서 같은 마크업을 쓴다
+  const writeCards = (
+    <div className="grid grid-cols-2 gap-3">
+      <div
+        onClick={() => router.push('/tbm-minutes')}
+        className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
+      >
+        <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
+          <Users className="w-6 h-6" />
+        </div>
+        <div className="space-y-1 flex-1">
+          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">TBM 회의록<br />작성</h3>
+          <p className="text-cur-muted text-[12px] leading-snug">현장과의 더 많은 소통으로 사전에 위험을 통제하세요</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
+      </div>
+
+      <div
+        onClick={() => router.push('/safety-log')}
+        className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
+      >
+        <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
+          <HardHat className="w-6 h-6" />
+        </div>
+        <div className="space-y-1 flex-1">
+          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">안전보건교육일지<br />작성</h3>
+          <p className="text-cur-muted text-[12px] leading-snug">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
+      </div>
+    </div>
+  )
+
   if (isLoading || checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
   // 일괄 발급 계정의 첫 로그인 설정 — 이걸 끝내야 앱이 열린다
@@ -651,6 +690,36 @@ export default function MainPage() {
             </button>
           )}
 
+          {/* 빈 상태(기록 0건) — 첫 방문의 질문은 "내 기록이 몇 개지?"가 아니라 "뭘 하는 앱이지?"다.
+              0·0·0·0% 대신 첫 행동을 맨 위에 놓고, 첫 기록이 생기면 아래 평소 홈으로 전환된다 */}
+          {isEmptyStart && (
+            <div className="space-y-5">
+              <div className="pt-1">
+                <h2 className="text-[20px] font-bold text-cur-ink tracking-[-0.02em] leading-snug">오늘 TBM, 1분만 녹음해보세요</h2>
+                <p className="text-[13px] text-cur-muted mt-1.5 leading-relaxed">
+                  말한 내용은 AI가 회의록·교육일지로 정리해요. 첫 기록이 생기면 이 자리에 활동 현황과 교육 진행도가 채워집니다.
+                </p>
+              </div>
+              {writeCards}
+              <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-4">
+                <ol className="flex items-start gap-2">
+                  {[
+                    ["말하기", "조회 내용을 녹음"],
+                    ["AI 정리", "회의록·일지 자동 완성"],
+                    ["서명·보관", "법정 서류로 저장"],
+                  ].map(([t, d], i) => (
+                    <li key={t} className="flex-1 min-w-0 text-center">
+                      <span className="mx-auto w-6 h-6 rounded-full bg-cur-elevated text-cur-ink text-[12px] font-bold flex items-center justify-center font-mono">{i + 1}</span>
+                      <p className="text-[13px] font-semibold text-cur-ink mt-1.5">{t}</p>
+                      <p className="text-[11px] text-cur-muted mt-0.5 leading-snug">{d}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          )}
+
+          {!isEmptyStart && (<>
           {/* 활동 현황 — 개인 그리드. 감독자는 탭(내 활동 | 모든 현장 통계↗) 구성 */}
           <HomeActivity
             isOwner={orgCtx?.kind === "owner"}
@@ -734,40 +803,15 @@ export default function MainPage() {
                 : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
             </p>
           </div>
+          </>)}
         </div>
 
-        {/* 작성 카드 2종 — 병렬 배치 (Chris): 홈의 두 핵심 행동이라 나란히 */}
-        <div className="flex-1 p-6">
-          <div className="grid grid-cols-2 gap-3">
-            <div
-              onClick={() => router.push('/tbm-minutes')}
-              className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
-            >
-              <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-                <Users className="w-6 h-6" />
-              </div>
-              <div className="space-y-1 flex-1">
-                <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">TBM 회의록<br />작성</h3>
-                <p className="text-cur-muted text-[12px] leading-snug">현장과의 더 많은 소통으로 사전에 위험을 통제하세요</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
-            </div>
-
-            <div
-              onClick={() => router.push('/safety-log')}
-              className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
-            >
-              <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-                <HardHat className="w-6 h-6" />
-              </div>
-              <div className="space-y-1 flex-1">
-                <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">안전보건교육일지<br />작성</h3>
-                <p className="text-cur-muted text-[12px] leading-snug">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
-            </div>
+        {/* 작성 카드 2종 — 병렬 배치 (Chris): 홈의 두 핵심 행동이라 나란히. 빈 상태에선 위에서 이미 보여줬다 */}
+        {!isEmptyStart && (
+          <div className="flex-1 p-6">
+            {writeCards}
           </div>
-        </div>
+        )}
       </div>
 
       {/* 최초 설정 모달 — 형식 선택은 온보딩에서 뺐다(Chris): 감독자/솔로는 보고서 설정 위저드로 보내고,
