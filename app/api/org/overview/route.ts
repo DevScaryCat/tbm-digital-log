@@ -74,7 +74,7 @@ export async function GET(request: Request) {
             .catch(() => ({} as Record<string, any>))
       : Promise.resolve({} as Record<string, any>),
     activeIds.length
-      ? admin.from("tbm_minutes").select("user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart)
+      ? admin.from("tbm_minutes").select("id, user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart)
       : Promise.resolve({ data: [] as any[] }),
     activeIds.length
       ? admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart)
@@ -107,8 +107,13 @@ export async function GET(request: Request) {
   // 통계 화면이 전체/현장별 같은 UI를 쓰므로 전체 합계와 현장별 집계를 같은 루프에서 만든다.
   const levelCounts = { high: 0, mid: 0, low: 0 };
   const kwCount = new Map<string, number>();
-  const riskByUser = new Map<string, { levels: { high: number; mid: number; low: number }; kw: Map<string, number> }>();
-  for (const id of activeIds) riskByUser.set(id, { levels: { high: 0, mid: 0, low: 0 }, kw: new Map() });
+  // 키워드 드릴다운 근거 — count(발생 횟수)와 의미가 달라 별도 수집한다:
+  // 한 문구에 같은 단어가 두 번 나와도 근거로는 1건이므로 (단어, 회의록, factor 문구) 단위로 dedup.
+  type KwItem = { date: string; minuteId: string; siteId: string; factor: string };
+  const kwItems = new Map<string, KwItem[]>();
+  const kwSeen = new Set<string>();
+  const riskByUser = new Map<string, { levels: { high: number; mid: number; low: number }; kw: Map<string, number>; kwItems: Map<string, KwItem[]> }>();
+  for (const id of activeIds) riskByUser.set(id, { levels: { high: 0, mid: 0, low: 0 }, kw: new Map(), kwItems: new Map() });
   const KW_STOP = new Set(["위험", "및", "의한", "인한", "대한", "관련", "작업", "발생", "주변", "부위", "가능", "우려", "사고", "상태", "구간", "현장", "안전"]);
   for (const r of (minutesRes.data as any[]) || []) {
     if (r.date < monthStart || !Array.isArray(r.hazards)) continue;
@@ -118,17 +123,34 @@ export async function GET(request: Request) {
       if (lv === "상") { levelCounts.high++; if (mine) mine.levels.high++; }
       else if (lv === "하") { levelCounts.low++; if (mine) mine.levels.low++; }
       else { levelCounts.mid++; if (mine) mine.levels.mid++; }
-      for (const tok of String(h?.factor ?? "").split(/[\s·,()\-]+/)) {
+      const factor = String(h?.factor ?? "");
+      for (const tok of factor.split(/[\s·,()\-]+/)) {
         const w = tok.trim();
         if (w.length < 2 || KW_STOP.has(w) || /^\d+$/.test(w)) continue;
         kwCount.set(w, (kwCount.get(w) ?? 0) + 1);
         if (mine) mine.kw.set(w, (mine.kw.get(w) ?? 0) + 1);
+        // 회의록 id는 현장(user)에 종속이라 전역 dedup 한 번이면 현장별 목록에도 충분하다
+        const seenKey = `${w}\u0000${r.id}\u0000${factor}`;
+        if (kwSeen.has(seenKey)) continue;
+        kwSeen.add(seenKey);
+        const item: KwItem = { date: String(r.date), minuteId: String(r.id), siteId: String(r.user_id), factor };
+        if (!kwItems.has(w)) kwItems.set(w, []);
+        kwItems.get(w)!.push(item);
+        if (mine) {
+          if (!mine.kwItems.has(w)) mine.kwItems.set(w, []);
+          mine.kwItems.get(w)!.push(item);
+        }
       }
     }
   }
-  const topKeywords = (m: Map<string, number>) =>
-    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([word, count]) => ({ word, count }));
-  const keywords = topKeywords(kwCount);
+  const topKeywords = (m: Map<string, number>, items: Map<string, KwItem[]>) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([word, count]) => ({
+      word,
+      count,
+      // 근거는 최신 기록부터 — 응답 비대 방지를 위해 20건에서 절단
+      items: [...(items.get(word) ?? [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20),
+    }));
+  const keywords = topKeywords(kwCount, kwItems);
 
   const byUser = new Map<
     string,
@@ -199,7 +221,7 @@ export async function GET(request: Request) {
       suggestions: t?.suggestions ?? 0,
       // 현장 선택 시 전체와 같은 UI로 그리기 위한 현장 단위 차트·위험요인
       daily: last7.map((day) => ({ date: day, ...(d?.get(day) ?? { minutes: 0, logs: 0 }) })),
-      risk: r ? { levels: r.levels, keywords: topKeywords(r.kw) } : { levels: { high: 0, mid: 0, low: 0 }, keywords: [] },
+      risk: r ? { levels: r.levels, keywords: topKeywords(r.kw, r.kwItems) } : { levels: { high: 0, mid: 0, low: 0 }, keywords: [] },
     };
   });
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
@@ -11,12 +11,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2 } from "lucide-react"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
+import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 
 export default function ProfilePage() {
     const router = useRouter()
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 역할 판정 — member는 보기 전용(회사 공통 설정), owner는 저장 시 현장 계정 전체에 전파.
+    // 훅 대신 직접 호출: 판정 실패(null)를 화면에 드러내고 재시도할 수 있어야 한다.
+    const [ctx, setCtx] = useState<ClientOrgContext | null>(null)
+    const [ctxLoading, setCtxLoading] = useState(true)
+    const loadCtx = useCallback(async (force = false) => {
+        setCtxLoading(true)
+        setCtx(await fetchOrgContext(force))
+        setCtxLoading(false)
+    }, [])
+    useEffect(() => { loadCtx() }, [loadCtx])
 
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
@@ -64,6 +75,11 @@ export default function ProfilePage() {
 
     const dirty = initial !== snapshot({ fullName, companyName, workerType, industry, workCategory })
 
+    const isMember = ctx?.kind === "member"
+    // fail-closed: owner/solo로 '확정'됐을 때만 편집을 연다 — 판정 실패(null)에서 열어 두면
+    // member가 회사 공통 필드를 고칠 수 있는 구멍이 된다. 실패 시엔 아래 재시도 카드로 복구.
+    const editable = ctx?.kind === "owner" || ctx?.kind === "solo"
+
     const handleSave = async () => {
         if (!fullName.trim()) {
             setMsg({ type: "err", text: "성명을 입력해주세요." })
@@ -86,12 +102,43 @@ export default function ProfilePage() {
                 },
             })
             if (error) throw error
-            setWorkCategory(data.user.user_metadata.work_category ?? "")
+            const savedWorkCategory = data.user.user_metadata.work_category ?? ""
+            setWorkCategory(savedWorkCategory)
+
+            // owner: 회사 공통 3필드(근로자 구분·업종·공종)를 현장 계정 전체에 전파.
+            // 성명·현장명은 본인 것이라 전파하지 않는다 — 자식 현장명은 현장 계정 관리에서 개별 수정.
+            let propagated: number | null = null
+            if (ctx?.kind === "owner") {
+                const { data: sess } = await supabase.auth.getSession()
+                const token = sess?.session?.access_token
+                const res = await fetch("/api/org/profile", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({
+                        workerType,
+                        industry: industry || null,
+                        workCategory: savedWorkCategory || null,
+                    }),
+                }).catch(() => null)
+                const j = res?.ok ? await res.json().catch(() => null) : null
+                // 부분 실패(updated < total)를 성공으로 넘기면 어긋난 현장이 무기한 남는다
+                if (!j || (typeof j.total === "number" && j.updated < j.total)) {
+                    // 본인 저장은 이미 성공 — 스냅샷을 갱신하지 않아 '저장'을 살려 두면
+                    // 같은 값으로 다시 저장하는 것이 곧 전파 재시도가 된다
+                    setMsg({ type: "err", text: "저장은 됐지만 일부 현장 계정 적용에 실패했어요. 잠시 후 다시 저장하면 재시도됩니다." })
+                    return
+                }
+                propagated = Number(j.updated) || 0
+            }
+
             setInitial(snapshot({
                 fullName: fullName.trim(), companyName: companyName.trim(), workerType,
-                industry, workCategory: data.user.user_metadata.work_category ?? "",
+                industry, workCategory: savedWorkCategory,
             }))
-            setMsg({ type: "ok", text: "내 정보가 저장되었습니다." })
+            setMsg({
+                type: "ok",
+                text: propagated ? `내 정보가 저장되었습니다. 현장 계정 ${propagated}곳에도 적용됐어요.` : "내 정보가 저장되었습니다.",
+            })
         } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : "알 수 없는 오류"
             setMsg({ type: "err", text: "저장 실패: " + errMsg })
@@ -123,7 +170,26 @@ export default function ProfilePage() {
                     </div>
                 )}
 
+                {/* 역할 판정 실패 — fail-closed로 잠겨 있으니 복구 수단을 화면에 준다 */}
+                {!ctxLoading && !ctx && (
+                    <div className="bg-cur-card rounded-2xl border border-cur-hairline px-4 py-3.5 flex items-center justify-between gap-3">
+                        <p className="text-[13px] text-cur-muted">역할 확인에 실패해 수정이 잠겨 있어요.</p>
+                        <button
+                            type="button"
+                            onClick={() => loadCtx(true)}
+                            className="shrink-0 h-8 px-3 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[12px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                        >
+                            다시 시도
+                        </button>
+                    </div>
+                )}
+
                 <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
+                    {isMember && (
+                        <p className="text-[12px] text-cur-muted">
+                            계정 정보는 회사 감독자가 관리해요. 수정이 필요하면 감독자에게 요청해주세요.
+                        </p>
+                    )}
                     <div className="space-y-2">
                         <Label className="text-[13px] font-medium text-cur-body">성명</Label>
                         <Input
@@ -131,6 +197,7 @@ export default function ProfilePage() {
                             onChange={(e) => setFullName(e.target.value)}
                             placeholder="성명을 입력하세요"
                             className="h-11"
+                            disabled={!editable}
                         />
                     </div>
                     <div className="space-y-2">
@@ -140,11 +207,12 @@ export default function ProfilePage() {
                             onChange={(e) => setCompanyName(e.target.value)}
                             placeholder="소속 현장명 (또는 업체명)"
                             className="h-11"
+                            disabled={!editable}
                         />
                     </div>
                     <div className="space-y-2">
                         <Label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</Label>
-                        <Select value={workerType} onValueChange={setWorkerType}>
+                        <Select value={workerType} onValueChange={setWorkerType} disabled={!editable}>
                             <SelectTrigger className="w-full h-11 text-[14px]">
                                 <SelectValue placeholder="직군 선택" />
                             </SelectTrigger>
@@ -153,14 +221,6 @@ export default function ProfilePage() {
                                 <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
-                    {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
-                </div>
-
-                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
-                    <div>
-                        <p className="text-[15px] font-bold text-cur-ink">현장 정보</p>
-                        <p className="text-[12px] text-cur-muted mt-0.5">업종·공종은 보고서·통계 정확도를 높이는 데 쓰입니다.</p>
                     </div>
                     <div className="space-y-2">
                         <Label className="text-[13px] font-medium text-cur-body">업종</Label>
@@ -172,6 +232,7 @@ export default function ProfilePage() {
                                 const next = findKsicMajor(v)?.minors ?? []
                                 setWorkCategory(next.length === 1 ? next[0].name : "")
                             }}
+                            disabled={!editable}
                         >
                             <SelectTrigger className="w-full h-11 text-[14px]">
                                 <SelectValue placeholder="업종 선택" />
@@ -191,7 +252,7 @@ export default function ProfilePage() {
                     {industry && (
                         <div className="space-y-2">
                             <Label className="text-[13px] font-medium text-cur-body">공종</Label>
-                            <Select value={workCategory} onValueChange={setWorkCategory}>
+                            <Select value={workCategory} onValueChange={setWorkCategory} disabled={!editable}>
                                 <SelectTrigger className="w-full h-11 text-[14px]">
                                     <SelectValue placeholder="공종 선택" />
                                 </SelectTrigger>
@@ -208,15 +269,24 @@ export default function ProfilePage() {
                             </Select>
                         </div>
                     )}
+                    {/* solo에게는 숨김 — 아직 자식 현장이 없어 '모든 현장 계정' 문구가 혼란만 준다 */}
+                    {ctx?.kind === "owner" && (
+                        <p className="text-[12px] text-cur-muted">
+                            근로자 구분·업종·공종은 회사 공통 설정이에요 — 저장하면 모든 현장 계정에 함께 적용됩니다.
+                        </p>
+                    )}
+                    {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
                 </div>
 
-                <Button
-                    onClick={handleSave}
-                    disabled={saving || !dirty}
-                    className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
-                >
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
-                </Button>
+                {!isMember && (
+                    <Button
+                        onClick={handleSave}
+                        disabled={saving || !dirty || !editable}
+                        className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                    >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
+                    </Button>
+                )}
             </div>
         </div>
     )

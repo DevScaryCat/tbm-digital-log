@@ -98,19 +98,26 @@ export async function POST(request: Request) {
       }
     }
 
-    // 회사 공통 문서 형식 상속 — 편입 계정의 개인 형식을 감독자 형식으로 덮는다.
+    // 회사 공통 설정 상속(문서 형식 + 근로자 구분·업종·공종) — 편입 계정의 개인 값을 감독자 값으로 덮는다.
     // ③에서 prev_plan을 썼을 수 있어 요청 시점 스냅샷이 아닌 최신 메타데이터를 다시 읽는다. 비치명.
     try {
       const { data: ownerUser } = await admin.auth.admin.getUserById(inviterOwnerId);
-      const ownerFormat = String((ownerUser?.user?.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
-      if (ownerFormat) {
+      const om = (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      const ownerFormat = String(om.preferred_export_format ?? "") || null;
+      const shared = {
+        ...(ownerFormat ? { preferred_export_format: ownerFormat } : {}),
+        ...(om.worker_type ? { worker_type: om.worker_type } : {}),
+        ...(om.industry ? { industry: om.industry } : {}),
+        ...(om.work_category ? { work_category: om.work_category } : {}),
+      };
+      if (Object.keys(shared).length > 0) {
         const { data: me } = await admin.auth.admin.getUserById(user.id);
         const meMeta = (me?.user?.user_metadata ?? {}) as Record<string, unknown>;
         await admin.auth.admin.updateUserById(user.id, {
-          user_metadata: { ...meMeta, preferred_export_format: ownerFormat },
+          user_metadata: { ...meMeta, ...shared },
         });
       }
-    } catch { /* 비치명 — 감독자가 다음에 형식을 저장하면 동기화된다 */ }
+    } catch { /* 비치명 — 감독자가 다음에 저장하면 동기화된다 */ }
 
     // ④ 미러 구독 — 실패하면 초대를 소진하지 않고 500 (재수락 시 ②③이 멱등이라 자가 복구)
     const now = new Date().toISOString();

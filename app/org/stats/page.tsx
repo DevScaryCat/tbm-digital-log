@@ -18,7 +18,9 @@ import { useOrgContext } from "@/lib/useOrgContext"
 import { Loader2, Building2 } from "lucide-react"
 
 interface DailyPoint { date: string; minutes: number; logs: number }
-interface RiskAgg { levels: { high: number; mid: number; low: number }; keywords: { word: string; count: number }[] }
+// items는 구버전 응답(statsCache 잔존)에 없을 수 있어 optional — 접근은 항상 ?? [] 가드
+interface KwOccurrence { date: string; minuteId: string; siteId: string; factor: string }
+interface RiskAgg { levels: { high: number; mid: number; low: number }; keywords: { word: string; count: number; items?: KwOccurrence[] }[] }
 
 interface SiteRow {
     userId: string
@@ -59,6 +61,8 @@ export default function OrgStatsPage() {
     const [loading, setLoading] = useState(!statsCache)
     // "all" 또는 소속 현장 userId — 내 현장은 목록에 없다
     const [sel, setSel] = useState<string>("all")
+    // 펼쳐진 위험 키워드 (김대리 제안: 키워드 → 날짜·근거 → 회의록 딥링크) — 한 번에 하나만
+    const [openKw, setOpenKw] = useState<string | null>(null)
 
     // 실패 판정은 '로딩 끝났는데 data 없음' — 캐시가 있으면 조용한 갱신 실패는 화면을 건드리지 않는다
     const load = useCallback(async () => {
@@ -83,6 +87,20 @@ export default function OrgStatsPage() {
 
     // 데이터 로드는 역할 판정과 병렬로 시작 — 직렬 대기(ctx → fetch)가 첫 진입을 느리게 했다
     useEffect(() => { load() }, [load])
+
+    // 회의록에서 뒤로 돌아온 경우 직전 범위·펼친 키워드 복원 (1회용 — dash_restore와 같은 규약).
+    // 근거 여러 건을 하나씩 확인하는 루프에서 매번 현장 재선택+키워드 재펼침을 반복하지 않게.
+    useEffect(() => {
+        try {
+            const saved = sessionStorage.getItem("stats_restore")
+            if (saved) {
+                sessionStorage.removeItem("stats_restore")
+                const { sel: s, openKw: k } = JSON.parse(saved)
+                if (typeof s === "string") setSel(s)
+                if (typeof k === "string") setOpenKw(k)
+            }
+        } catch { /* 무시 */ }
+    }, [])
     useEffect(() => {
         if (!ctxLoading && (!ctx || ctx.kind !== "owner")) router.replace("/")
     }, [ctx, ctxLoading, router])
@@ -108,6 +126,8 @@ export default function OrgStatsPage() {
     const daily = (selected ? selected.daily : data?.daily) ?? []
     const risk = selected ? selected.risk : data?.risk
     const riskTotal = risk ? risk.levels.high + risk.levels.mid + risk.levels.low : 0
+    // 펼친 키워드의 근거 목록 — 구형 캐시(items 없음)나 범위 전환으로 사라진 단어면 빈 배열
+    const openItems = (openKw ? risk?.keywords.find((k) => k.word === openKw)?.items : null) ?? []
 
     const dow = ["일", "월", "화", "수", "목", "금", "토"]
     const hasWeekData = daily.some((d) => d.minutes + d.logs > 0)
@@ -142,8 +162,9 @@ export default function OrgStatsPage() {
                     </div>
                 ) : (
                     <>
-                        {/* 현장 선택 — 데이터 범위만 바꾼다. 전체와 현장 목록은 구분선+라벨로 구획 */}
-                        <Select value={sel} onValueChange={setSel}>
+                        {/* 현장 선택 — 데이터 범위만 바꾼다. 전체와 현장 목록은 구분선+라벨로 구획.
+                            범위가 바뀌면 키워드 펼침도 접는다 — 다른 범위의 근거가 남아 보이면 오해를 산다 */}
+                        <Select value={sel} onValueChange={(v) => { setSel(v); setOpenKw(null) }}>
                             <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                                 <span className="flex items-center gap-2.5 min-w-0">
                                     <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
@@ -280,12 +301,66 @@ export default function OrgStatsPage() {
                                         <div className="space-y-1.5">
                                             <p className="text-[12px] font-semibold text-cur-muted">자주 나온 위험 키워드</p>
                                             <div className="flex flex-wrap gap-1.5">
-                                                {risk!.keywords.map((k) => (
-                                                    <span key={k.word} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
-                                                        {k.word} <span className="text-cur-muted-soft">{k.count}</span>
-                                                    </span>
-                                                ))}
+                                                {risk!.keywords.map((k) => {
+                                                    // 구형 캐시 응답엔 items가 없다 — 펼칠 게 없으면 종전처럼 정적 칩
+                                                    if ((k.items ?? []).length === 0) return (
+                                                        <span key={k.word} className="text-[12px] font-medium text-cur-ink bg-cur-elevated border border-cur-hairline rounded-full px-2.5 py-1">
+                                                            {k.word} <span className="text-cur-muted-soft">{k.count}</span>
+                                                        </span>
+                                                    )
+                                                    const active = openKw === k.word
+                                                    return (
+                                                        <button
+                                                            key={k.word}
+                                                            type="button"
+                                                            aria-expanded={active}
+                                                            onClick={() => setOpenKw(active ? null : k.word)}
+                                                            className={`text-[12px] font-medium rounded-full px-2.5 py-1 border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${
+                                                                active
+                                                                    ? "border-cur-primary/40 bg-cur-primary/10 text-cur-primary"
+                                                                    : "text-cur-ink bg-cur-elevated border-cur-hairline hover:border-cur-primary/40"
+                                                            }`}
+                                                        >
+                                                            {k.word} <span className={active ? "text-cur-primary/70" : "text-cur-muted-soft"}>{k.count}</span>
+                                                        </button>
+                                                    )
+                                                })}
                                             </div>
+                                            {openItems.length > 0 && (
+                                                <div className="pt-1 space-y-1.5">
+                                                    <p className="text-[11px] text-cur-muted-soft">기록을 누르면 그날의 TBM 회의록이 열립니다</p>
+                                                    <div className="rounded-[8px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                                                        {openItems.map((it, i) => {
+                                                            const site = data.sites.find((s) => s.userId === it.siteId)
+                                                            return (
+                                                                <button
+                                                                    key={`${it.minuteId}-${i}`}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        // 뒤로가기 복원용 스냅샷 — 리마운트로 sel/openKw가 초기화되는 것 방지
+                                                                        try { sessionStorage.setItem("stats_restore", JSON.stringify({ sel, openKw })) } catch { /* 무시 */ }
+                                                                        router.push(`/report/minutes/${it.minuteId}`)
+                                                                    }}
+                                                                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                                                                >
+                                                                    <span className="text-[12px] font-mono text-cur-muted shrink-0">{it.date.slice(5).replace("-", ".")}</span>
+                                                                    <span className="flex-1 min-w-0 text-[13px] text-cur-body truncate">{it.factor}</span>
+                                                                    {/* 현장명 배지는 전체 스코프에서만 — 현장을 이미 골랐으면 중복 정보 */}
+                                                                    {!selected && site && (
+                                                                        <span className="shrink-0 max-w-[104px] truncate text-[10px] font-semibold text-cur-muted bg-cur-elevated border border-cur-hairline rounded-full px-2 py-0.5">
+                                                                            {site.isSelf ? "내 현장" : site.siteName}
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    {/* 근거는 최신 20건에서 절단(서버) — 표시가 전부라는 오해 방지 */}
+                                                    {openItems.length >= 20 && (
+                                                        <p className="text-[11px] text-cur-muted-soft">최근 기록 20건까지만 표시돼요</p>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </>

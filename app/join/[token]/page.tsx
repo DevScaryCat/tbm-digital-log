@@ -8,10 +8,8 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, CheckCircle2, Building2 } from "lucide-react"
 import { Logo } from "@/components/Logo"
-import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 
 const inputCls =
     "h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[16px] md:text-[16px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -31,10 +29,8 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
     const [siteName, setSiteName] = useState("")
     const [managerName, setManagerName] = useState("")
     const [realEmail, setRealEmail] = useState("")
-    // 현장 정보 — 일반 가입 위저드와 동일 수집 (이 경로만 빠져 org 계정이 전부 null이었다)
-    const [industry, setIndustry] = useState("")
-    const [workCategory, setWorkCategory] = useState("")
-    const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
+    // 업종·공종·근로자 구분은 여기서 묻지 않는다 — 회사 공통 설정이라 가입 시 감독자 값을
+    // 상속받는다(/api/signup invite 경로). 여기서 고르게 하면 서버가 어차피 덮어써 입력이 버려진다.
 
     // 휴대폰 인증 (솔라피 게이트 켜져 있을 때만)
     const [phone, setPhone] = useState("")
@@ -115,8 +111,6 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
         if (idChecked !== true) { setError("아이디 중복확인을 해주세요."); return }
         if (password.length < 8) { setError("비밀번호는 8자 이상 입력해주세요."); return }
         if (!siteName.trim()) { setError("현장명을 입력해주세요."); return }
-        if (!industry) { setError("업종을 선택해주세요."); return }
-        if (!workCategory) { setError("공종을 선택해주세요."); return }
         if (!realEmail.trim()) { setError("보고서를 받을 이메일을 입력해주세요."); return }
         if (phoneEnabled && !verificationId) { setError("휴대폰 인증을 완료해주세요."); return }
         setLoading(true)
@@ -130,9 +124,6 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                     siteName: siteName.trim(),
                     managerName: managerName.trim(),
                     realEmail: realEmail.trim(),
-                    industry,
-                    workCategory,
-                    workerType,
                     inviteToken: token,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 }),
@@ -211,49 +202,9 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                         <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="예: OO물류센터 신축현장" className={inputCls} />
                     </div>
                     <div className="space-y-1.5">
-                        <Label className="text-[14px] font-semibold text-cur-ink">업종</Label>
-                        <Select value={industry} onValueChange={(v) => {
-                            setIndustry(v)
-                            // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
-                            const minors = findKsicMajor(v)?.minors ?? []
-                            setWorkCategory(minors.length === 1 ? minors[0].name : "")
-                        }}>
-                            <SelectTrigger className="w-full h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] text-cur-ink">
-                                <SelectValue placeholder="업종을 선택해주세요" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    {industry && (
-                        <div className="space-y-1.5 animate-in slide-in-from-top-2">
-                            <Label className="text-[14px] font-semibold text-cur-ink">공종</Label>
-                            <Select value={workCategory} onValueChange={setWorkCategory}>
-                                <SelectTrigger className="w-full h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] text-cur-ink">
-                                    <SelectValue placeholder="주력 공종을 선택해주세요" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                    {(findKsicMajor(industry)?.minors ?? []).map((mi) => <SelectItem key={mi.code} value={mi.name} className="text-[15px] py-2.5">{mi.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
-                    <div className="space-y-1.5">
-                        <Label className="text-[14px] font-semibold text-cur-ink">근로자 구분 (교육시간 산정용)</Label>
-                        <Select value={workerType} onValueChange={setWorkerType}>
-                            <SelectTrigger className="w-full h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] text-cur-ink">
-                                <SelectValue placeholder="근로자 구분을 선택해주세요" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                <SelectItem value="현장 근로자 (비사무직)" className="text-[15px] py-2.5">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                                <SelectItem value="사무직 / 판매직" className="text-[15px] py-2.5">사무직 / 판매직 (반기 6시간)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">담당자 이름</Label>
                         <Input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="현장 담당자 성함 (나중에 변경 가능)" className={inputCls} />
+                        <p className="text-[12px] text-cur-muted-soft">업종·공종 등 현장 정보는 회사(안전관리자) 설정을 따라요.</p>
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">이메일</Label>

@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     // 좌석 점유 + org_seat 미러 구독으로 대체한다.
     let invite: { id: string; org_id: string } | null = null;
     let inviteOwnerFormat: string | null = null; // 회사 공통 문서 형식 — 감독자 값을 복사
+    let inviteOwnerProfile: Record<string, unknown> = {}; // 회사 공통 근로자 구분·업종·공종 — 감독자 값이 가입자 입력보다 우선
     if (inviteToken) {
       const { data: inv } = await supabaseAdmin
         .from("org_invites")
@@ -62,7 +63,13 @@ export async function POST(request: Request) {
       invite = { id: inv.id, org_id: inv.org_id };
       try {
         const { data: ownerUser } = await supabaseAdmin.auth.admin.getUserById(ownerId);
-        inviteOwnerFormat = String((ownerUser?.user?.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
+        const om = (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
+        inviteOwnerFormat = String(om.preferred_export_format ?? "") || null;
+        inviteOwnerProfile = {
+          ...(om.worker_type ? { worker_type: om.worker_type } : {}),
+          ...(om.industry ? { industry: om.industry } : {}),
+          ...(om.work_category ? { work_category: om.work_category } : {}),
+        };
       } catch { inviteOwnerFormat = null; }
     }
 
@@ -123,6 +130,8 @@ export async function POST(request: Request) {
         phone_verified_at: verifiedOtpId ? new Date().toISOString() : null,
         // 초대 가입은 회사 공통 문서 형식을 상속 (첫 로그인 형식 선택 생략)
         ...(invite && inviteOwnerFormat ? { preferred_export_format: inviteOwnerFormat } : {}),
+        // 근로자 구분·업종·공종도 회사 공통 — 가입자가 직접 입력한 값보다 감독자 값이 우선
+        ...(invite ? inviteOwnerProfile : {}),
       },
     });
 

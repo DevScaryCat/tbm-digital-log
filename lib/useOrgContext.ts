@@ -38,16 +38,22 @@ export async function fetchOrgContext(force = false): Promise<ClientOrgContext |
     if (cache && cacheUserId === userId && !force) return cache
     if (inflight && !force) return inflight
     const req = (async () => {
-        const res = await fetch("/api/org/context", { headers: { Authorization: `Bearer ${token}` } })
-        if (!res.ok) return null
-        const ctx = (await res.json()) as ClientOrgContext
-        // 응답 도착 시점에도 같은 계정일 때만 캐시에 기록
-        const { data: nowSess } = await supabase.auth.getSession()
-        if (nowSess?.session?.user?.id === userId) {
-            cache = ctx
-            cacheUserId = userId
+        try {
+            const res = await fetch("/api/org/context", { headers: { Authorization: `Bearer ${token}` } })
+            if (!res.ok) return null
+            const ctx = (await res.json()) as ClientOrgContext
+            // 응답 도착 시점에도 같은 계정일 때만 캐시에 기록
+            const { data: nowSess } = await supabase.auth.getSession()
+            if (nowSess?.session?.user?.id === userId) {
+                cache = ctx
+                cacheUserId = userId
+            }
+            return ctx
+        } catch {
+            // 네트워크 단절 시 fetch가 reject — 여기서 삼키지 않으면 useOrgContext 훅의
+            // setLoading(false)가 영영 안 불려 소비 화면(프로필 등)이 잠긴 채 멈춘다
+            return null
         }
-        return ctx
     })()
     inflight = req
     try {

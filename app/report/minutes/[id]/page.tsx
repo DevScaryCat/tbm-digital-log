@@ -43,6 +43,14 @@ interface MinuteParticipant {
     signature: string;
 }
 
+// hazards 컬럼은 과거 데이터에 JSON 문자열이 섞여 있다 — 직조회·서버 폴백 두 경로 공용
+function parseHazards(raw: unknown): Hazard[] {
+    if (typeof raw === 'string') {
+        try { return JSON.parse(raw) } catch { return [] }
+    }
+    return Array.isArray(raw) ? (raw as Hazard[]) : []
+}
+
 export default function MinutesReportPage() {
     const { id } = useParams()
     const router = useRouter()
@@ -52,6 +60,9 @@ export default function MinutesReportPage() {
     // 문서 출력 형식(user_metadata) — 조회 실패 시 PDF 기본 동작 유지
     const [exportFormat, setExportFormat] = useState<string>("pdf")
     const [exporting, setExporting] = useState(false)
+    // 감독자가 자식 현장 문서를 서버 폴백으로 열람한 경우 — 배지 표시용
+    const [readOnly, setReadOnly] = useState(false)
+    const [siteName, setSiteName] = useState<string>("현장")
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -107,32 +118,39 @@ export default function MinutesReportPage() {
 
                 if (minutesError) throw minutesError
 
+                if (!minutesData) {
+                    // RLS로 안 보이는 문서 — 감독자의 자식 현장 문서일 수 있어 서버 경유로 재시도.
+                    // 서버가 서명 URL까지 발급해 내려주므로 여기선 재서명하지 않는다 (이중 서명 방지).
+                    const { data: { session } } = await supabase.auth.getSession()
+                    if (session?.access_token) {
+                        // 폴백 실패는 alert 없이 "데이터가 없습니다"로 — 네트워크 오류도 동일하게 삼킨다
+                        const res = await fetch(`/api/org/minutes/${id}`, {
+                            headers: { Authorization: `Bearer ${session.access_token}` },
+                        }).catch(() => null)
+                        if (res?.ok) {
+                            const body = await res.json()
+                            setMinutes({ ...body.minutes, hazards: parseHazards(body.minutes?.hazards) })
+                            setParticipants((body.participants || []) as MinuteParticipant[])
+                            setSiteName(body.siteName || "현장")
+                            setReadOnly(true)
+                        }
+                    }
+                    return // 폴백도 실패하면 기존 "데이터가 없습니다" 화면 유지
+                }
+
                 const parts = (partData || []) as MinuteParticipant[]
                 // 서명: 저장된 public URL → signed URL (버킷 private 대응)
                 const sig = await resolveSignedMap([
-                    minutesData?.leader_signature,
+                    minutesData.leader_signature,
                     ...parts.map((p) => p.signature),
                 ])
 
-                let parsedHazards: Hazard[] = []
-                if (minutesData) {
-                    if (typeof minutesData.hazards === 'string') {
-                        try {
-                            parsedHazards = JSON.parse(minutesData.hazards)
-                        } catch (e) {
-                            parsedHazards = []
-                        }
-                    } else if (Array.isArray(minutesData.hazards)) {
-                        parsedHazards = minutesData.hazards as Hazard[]
-                    }
-
-                    const finalData: TbmMinute = {
-                        ...minutesData,
-                        hazards: parsedHazards,
-                        leader_signature: signed(sig, minutesData.leader_signature),
-                    }
-                    setMinutes(finalData)
+                const finalData: TbmMinute = {
+                    ...minutesData,
+                    hazards: parseHazards(minutesData.hazards),
+                    leader_signature: signed(sig, minutesData.leader_signature),
                 }
+                setMinutes(finalData)
                 setParticipants(parts.map((p) => ({ ...p, signature: signed(sig, p.signature) })))
             } catch (error) {
                 console.error("데이터 로드 실패:", error)
@@ -154,9 +172,14 @@ export default function MinutesReportPage() {
         <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
             
             <div className="max-w-[210mm] mx-auto mb-4 flex justify-between print:hidden">
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
-                    <Button variant="outline" onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4" /> 홈으로</Button>
+                <div className="flex flex-col gap-1">
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => window.history.back()}><ArrowLeft className="mr-2 h-4 w-4" /> 뒤로가기</Button>
+                        <Button variant="outline" onClick={() => router.push('/')}><Home className="mr-2 h-4 w-4" /> 홈으로</Button>
+                    </div>
+                    {readOnly && (
+                        <p className="text-[12px] text-cur-muted">「{siteName}」 현장 문서 · 읽기 전용</p>
+                    )}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                     <div className="flex gap-2">

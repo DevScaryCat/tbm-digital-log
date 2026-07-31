@@ -159,8 +159,14 @@ export default function MainPage() {
               setUser(fresh.user)
             }
             if (!fm?.preferred_export_format || !fm?.worker_type) {
-              setNeedsWorkerType(!fm?.worker_type)
-              setShowFormatModal(true)
+              // member(현장 계정)에게는 모달을 띄우지 않는다 — 형식·근로자 구분 모두 회사가
+              // 관리하고 보고서 설정 페이지도 잠겨 있어, 띄우면 닫을 곳 없는 함정이 된다.
+              // (fetchOrgContext는 세션 캐시라 추가 비용이 거의 없다)
+              const ctx = await fetchOrgContext()
+              if (ctx?.kind !== "member") {
+                setNeedsWorkerType(!fm?.worker_type)
+                setShowFormatModal(true)
+              }
             }
           } catch {
             // 서버 확인 실패 — 첫 가입자가 모달을 못 보는 것보다 낡은 판정이 낫다
@@ -302,14 +308,17 @@ export default function MainPage() {
   }
 
   // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
+  // 일괄 발급 시 회사 공통 업종·공종을 이미 상속받았다면 첫 로그인 화면에서 다시 묻지 않는다 —
+  // 여기서 강제로 다시 고르게 하면 상속값을 사용자 선택이 덮어써 회사 값과 어긋난다
+  const setupInheritedProfile = !!user?.user_metadata?.industry
   // 첫 로그인 설정 저장 — 비밀번호 교체 + 현장명·담당자 확정
   const handleFirstSetup = async () => {
     setSetupErr(null)
     if (setupPw.length < 8) { setSetupErr("비밀번호는 8자 이상이어야 해요."); return }
     if (setupPw !== setupPw2) { setSetupErr("비밀번호가 서로 달라요. 다시 확인해주세요."); return }
     if (!setupSite.trim()) { setSetupErr("현장명을 입력해주세요."); return }
-    if (!setupIndustry) { setSetupErr("업종을 선택해주세요."); return }
-    if (!setupWorkCategory) { setSetupErr("공종을 선택해주세요."); return }
+    if (!setupInheritedProfile && !setupIndustry) { setSetupErr("업종을 선택해주세요."); return }
+    if (!setupInheritedProfile && !setupWorkCategory) { setSetupErr("공종을 선택해주세요."); return }
     setSetupBusy(true)
     try {
       const { error } = await supabase.auth.updateUser({
@@ -317,8 +326,8 @@ export default function MainPage() {
         data: {
           company_name: setupSite.trim(),
           full_name: setupManager.trim() || setupSite.trim(),
-          industry: setupIndustry,
-          work_category: setupWorkCategory,
+          // 상속값이 있으면 건드리지 않는다 (회사 공통 — 감독자 저장 시 전파로만 바뀐다)
+          ...(setupInheritedProfile ? {} : { industry: setupIndustry, work_category: setupWorkCategory }),
           must_set_password: null,
         },
       })
@@ -392,23 +401,26 @@ export default function MainPage() {
               <input value={setupSite} onChange={(e) => setSetupSite(e.target.value)} placeholder="예: OO물류센터 신축현장"
                 className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
             </div>
-            <div className="space-y-1">
-              <label className="text-[13px] font-medium text-cur-body">업종</label>
-              <Select value={setupIndustry} onValueChange={(v) => {
-                setSetupIndustry(v)
-                // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
-                const minors = findKsicMajor(v)?.minors ?? []
-                setSetupWorkCategory(minors.length === 1 ? minors[0].name : "")
-              }}>
-                <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
-                  <SelectValue placeholder="업종을 선택해주세요" />
-                </SelectTrigger>
-                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                  {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {setupIndustry && (
+            {/* 업종·공종은 발급 시 회사 공통 값을 상속받았으면 묻지 않는다 (레거시 계정만 수집) */}
+            {!setupInheritedProfile && (
+              <div className="space-y-1">
+                <label className="text-[13px] font-medium text-cur-body">업종</label>
+                <Select value={setupIndustry} onValueChange={(v) => {
+                  setSetupIndustry(v)
+                  // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
+                  const minors = findKsicMajor(v)?.minors ?? []
+                  setSetupWorkCategory(minors.length === 1 ? minors[0].name : "")
+                }}>
+                  <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
+                    <SelectValue placeholder="업종을 선택해주세요" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                    {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {!setupInheritedProfile && setupIndustry && (
               <div className="space-y-1 animate-in slide-in-from-top-2">
                 <label className="text-[13px] font-medium text-cur-body">공종</label>
                 <Select value={setupWorkCategory} onValueChange={setSetupWorkCategory}>
@@ -430,7 +442,7 @@ export default function MainPage() {
           {setupErr && (
             <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{setupErr}</p>
           )}
-          <Button onClick={handleFirstSetup} disabled={setupBusy || !setupPw || !setupPw2 || !setupSite.trim() || !setupIndustry || !setupWorkCategory}
+          <Button onClick={handleFirstSetup} disabled={setupBusy || !setupPw || !setupPw2 || !setupSite.trim() || (!setupInheritedProfile && (!setupIndustry || !setupWorkCategory))}
             className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold disabled:opacity-40">
             {setupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "설정하고 시작하기"}
           </Button>

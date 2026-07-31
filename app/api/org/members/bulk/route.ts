@@ -70,7 +70,14 @@ export async function POST(request: Request) {
     }
 
     // 연번은 01부터 비어있는 번호를 찾아 배정 — 이미 쓰는 아이디는 건너뛴다
-    const ownerFormat = String((user.user_metadata as Record<string, unknown> | undefined)?.preferred_export_format ?? "") || null;
+    // 문서 출력 형식·근로자 구분·업종·공종은 회사 공통 — 감독자 값을 복사 (members 라우트와 동일)
+    const ownerMeta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const ownerFormat = String(ownerMeta.preferred_export_format ?? "") || null;
+    const ownerProfile = {
+      ...(ownerMeta.worker_type ? { worker_type: ownerMeta.worker_type } : {}),
+      ...(ownerMeta.industry ? { industry: ownerMeta.industry } : {}),
+      ...(ownerMeta.work_category ? { work_category: ownerMeta.work_category } : {}),
+    };
     const created: { userId: string; loginId: string }[] = [];
     const rollback = async () => {
       for (const c of created) {
@@ -101,6 +108,7 @@ export async function POST(request: Request) {
             must_set_password: true,
             // 문서 출력 형식은 회사 공통 양식 — 감독자 값 복사 (첫 로그인 형식 선택 생략)
             ...(ownerFormat ? { preferred_export_format: ownerFormat } : {}),
+            ...ownerProfile,
           },
         });
         if (userErr || !createdUser?.user) {
