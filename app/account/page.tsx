@@ -199,6 +199,13 @@ export default function AccountPage() {
                                 </h2>
                             </div>
 
+                            {/* 체험이 공짜로 끝나는 게 아니라 유료로 이어진다는 걸 상단에서 먼저 말한다 */}
+                            {cardlessTrialActive && (
+                                <p className="text-[12px] text-cur-muted -mt-2 mb-4">
+                                    무료체험 1달 후부터 월 사용료가 청구됩니다
+                                </p>
+                            )}
+
                             {isGrandfather ? (
                                 <p className="text-[14px] text-cur-muted leading-relaxed">
                                     기존 가입자 혜택으로 영구 무료로 이용 중입니다. AI 분석 보고서·월간 보고서는 카드 등록 후 유료 요금제(계정 1개당 월 3,900원)로 전환하면 이용하실 수 있어요.
@@ -207,6 +214,13 @@ export default function AccountPage() {
                                 <div className="space-y-2 text-[14px]">
                                     {/* 요금 구성 — 계정이 곧 청구 항목이라는 걸 표로 보여준다. 설명 문단보다 행 두 줄이 낫다 */}
                                     {seatBilled ? (
+                                        cardlessTrial ? (
+                                            // 체험 중엔 아직 청구 전 — 상세 내역은 결제수단 등록 카드로 옮기고, 요약도 비활성 톤으로
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">월 사용료</span>
+                                                <span className="text-cur-muted font-medium">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
+                                            </div>
+                                        ) : (
                                         <>
                                             <div className="flex justify-between">
                                                 <span className="text-cur-muted">내 계정 (감독자)</span>
@@ -219,10 +233,11 @@ export default function AccountPage() {
                                                 </div>
                                             )}
                                             <div className="flex justify-between pt-2 border-t border-cur-hairline">
-                                                <span className="text-cur-ink font-bold">{cardlessTrial ? "월 합계 (체험 종료 후)" : "월 합계"}</span>
+                                                <span className="text-cur-ink font-bold">월 합계</span>
                                                 <span className="text-cur-ink font-bold">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
                                             </div>
                                         </>
+                                        )
                                     ) : (
                                         <div className="flex justify-between">
                                             <span className="text-cur-muted">플랜</span>
@@ -264,14 +279,48 @@ export default function AccountPage() {
                             )}
                         </div>
 
-                        {/* 액션: 카드 없는 무료체험(진행/종료) → 등록 안내 / 그 외 → 변경·해지·재구독 */}
-                        {!isGrandfather && cardlessTrialActive && (
+                        {/* 액션: 무료체험(진행/종료) → 등록 안내 / 그 외 → 변경·해지·재구독 */}
+                        {!isGrandfather && (cardlessTrialActive || committedTrial) && (
                             <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                {committedTrial ? (
+                                    <>
+                                        {/* 이미 빌링키 등록 완료 — CTA를 비활성으로 남겨 '할 일이 끝났음'을 보여준다 */}
+                                        <p className="text-[13px] text-cur-muted leading-relaxed">
+                                            결제수단이 등록되어 있어요 — 체험 종료 후 자동으로 이어집니다.
+                                        </p>
+                                        <Button
+                                            disabled
+                                            className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold disabled:opacity-50"
+                                        >
+                                            결제수단 등록하고 계속 이용
+                                        </Button>
+                                    </>
+                                ) : (
+                                <>
                                 {/* '무료체험 중' 헤더·종료일은 위 상태 카드가 이미 말했다 — 여기선 행동만 */}
                                 <p className="text-[13px] text-cur-muted leading-relaxed">
                                     체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.{" "}
                                     <b className="text-cur-ink">등록 전에는 자동으로 결제되지 않습니다.</b>
                                 </p>
+                                {/* 청구될 내역은 청구를 시작하는 등록 CTA 바로 위에서 보여준다 (상태 카드에서 이동) */}
+                                {seatBilled && (
+                                    <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated/50 px-3 py-2.5 space-y-1.5 text-[13px]">
+                                        <div className="flex justify-between">
+                                            <span className="text-cur-muted">내 계정 (감독자)</span>
+                                            <span className="text-cur-ink font-medium">3,900원</span>
+                                        </div>
+                                        {accountCount > 1 && (
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
+                                                <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between pt-1.5 border-t border-cur-hairline">
+                                            <span className="text-cur-ink font-semibold">월 합계 (체험 종료 후)</span>
+                                            <span className="text-cur-ink font-semibold">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
+                                        </div>
+                                    </div>
+                                )}
                                 {showRegister ? (
                                     <div className="space-y-3">
                                         <SubscribeButtons
@@ -297,6 +346,8 @@ export default function AccountPage() {
                                     >
                                         결제수단 등록하고 계속 이용
                                     </Button>
+                                )}
+                                </>
                                 )}
                             </div>
                         )}

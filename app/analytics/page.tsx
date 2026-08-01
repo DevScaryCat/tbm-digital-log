@@ -10,7 +10,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, Hash, Activity, Loader2, Sparkles, ChevronRight } from "lucide-react"
+import { Loader2, ChevronRight } from "lucide-react"
 
 interface Keyword { word: string; count: number; trend?: string }
 interface RiskCard { id: number; minuteId?: string; level: string; category: string; subCategory: string; workName: string; date: string }
@@ -156,12 +156,13 @@ export default function AnalyticsDashboardPage() {
         return [...set].sort().reverse()
     })()
 
+    // 등급 배지 — 색 배경 없이 텍스트·테두리 색만
     const getLevelStyle = (level: string) => {
         switch (level) {
-            case "상": return "bg-cur-error/15 text-cur-error border-cur-error/30"
-            case "중": return "bg-cur-primary/15 text-cur-primary border-cur-primary/30"
-            case "하": return "bg-cur-success/15 text-cur-success border-cur-success/30"
-            default: return "bg-cur-elevated text-cur-muted"
+            case "상": return "border-cur-error/40 text-cur-error"
+            case "중": return "border-cur-primary/40 text-cur-primary"
+            case "하": return "border-cur-success/40 text-cur-success"
+            default: return "border-cur-hairline text-cur-muted"
         }
     }
     const topWords = keywords.slice(0, 2).map((k) => k.word)
@@ -180,115 +181,127 @@ export default function AnalyticsDashboardPage() {
 
                     {!pro && (
                         <div className="rounded-[12px] bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-2">
-                            <p className="text-[13px] text-cur-primary font-semibold flex items-center gap-1.5"><Sparkles className="w-4 h-4" /> 예시 화면입니다</p>
-                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. 구독하면 내가 작성한 TBM 회의록을 월별로 분석해 핵심 위험 키워드와 AI 총평을 보여드립니다.</p>
-                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90">요금제 보기</Button>
+                            <p className="text-[13px] text-cur-primary font-semibold">예시 화면입니다</p>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. 구독하면 내가 작성한 TBM 회의록을 월별로 분석해 핵심 위험 키워드와 총평을 보여드립니다.</p>
+                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90 focus-visible:ring-2 focus-visible:ring-cur-primary">요금제 보기</Button>
                         </div>
                     )}
 
-                    {/* 월 선택 */}
+                    {/* 월 선택 헤더 행 */}
                     <div className="flex items-center justify-between">
-                        <h2 className="text-[15px] font-bold text-cur-ink">월간 회의록 분석</h2>
+                        <h2 className="text-[14px] font-bold text-cur-ink">월간 회의록 분석</h2>
                         {pro ? (
                             <Select value={selectedKey} onValueChange={setSelectedKey}>
-                                <SelectTrigger className="h-9 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="h-9 w-auto gap-1 border-cur-hairline rounded-[8px] bg-cur-card text-[13px] font-semibold text-cur-ink px-3 hover:border-cur-primary/40 focus:ring-2 focus:ring-cur-primary"><SelectValue /></SelectTrigger>
                                 <SelectContent className="bg-cur-card border-cur-hairline text-cur-body max-h-64">
                                     {monthOptions.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         ) : (
-                            <span className="text-[13px] text-cur-muted font-medium px-3 py-1.5 rounded-[8px] bg-cur-elevated">{monthLabel(selectedKey)}</span>
+                            <span className="flex h-9 items-center rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[13px] font-semibold text-cur-muted">{monthLabel("2026-05")}</span>
                         )}
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-cur-card p-4 rounded-[8px] border border-cur-hairline text-center">
-                            <div className="text-[12px] text-cur-muted font-medium mb-1">총 회의록</div>
-                            <div className="text-[24px] font-bold text-cur-ink font-mono">{stats.total}<span className="text-[14px] font-medium text-cur-muted ml-1">건</span></div>
-                        </div>
-                        <div className="bg-cur-error/10 p-4 rounded-[8px] border border-cur-error/20 text-center">
-                            <div className="text-[12px] text-cur-error font-medium mb-1">위험성 (상)</div>
-                            <div className="text-[24px] font-bold text-cur-error font-mono">{stats.high}<span className="text-[14px] font-medium text-cur-error/70 ml-1">건</span></div>
-                        </div>
-                        <div className="bg-cur-primary/10 p-4 rounded-[8px] border border-cur-primary/20 text-center">
-                            <div className="text-[12px] text-cur-primary font-medium mb-1">위험성 (중)</div>
-                            <div className="text-[24px] font-bold text-cur-primary font-mono">{stats.mid}<span className="text-[14px] font-medium text-cur-primary/70 ml-1">건</span></div>
-                        </div>
+                    {/* 통계 타일 행 */}
+                    <div className="grid grid-cols-3 divide-x divide-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center bg-cur-card">
+                        <StatTile label="총 회의록" value={stats.total} unit="건" />
+                        <StatTile label="위험성 상" value={stats.high} unit="건" tone="text-cur-error" />
+                        <StatTile label="위험성 중" value={stats.mid} unit="건" tone="text-cur-primary" />
                     </div>
 
-                    {/* AI 총평 */}
-                    <div className="bg-cur-card p-5 rounded-[12px] border border-cur-hairline">
-                        <h2 className="text-[15px] font-bold text-cur-ink flex items-center gap-1.5 mb-2"><Sparkles className="w-4 h-4 text-cur-primary" /> AI 안전 총평</h2>
+                    {/* 안전 총평 */}
+                    <section className="space-y-3">
+                        <h2 className="text-[14px] font-bold text-cur-ink">안전 총평</h2>
                         {loadingAI ? (
-                            <div className="flex items-center gap-2 text-cur-muted text-[13px] py-2"><Loader2 className="w-4 h-4 animate-spin" /> 분석 중…</div>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5">
+                                <div className="flex items-center gap-2 text-cur-muted text-[13px]"><Loader2 className="w-4 h-4 animate-spin" /> 분석 중…</div>
+                            </div>
                         ) : aiSummary ? (
-                            <p className="text-[14px] text-cur-body leading-[1.7] whitespace-pre-line">{aiSummary}</p>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5">
+                                <p className="text-[14px] text-cur-body leading-[1.7] whitespace-pre-line">{aiSummary}</p>
+                            </div>
                         ) : (
-                            <p className="text-[13px] text-cur-muted-soft">이 달에는 분석할 회의록이 없습니다.</p>
+                            <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">이 달 작성된 회의록이 없어요</p>
                         )}
-                    </div>
+                    </section>
 
-                    <div className="space-y-4">
-                        <h2 className="text-[18px] font-bold text-cur-ink flex items-center gap-2"><Hash className="w-5 h-5 text-cur-primary" /> 핵심 위험 키워드</h2>
-                        <div className="bg-cur-card p-5 rounded-[12px] border border-cur-hairline">
-                            {keywords.length === 0 ? (
-                                <p className="text-[13px] text-cur-muted-soft">집계된 위험 키워드가 없습니다. TBM 회의록을 작성하면 표시됩니다.</p>
-                            ) : (
-                                <>
-                                    <div className="flex flex-wrap gap-2">
-                                        {keywords.map((kw, idx) => (
-                                            <div key={idx} className="flex items-center gap-1.5 bg-cur-elevated px-3 py-1.5 rounded-full border border-cur-hairline">
-                                                <span className="text-[14px] font-semibold text-cur-ink">#{kw.word}</span>
-                                                <span className="text-[12px] text-cur-muted font-medium">({kw.count})</span>
-                                                {kw.trend === "up" && <TrendingUp className="w-3.5 h-3.5 text-cur-error ml-0.5" />}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {topWords.length > 0 && (
-                                        <p className="text-[13px] text-cur-muted mt-4 leading-relaxed">
-                                            <span className="font-semibold text-cur-error">{topWords[0]}</span>{topWords[1] && <> 및 <span className="font-semibold text-cur-error">{topWords[1]}</span></>} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.
-                                        </p>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <h2 className="text-[18px] font-bold text-cur-ink flex items-center gap-2"><Activity className="w-5 h-5 text-cur-primary" /> 주요 위험요인</h2>
-                        {cards.length === 0 ? (
-                            <div className="bg-cur-card p-8 rounded-[12px] border border-cur-hairline text-center text-[13px] text-cur-muted-soft">이 달에 작성된 회의록 위험요인이 없습니다.</div>
+                    {/* 핵심 위험 키워드 */}
+                    <section className="space-y-3">
+                        <h2 className="text-[14px] font-bold text-cur-ink">핵심 위험 키워드</h2>
+                        {keywords.length === 0 ? (
+                            <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">이 달 집계된 위험 키워드가 없어요</p>
                         ) : (
-                            <div className="space-y-3">
-                                {cards.map((risk) => (
-                                    <div
-                                        key={risk.id}
-                                        onClick={() => risk.minuteId && router.push(`/report/minutes/${risk.minuteId}`)}
-                                        className={`bg-cur-card p-4 rounded-[12px] border border-cur-hairline ${risk.minuteId ? "cursor-pointer hover:border-cur-primary/40 active:scale-[0.99] transition-all" : ""}`}
-                                    >
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="flex items-center gap-2">
-                                                <Badge variant="outline" className={getLevelStyle(risk.level)}>위험 {risk.level}</Badge>
-                                                <span className="text-[13px] font-semibold text-cur-muted">{risk.category}</span>
-                                            </div>
-                                            <div className="text-[12px] text-cur-muted">{risk.date}</div>
-                                        </div>
-                                        <div className="flex items-end justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <h3 className="text-[16px] font-bold text-cur-ink mb-1">{risk.subCategory}</h3>
-                                                <p className="text-[14px] text-cur-muted-soft truncate">{risk.workName}</p>
-                                            </div>
-                                            {risk.minuteId && (
-                                                <span className="flex items-center text-[12px] text-cur-primary font-semibold shrink-0">보고서 <ChevronRight className="w-4 h-4" /></span>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5">
+                                <div className="flex flex-wrap gap-2">
+                                    {keywords.map((kw, idx) => (
+                                        <span key={idx} className="px-2.5 py-1 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[13px] font-semibold text-cur-ink">
+                                            {kw.word} <span className="text-[12px] font-medium text-cur-muted">{kw.count}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                                {topWords.length > 0 && (
+                                    <p className="text-[13px] text-cur-muted mt-4 leading-relaxed">
+                                        <span className="font-semibold text-cur-ink">{topWords[0]}</span>{topWords[1] && <> 및 <span className="font-semibold text-cur-ink">{topWords[1]}</span></>} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.
+                                    </p>
+                                )}
                             </div>
                         )}
-                    </div>
+                    </section>
+
+                    {/* 주요 위험요인 */}
+                    <section className="space-y-3">
+                        <h2 className="text-[14px] font-bold text-cur-ink">주요 위험요인</h2>
+                        {cards.length === 0 ? (
+                            <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">이 달 집계된 위험요인이 없어요</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {cards.map((risk) => {
+                                    const clickable = !!risk.minuteId
+                                    return (
+                                        <div
+                                            key={risk.id}
+                                            tabIndex={clickable ? 0 : undefined}
+                                            role={clickable ? "button" : undefined}
+                                            onClick={() => risk.minuteId && router.push(`/report/minutes/${risk.minuteId}`)}
+                                            onKeyDown={(e) => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); router.push(`/report/minutes/${risk.minuteId}`) } }}
+                                            className={`bg-cur-card p-4 rounded-[12px] border border-cur-hairline ${clickable ? "cursor-pointer hover:border-cur-primary/40 outline-none focus-visible:ring-2 focus-visible:ring-cur-primary active:scale-[0.99] transition-all" : ""}`}
+                                        >
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="outline" className={getLevelStyle(risk.level)}>위험 {risk.level}</Badge>
+                                                    <span className="text-[13px] font-semibold text-cur-muted">{risk.category}</span>
+                                                </div>
+                                                <div className="text-[12px] text-cur-muted">{risk.date}</div>
+                                            </div>
+                                            <div className="flex items-end justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <h3 className="text-[15px] font-bold text-cur-ink mb-1">{risk.subCategory}</h3>
+                                                    <p className="text-[13px] text-cur-muted-soft truncate">{risk.workName}</p>
+                                                </div>
+                                                {clickable && (
+                                                    <span className="flex items-center text-[12px] text-cur-primary font-semibold shrink-0">보고서 <ChevronRight className="w-4 h-4" /></span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </section>
 
                 </div>
+            </div>
+        </div>
+    )
+}
+
+// 통계 타일 — 교육일지 종합분석과 동일 문법 유지
+function StatTile({ label, value, unit, tone = "text-cur-ink" }: { label: string; value: number | string; unit: string; tone?: string }) {
+    return (
+        <div className="py-3.5 px-2 bg-cur-card">
+            <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">{label}</div>
+            <div className={`text-[24px] leading-none font-bold font-mono ${tone}`}>
+                {value}<span className="text-[13px] font-medium text-cur-muted ml-0.5">{unit}</span>
             </div>
         </div>
     )

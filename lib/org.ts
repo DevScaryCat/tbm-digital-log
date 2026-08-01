@@ -18,6 +18,8 @@ export interface OrgMemberSummary {
   userId: string;
   siteName: string;      // user_metadata.company_name (현장명)
   managerName: string;   // user_metadata.full_name (담당자)
+  /** 실제 로그인 아이디 — 발급 계정(@tbm.com)은 @ 앞부분, 그 외는 이메일 전체 */
+  loginId: string;
   status: "active" | "detached";
   joinedAt: string;
 }
@@ -118,15 +120,21 @@ export async function listOrgMembers(orgId: string, adminClient?: SupabaseClient
       chunk.map((r) =>
         admin.auth.admin
           .getUserById(r.member_user_id)
-          .then((u) => (u.data?.user?.user_metadata ?? {}) as Record<string, unknown>)
-          .catch(() => ({} as Record<string, unknown>))
+          .then((u) => ({
+            meta: (u.data?.user?.user_metadata ?? {}) as Record<string, unknown>,
+            email: String(u.data?.user?.email ?? ""),
+          }))
+          .catch(() => ({ meta: {} as Record<string, unknown>, email: "" }))
       )
     );
     chunk.forEach((r, j) => {
+      const email = metas[j].email;
       out.push({
         userId: r.member_user_id,
-        siteName: String(metas[j].company_name ?? ""),
-        managerName: String(metas[j].full_name ?? ""),
+        siteName: String(metas[j].meta.company_name ?? ""),
+        managerName: String(metas[j].meta.full_name ?? ""),
+        // 감독자가 비번 재설정·전달 시 어느 아이디인지 알아야 한다 — 발급 계정은 가짜 도메인을 떼고 아이디만
+        loginId: email.endsWith("@tbm.com") ? email.slice(0, -"@tbm.com".length) : email,
         status: r.status as "active" | "detached",
         joinedAt: r.joined_at,
       });

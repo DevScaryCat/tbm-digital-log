@@ -2,6 +2,7 @@
 
 // 현장 계정 관리 (감독자 전용) — 계정 발급/초대/편입/해제.
 // 좌석 선구매는 없앴다 — 계정을 만들면 그 자리에서 일할 청구되고, 다음 주기부터 계정 수만큼 청구된다.
+// prompt/confirm 대신 전용 모달을 쓴다 — 인앱 브라우저에서 prompt가 막히는 케이스가 있었고, 안내 문구를 담을 자리도 필요하다.
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
@@ -9,6 +10,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2, ChevronRight, Pencil } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
@@ -17,10 +19,19 @@ import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
 const inputCls =
     "h-11 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
 
+// 모달 공통 스타일 — 페이지 Dialog 관례 (bg-cur-card·hairline·12px 라운드)
+// 앱 공통 Dialog 관례(회의록·교육일지 페이지와 동일): 20px 라운드 + 부양 그림자
+const dialogCls = "bg-cur-card border-cur-hairline rounded-[20px] shadow-[0_8px_32px_rgba(0,0,0,0.1)] p-5 gap-4 w-[calc(100%-2rem)] sm:max-w-md"
+const dialogTitleCls = "text-[16px] font-bold text-cur-ink"
+const iconBtnCls =
+    "h-9 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+
 interface MemberRow {
     userId: string
     siteName: string
     managerName: string
+    /** 실제 로그인 아이디 (발급 계정은 @tbm.com 앞부분) */
+    loginId?: string
     status: "active" | "detached"
     joinedAt: string
 }
@@ -42,12 +53,25 @@ export default function OrgMembersPage() {
     const [initPw, setInitPw] = useState("")
     const [formErr, setFormErr] = useState<string | null>(null)
     const [createdIds, setCreatedIds] = useState<string[] | null>(null)
+    // 위저드 모달 내부 알림 — 페이지 배너는 모달 뒤에 가려져 보이지 않는다
+    const [addMsg, setAddMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 청구 미리보기용 구독 정보 (체험 여부·다음 결제일)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
     // 초대 링크
     const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+
+    // 행 액션 모달 3종 — 정보 수정 / 비밀번호 재설정 / 연결 해제
+    const [editTarget, setEditTarget] = useState<MemberRow | null>(null)
+    const [editSite, setEditSite] = useState("")
+    const [editManager, setEditManager] = useState("")
+    const [pwTarget, setPwTarget] = useState<MemberRow | null>(null)
+    const [pwValue, setPwValue] = useState("")
+    const [pwConfirm, setPwConfirm] = useState("")
+    const [pwDone, setPwDone] = useState(false)
+    const [detachTarget, setDetachTarget] = useState<MemberRow | null>(null)
+    const [modalErr, setModalErr] = useState<string | null>(null)
 
     const authHeaders = async () => {
         const { data } = await supabase.auth.getSession()
@@ -74,7 +98,7 @@ export default function OrgMembersPage() {
         load()
     }, [ctx, ctxLoading, router, load])
 
-    // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우 발급 폼을 바로 펼친다.
+    // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우 발급 모달을 바로 연다.
     // useSearchParams는 정적 렌더에서 Suspense를 요구해 window로 직접 읽는다.
     useEffect(() => {
         if (typeof window === "undefined") return
@@ -105,9 +129,13 @@ export default function OrgMembersPage() {
     // 한글·띄어쓰기를 입력해도 아이디 규칙으로 자동 변환 ("하이 물류" → hai_mulryu)
     const effStem = sanitizeStem(stem)
 
+    // 추가 위저드는 단계 상태에서 열림을 유도한다 — ?new=1 딥링크도 같은 경로로 모달이 열린다
+    const addOpen = addStep !== null || createdIds !== null
+    const closeAdd = () => { setAddStep(null); setCreatedIds(null); setFormErr(null); setAddMsg(null) }
+
     const createBulk = async () => {
         setFormErr(null)
-        setMsg(null)
+        setAddMsg(null)
         if (!STEM_RE.test(effStem)) { setFormErr("아이디로 만들 수 있는 글자가 부족해요. 영문·숫자·한글 2자 이상 입력해주세요."); return }
         if (initPw.length < 8) { setFormErr("초기 비밀번호는 8자 이상이어야 해요."); return }
         setBusy("create")
@@ -135,11 +163,11 @@ export default function OrgMembersPage() {
             "",
             "safetalk.kr 에 로그인하면 첫 화면에서 새 비밀번호와 현장명을 설정하게 됩니다.",
         ].join("\n")
-        try { await navigator.clipboard.writeText(text); setMsg({ type: "ok", text: "계정 목록을 복사했어요. 담당자들에게 전달하세요." }) } catch { /* 무시 */ }
+        try { await navigator.clipboard.writeText(text); setAddMsg({ type: "ok", text: "계정 목록을 복사했어요. 담당자들에게 전달하세요." }) } catch { /* 무시 */ }
     }
 
     const createInviteLink = async () => {
-        setMsg(null)
+        setAddMsg(null)
         setBusy("link")
         try {
             const res = await fetch("/api/org/invites", {
@@ -148,7 +176,7 @@ export default function OrgMembersPage() {
                 body: JSON.stringify({ kind: "link" }),
             })
             const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
+            if (!res.ok) { setAddMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
             setAddStep("link")
             setInviteUrl(`${window.location.origin}/join/${j.token}`)
         } finally {
@@ -157,7 +185,7 @@ export default function OrgMembersPage() {
     }
 
     const requestAttach = async () => {
-        setMsg(null)
+        setAddMsg(null)
         setBusy("attach")
         try {
             const res = await fetch("/api/org/invites", {
@@ -166,66 +194,87 @@ export default function OrgMembersPage() {
                 body: JSON.stringify({ kind: "attach", loginId: attachId }),
             })
             const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "편입 초대 실패" }); return }
-            setMsg({ type: "ok", text: `편입 초대를 보냈어요. [${attachId}] 계정이 다음 로그인 때 수락하면 연결됩니다.` })
+            if (!res.ok) { setAddMsg({ type: "err", text: j.error || "편입 초대 실패" }); return }
+            setAddMsg({ type: "ok", text: `편입 초대를 보냈어요. [${attachId}] 계정이 다음 로그인 때 수락하면 연결됩니다.` })
             setAttachId("")
         } finally {
             setBusy(null)
         }
     }
 
-    // 현장명·담당자 수정 — 계정을 발급한 감독자가 표시 정보도 고칠 수 있어야 한다 (Chris)
-    const editInfo = async (m: MemberRow) => {
-        const site = window.prompt(`[${m.siteName || "현장명 미설정"}] 현장명 수정`, m.siteName || "")
-        if (site === null) return
-        if (!site.trim()) { setMsg({ type: "err", text: "현장명을 입력해주세요." }); return }
-        const manager = window.prompt("담당자 이름 (비우면 현장명으로 표시)", m.managerName || "")
-        if (manager === null) return
-        setBusy(m.userId)
-        setMsg(null)
+    // ── 정보 수정 모달 — 계정을 발급한 감독자가 표시 정보도 고칠 수 있어야 한다 (Chris)
+    const openEdit = (m: MemberRow) => {
+        setModalErr(null)
+        setEditSite(m.siteName)
+        setEditManager(m.managerName)
+        setEditTarget(m)
+    }
+    const submitEdit = async () => {
+        if (!editTarget) return
+        if (!editSite.trim()) { setModalErr("현장명을 입력해주세요."); return }
+        setBusy("edit")
+        setModalErr(null)
         try {
             const res = await fetch("/api/org/members", {
                 method: "PATCH",
                 headers: await authHeaders(),
-                body: JSON.stringify({ userId: m.userId, siteName: site.trim(), managerName: manager }),
+                body: JSON.stringify({ userId: editTarget.userId, siteName: editSite.trim(), managerName: editManager }),
             })
             const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "수정 실패" }); return }
+            if (!res.ok) { setModalErr(j.error || "수정 실패"); return }
+            setEditTarget(null)
             await load()
         } finally {
             setBusy(null)
         }
     }
 
-    const resetPassword = async (userId: string, siteName: string) => {
-        const pw = window.prompt(`[${siteName}] 새 비밀번호 (8자 이상)\n담당자가 바뀌었을 때 사용하세요.`)
-        if (!pw) return
-        setBusy(userId)
-        setMsg(null)
+    // ── 비밀번호 재설정 모달 — 담당자 교체 시 감독자가 새 비밀번호를 만들어 전달한다
+    const openPw = (m: MemberRow) => {
+        setModalErr(null)
+        setPwValue("")
+        setPwConfirm("")
+        setPwDone(false)
+        setPwTarget(m)
+    }
+    const submitPw = async () => {
+        if (!pwTarget) return
+        if (pwValue.length < 8) { setModalErr("비밀번호는 8자 이상 입력해주세요."); return }
+        if (pwValue !== pwConfirm) { setModalErr("확인 비밀번호가 일치하지 않아요."); return }
+        setBusy("pw")
+        setModalErr(null)
         try {
             const res = await fetch("/api/org/members", {
                 method: "PATCH",
                 headers: await authHeaders(),
-                body: JSON.stringify({ userId, newPassword: pw }),
+                body: JSON.stringify({ userId: pwTarget.userId, newPassword: pwValue }),
             })
             const j = await res.json()
-            setMsg(res.ok ? { type: "ok", text: "비밀번호를 변경했어요. 새 담당자에게 전달하세요." } : { type: "err", text: j.error || "변경 실패" })
+            if (!res.ok) { setModalErr(j.error || "변경 실패"); return }
+            setPwDone(true)
         } finally {
             setBusy(null)
         }
     }
 
-    const detach = async (userId: string, siteName: string) => {
-        if (!window.confirm(`[${siteName}] 현장을 해제할까요?\n계정과 기록은 남지만, 해제 즉시 그 계정은 회사 이용권을 잃고 다음 결제부터 요금에서 빠집니다.`)) return
-        setBusy(userId)
-        setMsg(null)
+    // ── 연결 해제 모달 — confirm 대신 경고 모달. 계정·데이터 보존을 명확히 안내한다
+    const openDetach = (m: MemberRow) => {
+        setModalErr(null)
+        setDetachTarget(m)
+    }
+    const submitDetach = async () => {
+        if (!detachTarget) return
+        setBusy("detach")
+        setModalErr(null)
         try {
-            const res = await fetch(`/api/org/members?userId=${encodeURIComponent(userId)}`, {
+            const res = await fetch(`/api/org/members?userId=${encodeURIComponent(detachTarget.userId)}`, {
                 method: "DELETE",
                 headers: await authHeaders(),
             })
             const j = await res.json()
-            if (!res.ok) { setMsg({ type: "err", text: j.error || "해제 실패" }); return }
+            if (!res.ok) { setModalErr(j.error || "해제 실패"); return }
+            setMsg({ type: "ok", text: `[${detachTarget.siteName || "현장명 미설정"}] 연결을 해제했어요. 계정과 기록은 보존됩니다.` })
+            setDetachTarget(null)
             await load()
         } finally {
             setBusy(null)
@@ -243,12 +292,73 @@ export default function OrgMembersPage() {
                     <div className={`text-[13px] rounded-lg p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>
                 )}
 
-                {/* 이 화면은 계정 관리 하나만 한다 (Chris) — 요금 계산기·별도 추가 카드는 삭제,
-                    목록(수정·삭제) + 목록 끝의 추가 행으로 통합. 요금 얘기는 구독 및 결제가 담당.
-                    위저드는 추가 행을 눌렀을 때만 나타난다. */}
-                {(addStep !== null || createdIds) && (
-                <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-4">
-                    <h2 className="text-[15px] font-bold text-cur-ink">현장 계정 추가</h2>
+                {/* 현장 목록 — 수정(정보·비번)·삭제(해제)·추가가 전부 이 카드 하나에서 */}
+                <section className="space-y-2">
+                    <h2 className="text-[14px] font-bold text-cur-ink px-1">
+                        연결된 현장{activeCount > 0 && <span className="text-cur-muted-soft font-medium ml-1.5">{activeCount}곳</span>}
+                    </h2>
+                    {loading ? (
+                        <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-cur-muted" /></div>
+                    ) : (
+                        <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                            {members.length === 0 && (
+                                <p className="text-[13px] text-cur-muted-soft text-center py-6">아직 연결된 현장이 없어요.</p>
+                            )}
+                            {members.map((m) => (
+                                <div key={m.userId} className="flex items-center gap-3 p-4">
+                                    {/* "기록 보기" 진입은 뺐다 (Chris) — 이 화면은 계정 관리만 한다 */}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="flex items-baseline gap-1.5 min-w-0">
+                                            <span className={`text-[14px] font-semibold truncate ${m.status === "active" ? "text-cur-ink" : "text-cur-muted-soft line-through"}`}>{m.siteName || "현장명 미설정"}</span>
+                                            {m.loginId && <span className="text-[11px] font-mono text-cur-muted shrink-0">{m.loginId}</span>}
+                                        </p>
+                                        <p className="text-[12px] text-cur-muted mt-0.5 truncate">
+                                            {m.managerName && `${m.managerName} · `}
+                                            {m.status === "active" ? `연결 ${m.joinedAt?.slice(0, 10)}` : "해제됨"}
+                                        </p>
+                                    </div>
+                                    {m.status === "active" && (
+                                        <>
+                                            <button onClick={() => openEdit(m)} aria-label="현장명·담당자 수정" className={`${iconBtnCls} text-cur-muted hover:text-cur-ink hover:bg-cur-elevated`}>
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => openPw(m)} aria-label="비밀번호 재설정" className={`${iconBtnCls} text-cur-muted hover:text-cur-ink hover:bg-cur-elevated`}>
+                                                <KeyRound className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => openDetach(m)} aria-label="현장 연결 해제" className={`${iconBtnCls} text-cur-muted hover:text-cur-error hover:bg-cur-error/5`}>
+                                                <UserMinus className="w-4 h-4" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                            {/* 추가는 목록의 마지막 행 — 별도 카드 대신 (Chris 스케치) */}
+                            <button
+                                type="button"
+                                onClick={() => { setCreatedIds(null); setAddMsg(null); setAddStep("count") }}
+                                className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                            >
+                                <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
+                                    <UserPlus2 className="w-4 h-4" />
+                                </span>
+                                <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-body">현장 계정 추가하기</span>
+                                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                            </button>
+                        </div>
+                    )}
+                </section>
+
+            </main>
+
+            {/* ── 현장 계정 추가 모달 — 인라인 위저드를 그대로 옮겼다 (단계·솔로 승급 안내·청구 한 줄 동일) */}
+            <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { if (busy) return; closeAdd() } }}>
+                <DialogContent aria-describedby={undefined} className={dialogCls}>
+                    <DialogHeader className="text-left">
+                        <DialogTitle className={dialogTitleCls}>현장 계정 추가</DialogTitle>
+                    </DialogHeader>
+                    {addMsg && (
+                        <div className={`text-[13px] rounded-[8px] px-3 py-2 ${addMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/5 border border-cur-error/20 text-cur-error"}`}>{addMsg.text}</div>
+                    )}
                     {ctx?.kind === "solo" && addStep !== null && !createdIds && (
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/25 px-4 py-3 space-y-1">
                             <p className="text-[13px] font-bold text-cur-primary">첫 현장 계정을 만들면 이 계정이 회사 감독자가 돼요</p>
@@ -271,43 +381,43 @@ export default function OrgMembersPage() {
                                 ))}
                             </div>
                             <p className="text-[12px] text-cur-muted leading-relaxed">
-                                초기 비밀번호는 전부 <b className="text-cur-ink font-mono">{initPw}</b> 예요.
+                                초기 비밀번호는 전부 <b className="text-cur-ink font-mono break-all">{initPw}</b> 예요.
                                 담당자가 처음 로그인하면 새 비밀번호와 현장명을 직접 설정합니다.
                             </p>
                             <div className="flex gap-2">
                                 <Button onClick={copyCreated} className="flex-1 h-11 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
                                     <Copy className="w-4 h-4 mr-1.5" /> 계정 목록 복사
                                 </Button>
-                                <Button onClick={() => { setCreatedIds(null); setAddStep(null) }} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                                <Button onClick={closeAdd} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                             </div>
                         </div>
                     ) : addStep === "count" ? (
                         /* 1단계 — 몇 개? */
-                        <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
+                        <div className="space-y-4">
                             <p className="text-[14px] font-semibold text-cur-ink">몇 개 현장을 추가할까요?</p>
                             <div className="flex items-center justify-center gap-5">
                                 <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
-                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40"><Minus className="w-4 h-4" /></button>
+                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Minus className="w-4 h-4" /></button>
                                 <span className="w-12 text-center text-[28px] font-bold tabular-nums">{count}</span>
                                 <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
-                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center"><Plus className="w-4 h-4" /></button>
+                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Plus className="w-4 h-4" /></button>
                             </div>
                             {/* 요금 계산기 카드가 사라진 자리 — 청구 규칙 한 줄만 남긴다 */}
                             <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
                                 계정 1개당 월 3,900원 · {sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}
                             </p>
                             <div className="flex gap-2">
-                                <Button onClick={() => setAddStep(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={closeAdd} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
                                 <Button onClick={() => setAddStep("method")} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
                             </div>
                         </div>
                     ) : addStep === "method" ? (
                         /* 2단계 — 계정을 누가 만들까? */
-                        <div className="rounded-xl border border-cur-hairline p-4 space-y-3">
+                        <div className="space-y-3">
                             <p className="text-[14px] font-semibold text-cur-ink">계정 {count}개, 어떻게 만들까요?</p>
                             <button
                                 onClick={() => setAddStep("direct")}
-                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all"
+                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                             >
                                 <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-primary/10 text-cur-primary flex items-center justify-center"><KeyRound className="w-5 h-5" /></span>
                                 <span className="flex-1 min-w-0">
@@ -319,7 +429,7 @@ export default function OrgMembersPage() {
                             <button
                                 onClick={createInviteLink}
                                 disabled={busy === "link"}
-                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-60"
+                                className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                             >
                                 <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-ink/8 text-cur-ink flex items-center justify-center">
                                     {busy === "link" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
@@ -330,18 +440,18 @@ export default function OrgMembersPage() {
                                 </span>
                                 <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                             </button>
-                            <button onClick={() => setAddStep("count")} className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink">이전</button>
+                            <button onClick={() => setAddStep("count")} className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[8px]">이전</button>
                         </div>
                     ) : addStep === "link" ? (
                         /* 초대 링크 결과 */
-                        <div className="rounded-xl border border-cur-hairline p-4 space-y-3">
+                        <div className="space-y-3">
                             <p className="text-[14px] font-semibold text-cur-ink">초대 링크가 준비됐어요</p>
                             {inviteUrl && (
                                 <div className="flex items-center gap-2 rounded-lg bg-cur-elevated p-2.5">
                                     <span className="text-[12px] text-cur-body truncate flex-1 min-w-0">{inviteUrl}</span>
                                     <button
-                                        onClick={() => { navigator.clipboard?.writeText(inviteUrl); setMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장 담당자에게 보내세요." }) }}
-                                        className="shrink-0 h-8 px-2.5 rounded-md bg-cur-card border border-cur-hairline text-[12px] font-semibold text-cur-ink flex items-center gap-1"
+                                        onClick={() => { navigator.clipboard?.writeText(inviteUrl); setAddMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장 담당자에게 보내세요." }) }}
+                                        className="shrink-0 h-8 px-2.5 rounded-md bg-cur-card border border-cur-hairline text-[12px] font-semibold text-cur-ink flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                                     >
                                         <Copy className="w-3.5 h-3.5" /> 복사
                                     </button>
@@ -349,7 +459,7 @@ export default function OrgMembersPage() {
                             )}
                             <p className="text-[12px] text-cur-muted leading-relaxed">
                                 링크 하나로 여러 담당자가 가입할 수 있어요 (14일 유효).
-                                가입이 끝나면 아래 목록에 자동으로 나타납니다.
+                                가입이 끝나면 현장 목록에 자동으로 나타납니다.
                             </p>
                             {/* 편입은 드문 일이라(기존 안톡 계정 데려오기) 상시 노출하지 않고 여기서만 */}
                             <details className="group">
@@ -364,11 +474,11 @@ export default function OrgMembersPage() {
                                 </div>
                                 <p className="text-[11px] text-cur-muted-soft mt-1.5">그 계정이 다음 로그인 때 수락하면 편입돼요. 기존 기록은 그대로 유지됩니다.</p>
                             </details>
-                            <Button onClick={() => setAddStep(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
+                            <Button onClick={closeAdd} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
                         </div>
-                    ) : (
+                    ) : addStep === "direct" ? (
                         /* 직접 발급 — 아이디 규칙 설명을 눈앞에서 예시로 */
-                        <div className="rounded-xl border border-cur-hairline p-4 space-y-4">
+                        <div className="space-y-4">
                             <div className="space-y-1.5">
                                 <Label className="text-[12px]">아이디 앞부분</Label>
                                 <p className="text-[12px] text-cur-muted leading-relaxed">
@@ -400,70 +510,108 @@ export default function OrgMembersPage() {
                                 </Button>
                             </div>
                         </div>
+                    ) : null}
+                </DialogContent>
+            </Dialog>
+
+            {/* ── 정보 수정 모달 — 현장명·담당자 */}
+            <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) { if (busy) return; setEditTarget(null); setModalErr(null) } }}>
+                <DialogContent aria-describedby={undefined} className={dialogCls}>
+                    <DialogHeader className="text-left">
+                        <DialogTitle className={dialogTitleCls}>현장 정보 수정</DialogTitle>
+                    </DialogHeader>
+                    {editTarget?.loginId && (
+                        <p className="text-[12px] text-cur-muted -mt-2">아이디 <span className="font-mono text-cur-ink">{editTarget.loginId}</span></p>
                     )}
+                    <div className="space-y-1.5">
+                        <Label className="text-[12px]">현장명</Label>
+                        <Input value={editSite} onChange={(e) => setEditSite(e.target.value)} placeholder="예: 신도림 물류센터" className={inputCls} />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-[12px]">담당자 이름</Label>
+                        <Input value={editManager} onChange={(e) => setEditManager(e.target.value)} placeholder="담당자 이름" className={inputCls} />
+                        <p className="text-[11px] text-cur-muted-soft">비우면 현장명으로 표시돼요.</p>
+                    </div>
+                    {modalErr && (
+                        <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
+                    )}
+                    <div className="flex gap-2">
+                        <Button onClick={() => setEditTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                        <Button onClick={submitEdit} disabled={busy === "edit" || !editSite.trim()} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
+                            {busy === "edit" ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
-                </section>
-                )}
-
-                {/* 현장 목록 — 수정(비번)·삭제(해제)·추가가 전부 이 카드 하나에서 */}
-                <section className="space-y-2">
-                    <h2 className="text-[14px] font-bold text-cur-ink px-1">
-                        연결된 현장{activeCount > 0 && <span className="text-cur-muted-soft font-medium ml-1.5">{activeCount}곳</span>}
-                    </h2>
-                    {loading ? (
-                        <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-cur-muted" /></div>
+            {/* ── 비밀번호 재설정 모달 — 새 비밀번호 + 확인 입력, 성공 시 전달 안내 */}
+            <Dialog open={!!pwTarget} onOpenChange={(o) => { if (!o) { if (busy) return; setPwTarget(null); setModalErr(null) } }}>
+                <DialogContent className={dialogCls}>
+                    <DialogHeader className="text-left">
+                        <DialogTitle className={dialogTitleCls}>비밀번호 재설정</DialogTitle>
+                        <DialogDescription className="text-[12px] text-cur-muted">
+                            [{pwTarget?.siteName || "현장명 미설정"}]{pwTarget?.loginId ? <> · 아이디 <span className="font-mono text-cur-ink">{pwTarget.loginId}</span></> : null} — 담당자가 바뀌었을 때 사용하세요.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {pwDone ? (
+                        <>
+                            <div className="rounded-xl border border-cur-success/30 bg-cur-success/5 p-4 space-y-2">
+                                <p className="flex items-center gap-1.5 text-[14px] font-bold text-cur-success">
+                                    <CheckCircle2 className="w-4 h-4" /> 비밀번호를 변경했어요
+                                </p>
+                                <p className="text-[13px] text-cur-ink">새 비밀번호 <b className="font-mono break-all">{pwValue}</b></p>
+                                <p className="text-[12px] text-cur-muted leading-relaxed">새 비밀번호를 담당자에게 전달하세요. 담당자는 다음 로그인부터 이 비밀번호로 접속합니다.</p>
+                            </div>
+                            <Button onClick={() => setPwTarget(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                        </>
                     ) : (
-                        <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
-                            {members.length === 0 && (
-                                <p className="text-[13px] text-cur-muted-soft text-center py-6">아직 연결된 현장이 없어요.</p>
+                        <>
+                            {/* 감독자가 만들어 전달하는 비밀번호라 가리지 않는다 — 읽고 옮겨 적을 수 있어야 한다 */}
+                            <div className="space-y-1.5">
+                                <Label className="text-[12px]">새 비밀번호 (8자 이상)</Label>
+                                <Input value={pwValue} onChange={(e) => setPwValue(e.target.value)} autoComplete="off" placeholder="8자 이상" className={inputCls + " font-mono"} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[12px]">새 비밀번호 확인</Label>
+                                <Input value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} autoComplete="off" placeholder="한 번 더 입력" className={inputCls + " font-mono"} />
+                            </div>
+                            {modalErr && (
+                                <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
                             )}
-                            {members.map((m) => (
-                                <div key={m.userId} className="flex items-center gap-3 p-4">
-                                    {/* 현장 목록 카드가 홈에서 빠지면서 여기가 현장 상세(/org/sites)의 입구가 됐다 */}
-                                    <button
-                                        type="button"
-                                        disabled={m.status !== "active"}
-                                        onClick={() => router.push(`/org/sites/${m.userId}`)}
-                                        className="flex-1 min-w-0 text-left rounded-[8px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary disabled:cursor-default"
-                                    >
-                                        <p className={`text-[14px] font-semibold truncate ${m.status === "active" ? "text-cur-ink" : "text-cur-muted-soft line-through"}`}>{m.siteName || "현장명 미설정"}</p>
-                                        <p className="text-[12px] text-cur-muted mt-0.5">
-                                            {m.managerName && `${m.managerName} · `}
-                                            {m.status === "active" ? `연결 ${m.joinedAt?.slice(0, 10)} · 기록 보기` : "해제됨"}
-                                        </p>
-                                    </button>
-                                    {m.status === "active" && (
-                                        <>
-                                            <button onClick={() => editInfo(m)} disabled={busy === m.userId} aria-label="현장명·담당자 수정" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">
-                                                <Pencil className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => resetPassword(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="비밀번호 변경" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors">
-                                                <KeyRound className="w-4 h-4" />
-                                            </button>
-                                            <button onClick={() => detach(m.userId, m.siteName)} disabled={busy === m.userId} aria-label="현장 해제" className="h-9 w-9 rounded-lg flex items-center justify-center text-cur-muted hover:text-cur-error hover:bg-cur-error/5 transition-colors">
-                                                <UserMinus className="w-4 h-4" />
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            ))}
-                            {/* 추가는 목록의 마지막 행 — 별도 카드 대신 (Chris 스케치) */}
-                            <button
-                                type="button"
-                                onClick={() => { setCreatedIds(null); setAddStep("count") }}
-                                className="w-full flex items-center gap-3 p-4 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                            >
-                                <span className="w-9 h-9 rounded-full border border-dashed border-cur-hairline-strong text-cur-muted flex items-center justify-center shrink-0">
-                                    <UserPlus2 className="w-4 h-4" />
-                                </span>
-                                <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-body">현장 계정 추가하기</span>
-                                <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
-                            </button>
-                        </div>
+                            <div className="flex gap-2">
+                                <Button onClick={() => setPwTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={submitPw} disabled={busy === "pw" || pwValue.length < 8 || !pwConfirm} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                    {busy === "pw" ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경하기"}
+                                </Button>
+                            </div>
+                        </>
                     )}
-                </section>
+                </DialogContent>
+            </Dialog>
 
-            </main>
+            {/* ── 연결 해제 모달 — confirm 대신 경고 모달. 보존되는 것을 명시한다 */}
+            <Dialog open={!!detachTarget} onOpenChange={(o) => { if (!o) { if (busy) return; setDetachTarget(null); setModalErr(null) } }}>
+                <DialogContent className={dialogCls}>
+                    <DialogHeader className="text-left">
+                        <DialogTitle className={dialogTitleCls}>현장 연결 해제</DialogTitle>
+                        <DialogDescription className="text-[13px] text-cur-muted leading-relaxed">
+                            <b className="text-cur-ink">[{detachTarget?.siteName || "현장명 미설정"}]</b> 현장과의 연결을 해제할까요?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-[8px] bg-cur-elevated border border-cur-hairline px-3.5 py-3 text-[12px] text-cur-muted leading-relaxed">
+                        계정·데이터는 보존되고 연결만 해제됩니다. 해제 즉시 그 계정은 회사 이용권을 잃고, 다음 결제부터 요금에서 빠져요.
+                    </div>
+                    {modalErr && (
+                        <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
+                    )}
+                    <div className="flex gap-2">
+                        <Button onClick={() => setDetachTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                        <Button onClick={submitDetach} disabled={busy === "detach"} className="flex-[2] h-11 rounded-lg bg-cur-error text-white font-bold hover:bg-cur-error/90">
+                            {busy === "detach" ? <Loader2 className="w-4 h-4 animate-spin" /> : "해제하기"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

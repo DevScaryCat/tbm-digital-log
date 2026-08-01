@@ -137,66 +137,33 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
         }
     }
 
-    // 설정(기어) 메뉴 — 관리 항목만. 이름 메뉴가 길어서 못 읽히던 것을 둘로 쪼갬 (Chris).
-    // 소속 현장에게는 같은 자리를 잠긴 모습으로 보여준다: 어디서 관리되는지 알게.
-    const settingsDropdown = (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label="설정 메뉴"
-                    className="h-10 w-10 shrink-0 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px] transition-colors"
-                >
-                    <Settings className="w-5 h-5 text-cur-body" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
-                {(() => {
-                    const item = (m: { href: string; label: string; icon: ReactNode }) =>
-                        orgKind === "member" ? (
-                            <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
-                                <Lock className="mr-2 h-4 w-4" /> {m.label}
-                                <span className="ml-auto text-[11px]">감독자 관리</span>
-                            </DropdownMenuItem>
-                        ) : (
-                            <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                                {m.icon} {m.label}
-                            </DropdownMenuItem>
-                        )
-                    const groupLabel = (text: string) => (
-                        <DropdownMenuLabel className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-cur-muted-soft">{text}</DropdownMenuLabel>
-                    )
-                    return (
-                        <>
-                            {groupLabel("보고서·분석")}
-                            {item({ href: "/org/reports", label: "보고서 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                            {item({ href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                            <DropdownMenuSeparator className="bg-cur-hairline" />
-                            {groupLabel("회사 관리")}
-                            {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                            {item({ href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                            {orgKind === "member" && (
-                                <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
-                            )}
-                        </>
-                    )
-                })()}
-            </DropdownMenuContent>
-        </DropdownMenu>
-    )
-
-    const userProfileDropdown = (
-        <div className="flex items-center gap-2">
-            {settingsDropdown}
+    // 관리+계정 통합 메뉴 — 기어 버튼을 없애고 이름 하나로 모음 (Chris 7/31).
+    // 항목이 늘어난 만큼 섹션 라벨+구분선으로 분류를 명확히 나눈다.
+    // 소속 현장에게는 관리 항목을 잠긴 모습으로 보여준다: 어디서 관리되는지 알게.
+    const userProfileDropdown = (() => {
+        const item = (m: { href: string; label: string; icon: ReactNode }) =>
+            orgKind === "member" ? (
+                <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
+                    <Lock className="mr-2 h-4 w-4" /> {m.label}
+                    <span className="ml-auto text-[11px]">감독자 관리</span>
+                </DropdownMenuItem>
+            ) : (
+                <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                    {m.icon} {m.label}
+                </DropdownMenuItem>
+            )
+        const groupLabel = (text: string) => (
+            <DropdownMenuLabel className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-cur-muted-soft tracking-[0.5px]">{text}</DropdownMenuLabel>
+        )
+        return (
             <DropdownMenu onOpenChange={(open) => { if (open) loadUsage() }}>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body">
+                    <Button variant="ghost" className="h-10 px-3 rounded-[8px] hover:bg-cur-elevated text-cur-body focus-visible:ring-2 focus-visible:ring-cur-primary">
                         <span className="text-[14px] font-medium text-cur-body">{userName}</span>
                     </Button>
                 </DropdownMenuTrigger>
-                {/* 이름 메뉴는 간결하게 — 사용량(legacy만) + 계정 항목만 (관리 메뉴는 기어 아이콘으로 분리) */}
-                <DropdownMenuContent className="w-56 rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
+                {/* 좁은 화면에서 우측 정렬 + 화면 밖으로 안 나가게 max-w 안전장치 */}
+                <DropdownMenuContent className="w-56 max-w-[calc(100vw-16px)] rounded-[12px] border-cur-hairline bg-cur-card shadow-[0_8px_24px_rgba(0,0,0,0.08)] font-sans" align="end">
                     {usage && (
                         <>
                             <div className="px-3 py-2.5 space-y-2.5">
@@ -216,7 +183,18 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                             <DropdownMenuSeparator className="bg-cur-hairline" />
                         </>
                     )}
-                    <DropdownMenuLabel className="px-3 pt-2 pb-0.5 text-[11px] font-semibold text-cur-muted-soft">계정</DropdownMenuLabel>
+                    {groupLabel("보고서·분석")}
+                    {item({ href: "/org/reports", label: "보고서 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {item({ href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    <DropdownMenuSeparator className="bg-cur-hairline" />
+                    {groupLabel("회사 관리")}
+                    {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {item({ href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {orgKind === "member" && (
+                        <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
+                    )}
+                    <DropdownMenuSeparator className="bg-cur-hairline" />
+                    {groupLabel("계정")}
                     <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                         <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
                     </DropdownMenuItem>
@@ -225,8 +203,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-        </div>
-    )
+        )
+    })()
 
     return (
         <div className="flex flex-col py-1 px-1 rounded-none border-0 gap-3">

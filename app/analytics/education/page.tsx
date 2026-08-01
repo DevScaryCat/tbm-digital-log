@@ -9,7 +9,7 @@ import { useRequireSubscription, fetchSubscription, isProActive } from "@/lib/us
 import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Hash, Loader2, Sparkles, ChevronRight, BookOpen } from "lucide-react"
+import { Loader2, ChevronRight } from "lucide-react"
 
 interface LogRow { id: string; date: string; education_type: string }
 interface DaySummary { date: string; summary: string }
@@ -25,8 +25,8 @@ function fmtDay(dateStr: string): { md: string; w: string } {
     return { md: `${m}월 ${d}일`, w }
 }
 
-// 교육 유형 → 막대 색
-const TYPE_COLORS = ["bg-cur-primary", "bg-[#ff9a5c]", "bg-amber-400", "bg-cur-success", "bg-cur-muted"]
+// 교육 유형 → 막대 색 (시스템 토큰만 — 임의 hex 금지)
+const TYPE_COLORS = ["bg-cur-primary", "bg-cur-primary/45", "bg-cur-success", "bg-cur-success/45", "bg-cur-muted"]
 
 // ── 베이직(예시) 데모 ──
 const SAMPLE = {
@@ -176,120 +176,114 @@ export default function EducationAnalyticsPage() {
 
                     {!pro && (
                         <div className="rounded-[12px] bg-cur-primary/[0.06] border border-cur-primary/30 p-4 space-y-2">
-                            <p className="text-[13px] text-cur-primary font-semibold flex items-center gap-1.5"><Sparkles className="w-4 h-4" /> 예시 화면입니다</p>
-                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. 구독하면 내가 작성한 안전보건교육일지를 월별로 분석해 교육 인원 통계와 날짜별 AI 교육 요약을 보여드립니다.</p>
-                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90">요금제 보기</Button>
+                            <p className="text-[13px] text-cur-primary font-semibold">예시 화면입니다</p>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">아래 수치는 샘플이에요. 구독하면 내가 작성한 안전보건교육일지를 월별로 분석해 교육 인원 통계와 날짜별 교육 요약을 보여드립니다.</p>
+                            <Button onClick={() => router.push("/pricing")} className="w-full h-10 rounded-[8px] bg-cur-primary text-white text-[14px] font-bold hover:opacity-90 focus-visible:ring-2 focus-visible:ring-cur-primary">요금제 보기</Button>
                         </div>
                     )}
 
-                    {/* 월 선택 */}
+                    {/* 월 선택 헤더 행 */}
                     <div className="flex items-center justify-between">
-                        <h2 className="text-[15px] font-bold text-cur-ink">월간 교육 분석</h2>
+                        <h2 className="text-[14px] font-bold text-cur-ink">월간 교육 분석</h2>
                         {pro ? (
                             <Select value={selectedKey} onValueChange={setSelectedKey}>
-                                <SelectTrigger className="h-9 w-auto gap-1 text-[13px] border-cur-hairline rounded-[8px] bg-cur-card text-cur-ink px-3 focus:ring-1 focus:ring-cur-primary"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="h-9 w-auto gap-1 border-cur-hairline rounded-[8px] bg-cur-card text-[13px] font-semibold text-cur-ink px-3 hover:border-cur-primary/40 focus:ring-2 focus:ring-cur-primary"><SelectValue /></SelectTrigger>
                                 <SelectContent className="bg-cur-card border-cur-hairline text-cur-body max-h-64">
                                     {monthOptions.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         ) : (
-                            <span className="text-[13px] text-cur-muted font-medium px-3 py-1.5 rounded-[8px] bg-cur-elevated">{monthLabel("2026-05")}</span>
+                            <span className="flex h-9 items-center rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[13px] font-semibold text-cur-muted">{monthLabel("2026-05")}</span>
                         )}
                     </div>
 
-                    {/* 요약 카드 (회의록 분석 페이지와 동일 스타일) */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <EduStat label="교육 횟수" value={stats.sessions} unit="회" />
-                        <EduStat label="교육 일수" value={stats.days} unit="일" />
-                        <EduStat label="연인원" value={stats.headcount} unit="명" />
-                        <EduStat label="평균 인원" value={stats.avg} unit="명/회" />
+                    {/* 통계 타일 행 */}
+                    <div className="grid grid-cols-4 divide-x divide-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center bg-cur-card">
+                        <StatTile label="교육 횟수" value={stats.sessions} unit="회" />
+                        <StatTile label="교육 일수" value={stats.days} unit="일" />
+                        <StatTile label="연인원" value={stats.headcount} unit="명" />
+                        <StatTile label="평균 인원" value={stats.avg} unit="명" />
                     </div>
 
                     {/* 교육 유형 분포 */}
                     {timeline.length > 0 && (
-                        <div className="bg-cur-card p-4 rounded-[12px] border border-cur-hairline space-y-3">
-                            <h3 className="text-[13px] font-bold text-cur-ink">교육 유형 분포</h3>
-                            <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-cur-elevated">
-                                {types.map((t, i) => (
-                                    <div key={t.type} className={`h-full ${TYPE_COLORS[i % TYPE_COLORS.length]}`} style={{ width: `${(t.count / totalTypes) * 100}%` }} />
-                                ))}
-                            </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                                {types.map((t, i) => (
-                                    <div key={t.type} className="flex items-center gap-1.5 text-[12px]">
-                                        <span className={`w-2.5 h-2.5 rounded-[3px] ${TYPE_COLORS[i % TYPE_COLORS.length]}`} />
-                                        <span className="text-cur-body font-medium">{t.type}</span>
-                                        <span className="text-cur-muted">{t.count}회</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 날짜별 AI 요약 타임라인 (히어로) */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-[18px] font-bold text-cur-ink flex items-center gap-2"><BookOpen className="w-5 h-5 text-cur-primary" /> 날짜별 교육 요약</h2>
-                            {pro && loadingAI && <span className="flex items-center gap-1.5 text-[12px] text-cur-muted"><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI 분석 중</span>}
-                        </div>
-
-                        {timeline.length === 0 ? (
-                            <div className="bg-cur-card p-8 rounded-[12px] border border-cur-hairline text-center text-[13px] text-cur-muted-soft">이 달에 작성된 교육일지가 없습니다.</div>
-                        ) : (
-                            <div className="relative pl-5">
-                                {/* 세로 라인 */}
-                                <div className="absolute left-[5px] top-2 bottom-2 w-px bg-cur-hairline" />
-                                <div className="space-y-3">
-                                    {timeline.map((d) => {
-                                        const { md, w } = fmtDay(d.date)
-                                        const clickable = pro && d.firstId
-                                        return (
-                                            <div key={d.date} className="relative">
-                                                {/* 점 */}
-                                                <div className="absolute -left-5 top-3.5 w-2.5 h-2.5 rounded-full bg-cur-primary ring-4 ring-cur-card" />
-                                                <div
-                                                    onClick={() => clickable && router.push(`/report/${d.firstId}`)}
-                                                    className={`bg-cur-card p-3.5 rounded-[10px] border border-cur-hairline ${clickable ? "cursor-pointer hover:border-cur-primary/40 active:scale-[0.99] transition-all" : ""}`}
-                                                >
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[13px] font-bold text-cur-ink">{md}</span>
-                                                            <span className="text-[11px] text-cur-muted">({w})</span>
-                                                            {d.sessions > 1 && (
-                                                                <span className="text-[10px] font-bold text-cur-primary bg-cur-primary/10 px-1.5 py-0.5 rounded-full">{d.sessions}회</span>
-                                                            )}
-                                                        </div>
-                                                        {clickable && <ChevronRight className="w-4 h-4 text-cur-muted shrink-0" />}
-                                                    </div>
-                                                    <p className="text-[14px] text-cur-body leading-snug">
-                                                        {d.summary || (pro && loadingAI ? <span className="text-cur-muted-soft">요약 생성 중…</span> : <span className="text-cur-muted-soft">교육 {d.sessions}회 실시</span>)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
+                        <section className="space-y-3">
+                            <h2 className="text-[14px] font-bold text-cur-ink">교육 유형 분포</h2>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-3">
+                                <div className="w-full h-2.5 rounded-full overflow-hidden flex bg-cur-elevated">
+                                    {types.map((t, i) => (
+                                        <div key={t.type} className={`h-full ${TYPE_COLORS[i % TYPE_COLORS.length]}`} style={{ width: `${(t.count / totalTypes) * 100}%` }} />
+                                    ))}
                                 </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 자주 다룬 주제 */}
-                    {keywords.length > 0 && (
-                        <div className="space-y-3">
-                            <h2 className="text-[18px] font-bold text-cur-ink flex items-center gap-2"><Hash className="w-5 h-5 text-cur-primary" /> 자주 다룬 교육 주제</h2>
-                            <div className="bg-cur-card p-5 rounded-[12px] border border-cur-hairline">
-                                <div className="flex flex-wrap gap-2">
-                                    {keywords.map((kw, idx) => (
-                                        <div key={idx} className="flex items-center gap-1.5 bg-cur-elevated px-3 py-1.5 rounded-full border border-cur-hairline">
-                                            <span className="text-[14px] font-semibold text-cur-ink">#{kw}</span>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                                    {types.map((t, i) => (
+                                        <div key={t.type} className="flex items-center gap-1.5 text-[12px]">
+                                            <span className={`w-2.5 h-2.5 rounded-[3px] ${TYPE_COLORS[i % TYPE_COLORS.length]}`} />
+                                            <span className="text-cur-body font-medium">{t.type}</span>
+                                            <span className="text-cur-muted">{t.count}회</span>
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 날짜별 교육 요약 */}
+                    <section className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-[14px] font-bold text-cur-ink">날짜별 교육 요약</h2>
+                            {pro && loadingAI && <span className="flex items-center gap-1.5 text-[12px] text-cur-muted"><Loader2 className="w-3.5 h-3.5 animate-spin" /> 분석 중</span>}
+                        </div>
+
+                        {timeline.length === 0 ? (
+                            <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">이 달 작성된 교육일지가 없어요</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {timeline.map((d) => {
+                                    const { md, w } = fmtDay(d.date)
+                                    const clickable = !!(pro && d.firstId)
+                                    return (
+                                        <div
+                                            key={d.date}
+                                            tabIndex={clickable ? 0 : undefined}
+                                            role={clickable ? "button" : undefined}
+                                            onClick={() => clickable && router.push(`/report/${d.firstId}`)}
+                                            onKeyDown={(e) => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); router.push(`/report/${d.firstId}`) } }}
+                                            className={`bg-cur-card p-4 rounded-[12px] border border-cur-hairline ${clickable ? "cursor-pointer hover:border-cur-primary/40 outline-none focus-visible:ring-2 focus-visible:ring-cur-primary active:scale-[0.99] transition-all" : ""}`}
+                                        >
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[13px] font-bold text-cur-ink">{md}</span>
+                                                    <span className="text-[11px] text-cur-muted">({w})</span>
+                                                    {d.sessions > 1 && <span className="text-[12px] font-semibold text-cur-primary">{d.sessions}회</span>}
+                                                </div>
+                                                {clickable && <ChevronRight className="w-4 h-4 text-cur-muted shrink-0" />}
+                                            </div>
+                                            <p className="text-[14px] text-cur-body leading-snug">
+                                                {d.summary || (pro && loadingAI ? <span className="text-cur-muted-soft">요약 생성 중…</span> : <span className="text-cur-muted-soft">교육 {d.sessions}회 실시</span>)}
+                                            </p>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </section>
+
+                    {/* 자주 다룬 교육 주제 */}
+                    {keywords.length > 0 && (
+                        <section className="space-y-3">
+                            <h2 className="text-[14px] font-bold text-cur-ink">자주 다룬 교육 주제</h2>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5">
+                                <div className="flex flex-wrap gap-2">
+                                    {keywords.map((kw, idx) => (
+                                        <span key={idx} className="px-2.5 py-1 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[13px] font-semibold text-cur-ink">{kw}</span>
+                                    ))}
+                                </div>
                                 <p className="text-[13px] text-cur-muted mt-4 leading-relaxed">
-                                    이 기간 <span className="font-semibold text-cur-primary">{keywords[0]}</span>{keywords[1] && <> · <span className="font-semibold text-cur-primary">{keywords[1]}</span></>} 관련 교육이 가장 자주 이뤄졌습니다.
+                                    이 기간 <span className="font-semibold text-cur-ink">{keywords[0]}</span>{keywords[1] && <> · <span className="font-semibold text-cur-ink">{keywords[1]}</span></>} 관련 교육이 가장 자주 이뤄졌습니다.
                                 </p>
                             </div>
-                        </div>
+                        </section>
                     )}
 
                 </div>
@@ -298,11 +292,14 @@ export default function EducationAnalyticsPage() {
     )
 }
 
-function EduStat({ label, value, unit }: { label: string; value: number | string; unit: string }) {
+// 통계 타일 — TBM 종합분석과 동일 문법 유지
+function StatTile({ label, value, unit, tone = "text-cur-ink" }: { label: string; value: number | string; unit: string; tone?: string }) {
     return (
-        <div className="bg-cur-card p-4 rounded-[8px] border border-cur-hairline text-center">
-            <div className="text-[12px] text-cur-muted font-medium mb-1">{label}</div>
-            <div className="text-[24px] font-bold text-cur-ink font-mono">{value}<span className="text-[14px] font-medium text-cur-muted ml-1">{unit}</span></div>
+        <div className="py-3.5 px-2 bg-cur-card">
+            <div className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">{label}</div>
+            <div className={`text-[20px] leading-none font-bold font-mono break-all ${tone}`}>
+                {value}<span className="text-[13px] font-medium text-cur-muted ml-0.5">{unit}</span>
+            </div>
         </div>
     )
 }
