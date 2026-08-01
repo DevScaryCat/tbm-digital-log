@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, Loader2, MessageSquareWarning } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
+import { hasAgreedTerms } from "@/lib/consentStorage"
 
 // 조용한 필드: 면(elevated)으로 구분하고 포커스에서만 카드색+링 — 앱 작성 화면과 동일 문법
 const FIELD_CLS =
@@ -134,6 +135,34 @@ export default function LoginPage() {
                         className="w-full h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99]"
                     >
                         {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "로그인"}
+                    </Button>
+
+                    <div className="flex items-center gap-3 pt-1">
+                        <span className="flex-1 h-px bg-cur-hairline" />
+                        <span className="text-[12px] text-cur-muted-soft">또는</span>
+                        <span className="flex-1 h-px bg-cur-hairline" />
+                    </div>
+
+                    {/* 카카오 가입자의 재로그인 입구 — 시작 페이지에만 있어서 로그인 화면에선 길이 없었다.
+                        약관 동의 이력이 없는(=사실상 신규) 사용자는 동의 절차가 있는 /start로 보낸다 */}
+                    <Button
+                        type="button"
+                        onClick={async () => {
+                            if (!hasAgreedTerms()) { router.push("/start"); return }
+                            setLoading(true)
+                            const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+                                provider: "kakao",
+                                options: { redirectTo: `${window.location.origin}/` },
+                            })
+                            if (oauthErr) {
+                                setError("카카오 로그인에 실패했어요. 잠시 후 다시 시도해주세요.")
+                                setLoading(false)
+                            }
+                        }}
+                        disabled={loading}
+                        className="w-full h-12 bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000] text-[15px] font-semibold rounded-xl flex items-center justify-center transition-transform active:scale-[0.99]"
+                    >
+                        <MessageSquareWarning className="w-5 h-5 mr-2 fill-black" /> 카카오로 로그인
                     </Button>
                 </form>
 

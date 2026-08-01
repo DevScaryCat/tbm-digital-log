@@ -157,7 +157,10 @@ export function useRequireSubscription() {
             }
             if (!isAllowed(data as SubscriptionRow)) {
                 allowedCache = null
-                router.replace("/pricing")
+                // 구독 행 자체가 없는 계정(카카오 OAuth·구 무인증 가입)은 요금제가 아니라
+                // 무료체험 온보딩으로 — "가입 = 첫 달 무료" 약속을 전 가입 경로에서 지킨다.
+                // 행이 있는데 막힌 것(체험 만료·해지)만 결제 유도(/pricing).
+                router.replace(data ? "/pricing" : "/start-trial")
                 return
             }
             allowedCache = { userId: user.id, ts: Date.now() }
