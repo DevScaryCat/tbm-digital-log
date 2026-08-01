@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription } from "@/lib/portone";
 import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
+import { aiInputHash, getAiCache, setAiCache } from "@/lib/aiCache";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,6 @@ export async function POST(request: Request) {
     const { user, allowed } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
-    // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
-    if (!(await checkAndRecordAiUsage(user.id, "minutes"))) {
-      return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
-    }
 
     const { text } = await request.json();
 
@@ -29,6 +26,16 @@ export async function POST(request: Request) {
     }
     if (text.length > MAX_TEXT_LEN) {
       return NextResponse.json({ error: "입력이 너무 깁니다." }, { status: 413 });
+    }
+
+    // 동일 원문 재요청은 캐시로 — 일일 한도도 소모하지 않는다 (한도 검사보다 먼저)
+    const inputHash = aiInputHash(text);
+    const cached = await getAiCache(user.id, "minutes", inputHash);
+    if (cached) return NextResponse.json(cached);
+
+    // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
+    if (!(await checkAndRecordAiUsage(user.id, "minutes"))) {
+      return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
     }
 
     const systemPrompt = `
@@ -134,6 +141,11 @@ export async function POST(request: Request) {
       instructions: str(input.instructions),
       safetyPhrase: str(input.safetyPhrase, "안전제일!"),
     };
+
+    // 빈 결과는 캐시하지 않는다 — 재시도 여지를 남긴다
+    if (result.workContent || hazards.length > 0) {
+      await setAiCache(user.id, "minutes", inputHash, result);
+    }
 
     return NextResponse.json(result);
   } catch (error: unknown) {

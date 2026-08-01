@@ -73,9 +73,10 @@ export default function DashboardPage() {
         }
     }
 
-    // 위험성평가/일괄 PDF에서 돌아온 경우: 직전 선택 범위 복원 (1회용).
-    // 감독자 진입 분기가 이 플래그를 봐야 하므로(픽커를 건너뛰고 내 달력으로 직행) ref에 남긴다.
+    // 위험성평가/일괄 PDF에서 돌아온 경우: 직전 선택 범위 복원 (1회용)
     const restoredRef = useRef(false)
+    // 마지막으로 '적용된' 현장 선택 — 픽커에서 취소하면 이 값으로 되돌린다 (화면과 선택 상태 불일치 방지)
+    const appliedRef = useRef<string[]>([])
     useEffect(() => {
         try {
             const saved = sessionStorage.getItem("dash_restore")
@@ -165,7 +166,8 @@ export default function DashboardPage() {
         }
     }
 
-    // 진입 분기 — 감독자는 현장 선택부터, 그 외는 바로 본인 달력
+    // 진입 분기 — 감독자 포함 전원 내 현장 달력 직행(Chris). 다른 현장은 달력 안
+    // '다른 현장 같이 보기'에서만 고른다 (매 진입마다 픽커를 거치게 하면 상용 동선이 무거워진다)
     useEffect(() => {
         if (ctxLoading) return
         ;(async () => {
@@ -173,33 +175,36 @@ export default function DashboardPage() {
             if (!session) { router.push("/login"); return }
             const uid = session.user.id
             setSelfId(uid)
-            if (ctx?.kind === "owner") {
-                // 일괄 PDF에서 복귀한 경우 — 배치는 내 현장 전용이라 픽커를 다시 묻지 않고
-                // 복원된 기간 그대로 내 달력으로 직행 (아니면 복원한 범위가 픽커에서 지워진다)
-                if (restoredRef.current) { await loadOwn(); return }
-                const meta = session.user.user_metadata ?? {}
-                const selfName = String(meta.site_name ?? "").trim() || "내 현장"
-                try {
-                    const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${session.access_token}` } })
-                    const j = res.ok ? await res.json() : { members: [] }
-                    setSiteOptions([
-                        { userId: uid, siteName: selfName, isSelf: true },
-                        ...((j.members ?? []) as any[])
-                            .filter((m) => m.status === "active")
-                            .map((m) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정", isSelf: false })),
-                    ])
-                } catch {
-                    setSiteOptions([{ userId: uid, siteName: selfName, isSelf: true }])
-                }
-                setPicked([uid])
-                setStage("pick")
-                setLoading(false)
-                return
-            }
+            appliedRef.current = [uid]
             await loadOwn()
         })()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ctxLoading, ctx?.kind, router])
+    }, [ctxLoading, router])
+
+    // 다른 현장 같이 보기 (감독자 전용) — 명단은 픽커를 열 때만 불러온다
+    const openPicker = async () => {
+        if (!selfId) return
+        if (siteOptions.length === 0) {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                const meta = session?.user.user_metadata ?? {}
+                const selfName = String(meta.site_name ?? "").trim() || "내 현장"
+                const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${session?.access_token}` } })
+                const j = res.ok ? await res.json() : { members: [] }
+                setSiteOptions([
+                    { userId: selfId, siteName: selfName, isSelf: true },
+                    ...((j.members ?? []) as any[])
+                        .filter((m) => m.status === "active")
+                        .map((m) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정", isSelf: false })),
+                ])
+            } catch {
+                setSiteOptions([{ userId: selfId, siteName: "내 현장", isSelf: true }])
+            }
+        }
+        setPicked((prev) => (prev.length ? prev : [selfId]))
+        setPickErr(null)
+        setStage("pick")
+    }
 
     const togglePick = (id: string) => {
         setPickErr(null)
@@ -218,6 +223,7 @@ export default function DashboardPage() {
         setStage("cal")
         setDateRange(undefined)
         setSelectedDate(new Date())
+        appliedRef.current = picked
         if (picked.length === 1 && picked[0] === selfId) await loadOwn()
         else await loadSites(picked)
     }
@@ -307,7 +313,7 @@ export default function DashboardPage() {
         return (
             <div className="min-h-screen bg-cur-canvas font-sans text-cur-ink">
                 <div className="max-w-lg mx-auto px-4 pt-4">
-                    <TBMHeader title="보고서" backHref="/" />
+                    <TBMHeader title="안전달력" backHref="/" />
                 </div>
                 <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                     <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-3">
@@ -348,6 +354,14 @@ export default function DashboardPage() {
                         >
                             선택한 {picked.length}곳 달력 보기
                         </Button>
+                        {/* 픽커는 달력 안에서 열리는 부가 화면 — 되돌아갈 길을 준다 (선택은 마지막 적용값으로 복원) */}
+                        <Button
+                            variant="outline"
+                            onClick={() => { setPicked(appliedRef.current); setPickErr(null); setStage("cal") }}
+                            className="w-full h-10 rounded-[8px] border-cur-hairline text-cur-ink text-[13px] font-semibold"
+                        >
+                            취소
+                        </Button>
                     </div>
                 </main>
             </div>
@@ -358,16 +372,16 @@ export default function DashboardPage() {
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10">
-                    <TBMHeader title="보고서" />
+                    <TBMHeader title="안전달력" />
                 </div>
 
                 <div className="p-6 space-y-6 flex-1 bg-cur-canvas-soft">
 
-                    {/* 감독자 — 지금 보고 있는 현장들 + 다시 선택 */}
+                    {/* 감독자 — 지금 보고 있는 현장 + 다른 현장 합쳐 보기 입구 (기본은 내 현장만) */}
                     {ctx?.kind === "owner" && (
                         <button
                             type="button"
-                            onClick={() => setStage("pick")}
+                            onClick={openPicker}
                             className="w-full flex items-center gap-2.5 bg-cur-card px-4 py-3 rounded-[12px] border border-cur-hairline hover:border-cur-primary/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                         >
                             <Building2 className="w-4 h-4 text-cur-muted shrink-0" />
@@ -376,7 +390,9 @@ export default function DashboardPage() {
                                     ? "내 현장"
                                     : picked.map((id) => siteNameOf.get(id) ?? "현장").join(" · ")}
                             </span>
-                            <span className="shrink-0 text-[12px] text-cur-primary font-semibold">현장 다시 선택</span>
+                            <span className="shrink-0 text-[12px] text-cur-primary font-semibold">
+                                {selfMode ? "다른 현장 같이 보기" : "현장 다시 선택"}
+                            </span>
                         </button>
                     )}
 

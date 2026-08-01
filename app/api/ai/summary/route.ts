@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription } from "@/lib/portone";
 import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
+import { aiInputHash, getAiCache, setAiCache } from "@/lib/aiCache";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,6 @@ export async function POST(request: Request) {
     const { user, allowed } = await getUserAndSubscription(request);
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     if (!allowed) return NextResponse.json({ error: "구독이 필요합니다." }, { status: 402 });
-    // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
-    if (!(await checkAndRecordAiUsage(user.id, "summary"))) {
-      return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
-    }
 
     const { text } = await request.json();
 
@@ -29,6 +26,16 @@ export async function POST(request: Request) {
     }
     if (text.length > MAX_TEXT_LEN) {
       return NextResponse.json({ error: "입력이 너무 깁니다." }, { status: 413 });
+    }
+
+    // 동일 원문 재요청은 캐시로 — 일일 한도도 소모하지 않는다 (한도 검사보다 먼저)
+    const inputHash = aiInputHash(text);
+    const cached = await getAiCache(user.id, "summary", inputHash);
+    if (cached) return NextResponse.json(cached);
+
+    // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
+    if (!(await checkAndRecordAiUsage(user.id, "summary"))) {
+      return NextResponse.json({ error: AI_LIMIT_MESSAGE }, { status: 429 });
     }
 
     const systemPrompt = `
@@ -46,12 +53,13 @@ export async function POST(request: Request) {
       1. educationContent (교육 내용):
          - 교육 내용을 개조식(- 기호)으로 정리하되, 명사형으로 종결하세요 (~함, ~실시, ~조치 등).
          - 각 항목은 줄바꿈으로 구분하세요. (educationContent 문자열 안에서 항목마다 줄을 바꾸면 됩니다)
-         - [핵심: 충분한 분량의 상세 서술]
-           없는 내용을 지어내지 않되, 실제로 언급된 각 내용을 2~3문장 수준으로 상세하게 풀어쓰세요.
-           각 항목마다 ① 배경/상황 → ② 구체적 지시·조치 → ③ 주의사항·기대효과 구조를 따르세요.
+         - [분량: 깔끔한 공문서 수준 — 뻥튀기 금지]
+           키워드만 말했더라도 각 항목을 완결된 1~2문장의 공문서 문장으로 풀어쓰세요.
+           구체적 지시·이유가 실제로 언급된 경우에만 덧붙이고, 상투적인 배경 설명이나
+           기대효과 문구("~의 핵심 안전수칙임을 재교육함" 류)로 문장을 늘리지 마세요.
            (예시: 원본 "안전모 잘 쓰세요")
-           → "- 작업 전 개인보호구 착용 상태 점검을 실시함. 특히 안전모 턱끈의 결속 상태를 확인하고, 느슨하거나 미착용 시 즉시 시정하도록 전 작업자에게 지시함. 올바른 보호구 착용은 낙하물로 인한 두부 부상을 예방하는 핵심 안전수칙임을 재교육함."
-         - 원본 내용이 충분하다면 최소 5개 이상, 짧더라도 최소 2~3개 항목을 확보하되 없는 내용은 지어내지 마세요.
+           → "- 작업 전 안전모 착용 상태 점검 실시. 턱끈 결속을 확인하고 미착용 시 즉시 시정하도록 지시함."
+         - 항목 수는 실제 언급된 내용만큼만 — 없는 내용을 지어내 항목을 늘리지 마세요.
 
       2. remarks (특이사항):
          - 발언자가 확실하게 언급한 특이사항(작업자 건강 상태, 날씨 주의, 특별 전달·공지 등)만 발췌하여 구체적 문장형으로 작성하세요.
@@ -104,6 +112,11 @@ export async function POST(request: Request) {
     if (!educationContent) {
       remarks =
         remarks || "음성 내용이 충분하지 않아 요약이 생성되지 않았습니다. 직접 입력해주세요.";
+    }
+
+    // 빈 결과는 캐시하지 않는다 — 재시도 여지를 남긴다
+    if (educationContent) {
+      await setAiCache(user.id, "summary", inputHash, { educationContent, remarks });
     }
 
     return NextResponse.json({ educationContent, remarks });
