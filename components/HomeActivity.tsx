@@ -49,8 +49,9 @@ export function HomeActivity({ isOwner, statsLoading, myMinutes, myLogs, mySugge
                 <h3 className="text-[15px] font-semibold text-cur-ink tracking-[-0.11px] px-1">활동 현황</h3>
             )}
 
-            {/* 모바일에서도 1행 4열 고정(Chris) — 2×2로 접히면 구획이 어색해져서 라벨을 줄여 한 줄을 지킨다 */}
-            <div className="grid grid-cols-4 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
+            {/* 모바일에서도 1행 4열 고정(Chris) — 2×2로 접히면 구획이 어색해져서 라벨을 줄여 한 줄을 지킨다.
+                구분선은 divide-x로 — gap-px 배경 방식은 서브픽셀 반올림으로 일부 구분선이 사라진다 */}
+            <div className="grid grid-cols-4 divide-x divide-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
                 <div onClick={() => router.push('/analytics')} role="button" tabIndex={0} aria-label="TBM 회의록 목록 보기" onKeyDown={cardKeyDown(() => router.push('/analytics'))} className="relative py-6 px-2 cursor-pointer bg-cur-card hover:bg-cur-elevated active:bg-cur-elevated transition-colors">
                     <ChevronRight className="w-3.5 h-3.5 text-cur-muted-soft absolute bottom-2 right-2" />
                     <div className="text-[12px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1.5">TBM</div>

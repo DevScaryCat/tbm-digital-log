@@ -695,9 +695,9 @@ export default function MainPage() {
           {isEmptyStart && (
             <div className="space-y-5">
               <div className="pt-1">
-                <h2 className="text-[20px] font-bold text-cur-ink tracking-[-0.02em] leading-snug">오늘 TBM, 1분만 녹음해보세요</h2>
+                <h2 className="text-[20px] font-bold text-cur-ink tracking-[-0.02em] leading-snug">오늘 TBM, 편하게 녹음해보세요</h2>
                 <p className="text-[13px] text-cur-muted mt-1.5 leading-relaxed">
-                  말한 내용은 AI가 회의록·교육일지로 정리해요. 첫 기록이 생기면 이 자리에 활동 현황과 교육 진행도가 채워집니다.
+                  녹음만 하면 회의록·교육일지 출력물을 AI가 자동으로 만들어드려요. 첫 기록이 생기면 이 자리에 활동 현황과 교육 진행도가 채워집니다.
                 </p>
               </div>
               {writeCards}
