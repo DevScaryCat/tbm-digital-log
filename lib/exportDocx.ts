@@ -48,6 +48,7 @@ export interface MinutesDocData {
     safety_phrase?: string | null
     instructions?: string | null
     hazards?: MinutesHazard[] | null
+    raw_transcript?: string | null
 }
 
 export interface DocParticipant {
@@ -74,6 +75,7 @@ export interface EducationDocData {
     education_content?: string | null
     remarks?: string | null
     photo_url?: string | null
+    raw_transcript?: string | null
 }
 
 export interface EducationDocItem {
@@ -270,6 +272,32 @@ function footer(company?: string | null): Paragraph {
     })
 }
 
+/**
+ * 문서 맨 뒤 "음성 원문" 섹션 — 4개 출력 형식(HWPX·DOCX·XLSX·PDF)이 같은 문구·순서를 쓴다.
+ * 원문이 비면 빈 배열 → 제목만 남은 페이지가 생기지 않는다.
+ */
+function transcriptParas(raw?: string | null): Paragraph[] {
+    // STT 텍스트에 CRLF가 섞여 들어와도 줄 단위가 깨지지 않게 통일.
+    // docx 라이브러리는 XML 1.0 금지 문자를 걸러주지 않아, 원문에 제어문자가 섞이면
+    // 워드가 파일을 아예 못 연다 — 여기서 떨궈낸다(HWPX의 esc()와 같은 문자군).
+    const text = String(raw ?? "")
+        .replace(/\r\n?/g, "\n")
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
+        .trim()
+    if (!text) return []
+    return [
+        // 법정 서식 레이아웃이 밀리지 않도록 원문은 항상 새 페이지에서 시작
+        pageBreak(),
+        new Paragraph({ spacing: { after: 120 }, children: [run("음성 원문", { bold: true, size: 24 })] }),
+        new Paragraph({
+            spacing: { after: 240 },
+            children: [run("현장에서 녹음된 음성을 자동으로 받아 적은 기록입니다. 맞춤법·표기가 실제 발화와 다를 수 있습니다.", { size: 18, color: C.gray500 })],
+        }),
+        // 본문보다 한 단계 작게, \n은 문단으로 보존(빈 줄은 빈 문단)
+        ...paras(text, { size: 18 }),
+    ]
+}
+
 function dateKo(date?: string | null): string {
     if (!date) return "년 월 일"
     const [y, m, d] = date.split("-")
@@ -398,7 +426,7 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
         ], 550))
     }
 
-    return [table(grid([15, 35, 15, 35]), rows)]
+    return [table(grid([15, 35, 15, 35]), rows), ...transcriptParas(m.raw_transcript)]
 }
 
 // ---------------- 안전보건교육일지 (ReportView 재현: 일지 + 참석자 명단 + 사진) ----------------
@@ -561,6 +589,10 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
         children: photo ? [imageRun(photo, 680, 780)] : [run("등록된 현장 사진이 없습니다.", { bold: true, color: C.gray500 })],
     }))
     children.push(footer(log.company_name))
+
+    // --- 마지막 페이지: 음성 원문 (원문이 있을 때만) ---
+    const transcript = transcriptParas(log.raw_transcript)
+    if (transcript.length > 0) children.push(...transcript, footer(log.company_name))
 
     return children
 }

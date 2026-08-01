@@ -617,6 +617,31 @@ function timeRange(start?: string | null, end?: string | null): string {
     return `${start?.slice(0, 5) || ""} ~ ${end?.slice(0, 5) || ""}`
 }
 
+// ---------------- 음성 원문 (STT 원문 — 문서 맨 뒤 별도 페이지) ----------------
+
+const TRANSCRIPT_TITLE = "음성 원문"
+const TRANSCRIPT_NOTE =
+    "현장에서 녹음된 음성을 자동으로 받아 적은 기록입니다. 맞춤법·표기가 실제 발화와 다를 수 있습니다."
+
+/**
+ * 원문 문단들. 내용이 공백뿐이면 빈 배열 — 제목만 남은 빈 섹션을 만들지 않는다.
+ * 발화 원문이 그대로 들어오므로 텍스트는 전부 para()/paras()를 거쳐 esc()로 이스케이프된다
+ * (&, <, > 가 날것으로 남으면 section0.xml이 깨져 한/글이 파일을 아예 못 연다).
+ */
+function transcriptParas(doc: HwpxDoc, raw?: string | null): string[] {
+    // STT 텍스트에 \r\n·\r이 섞여 들어와도 문단 분할이 어긋나지 않게 정규화
+    const text = String(raw ?? "").replace(/\r\n?/g, "\n").trim()
+    if (!text) return []
+    return [
+        // 법정 서식 레이아웃이 밀리지 않도록 원문은 항상 새 페이지에서 시작
+        para(doc, { breakBefore: true, char: { bold: true, size: 24 }, text: TRANSCRIPT_TITLE }),
+        para(doc, { char: { size: 18, color: C.gray500 }, text: TRANSCRIPT_NOTE }),
+        // ParaSpec에 문단 간격이 없어 빈 문단으로 제목/본문 사이를 띄운다
+        para(doc, { char: { size: 18 } }),
+        ...paras(doc, text, { size: 18 }),
+    ]
+}
+
 // ---------------- TBM 회의록 (exportDocx.minutesChildren과 동일 표 구성) ----------------
 
 async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadStats, first: boolean): Promise<void> {
@@ -735,6 +760,9 @@ async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadSt
 
     // 여러 건은 표 앞 쪽 나눔으로 구분
     doc.paras.push(tablePara(doc, grid([15, 35, 15, 35]), rows, !first))
+
+    // 원문은 이 건의 맨 뒤 — 다음 건도 쪽 나눔으로 시작하므로 건끼리 섞이지 않는다
+    doc.paras.push(...transcriptParas(doc, m.raw_transcript))
 }
 
 // ---------------- 안전보건교육일지 (exportDocx.educationChildren과 동일 구성) ----------------
@@ -882,6 +910,14 @@ async function addEducation(doc: HwpxDoc, item: EducationDocItem, stats: ImageLo
             : para(doc, { align: "CENTER", char: { bold: true, color: C.gray500 }, text: "등록된 현장 사진이 없습니다." })
     )
     doc.paras.push(footerPara(doc, log.company_name))
+
+    // --- PAGE 4: 음성 원문 (원문이 있을 때만) ---
+    const transcript = transcriptParas(doc, log.raw_transcript)
+    if (transcript.length > 0) {
+        doc.paras.push(...transcript)
+        // 이 문서의 모든 페이지가 현장명 푸터로 끝나므로 원문 페이지도 동일하게 맞춘다
+        doc.paras.push(footerPara(doc, log.company_name))
+    }
 }
 
 // ---------------- 공개 API (exportDocx와 대칭) ----------------

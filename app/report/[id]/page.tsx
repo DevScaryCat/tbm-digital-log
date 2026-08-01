@@ -6,7 +6,11 @@ import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Printer, ArrowLeft, Loader2, Home, FileDown } from "lucide-react"
+
+// 원문에는 근로자 발화가 그대로 남아 원청 제출본에선 빼고 싶을 수 있다 — 선택을 기기에 기억
+const INCLUDE_TRANSCRIPT_KEY = "antok_export_include_transcript"
 
 interface TbmLog {
     id: string;
@@ -23,6 +27,7 @@ interface TbmLog {
     remarks: string;
     photo_url: string | null;
     confirmation_signature: string | null;
+    raw_transcript: string | null;
     created_at: string;
 }
 
@@ -45,16 +50,26 @@ export default function ReportPage() {
     // 문서 출력 형식(user_metadata) — 조회 실패 시 PDF 기본 동작 유지
     const [exportFormat, setExportFormat] = useState<string>("pdf")
     const [exporting, setExporting] = useState(false)
+    // 음성 원문 포함 여부 — 기본 켜짐, 사용자가 끈 경우("0")만 제외
+    const [includeTranscript, setIncludeTranscript] = useState(true)
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setExportFormat(session?.user.user_metadata?.preferred_export_format || "pdf")
         })
+        try { setIncludeTranscript(localStorage.getItem(INCLUDE_TRANSCRIPT_KEY) !== "0") } catch { /* 무시 */ }
     }, [])
+
+    const toggleTranscript = (on: boolean) => {
+        setIncludeTranscript(on)
+        try { localStorage.setItem(INCLUDE_TRANSCRIPT_KEY, on ? "1" : "0") } catch { /* 무시 */ }
+    }
 
     const handleDocxSave = async () => {
         if (!log || exporting) return
         setExporting(true)
+        // 화면에서 뺀 원문은 파일에도 넣지 않는다 — 개인정보가 섞일 수 있는 발화 원문
+        const items = [{ log: { ...log, raw_transcript: includeTranscript ? log.raw_transcript : null }, participants }]
         try {
             // 빌더는 클릭 시점에만 로드 — 초기 번들 비대 방지
             if (exportFormat === "hwp") {
@@ -63,7 +78,7 @@ export default function ReportPage() {
                     import("@/lib/exportHwpx"),
                     import("@/lib/exportDocx"),
                 ])
-                const { blob, imageFailures } = await buildEducationHwpx([{ log, participants }])
+                const { blob, imageFailures } = await buildEducationHwpx(items)
                 if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
                 downloadBlob(blob, suggestHwpxFilename("education", log.date, log.company_name))
             } else if (exportFormat === "xlsx") {
@@ -72,12 +87,12 @@ export default function ReportPage() {
                     import("@/lib/exportXlsx"),
                     import("@/lib/exportDocx"),
                 ])
-                const { blob, imageFailures } = await buildEducationXlsx2([{ log, participants }])
+                const { blob, imageFailures } = await buildEducationXlsx2(items)
                 if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
                 downloadBlob(blob, suggestXlsxFilename("education", log.date, log.company_name))
             } else {
                 const { buildEducationDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
-                const { blob, imageFailures } = await buildEducationDocx([{ log, participants }])
+                const { blob, imageFailures } = await buildEducationDocx(items)
                 if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
                 downloadBlob(blob, suggestFilename("education", log.date, log.company_name))
             }
@@ -129,6 +144,7 @@ export default function ReportPage() {
 
     if (!log) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
 
+    const transcript = log.raw_transcript?.trim() || ""
     const maleCount = participants.filter(p => p.gender === 'M').length
     const femaleCount = participants.filter(p => p.gender === 'F').length
     const totalCount = participants.length
@@ -161,6 +177,19 @@ export default function ReportPage() {
                     </div>
                     {exportFormat === "hwp" && (
                         <p className="text-[11px] text-cur-muted">정식 한글 파일(.hwpx)로 저장돼요 — 한글 2014 이상에서 열립니다.</p>
+                    )}
+                    {!!transcript && (
+                        <div className="flex items-center gap-2">
+                            <Checkbox
+                                id="includeTranscript"
+                                checked={includeTranscript}
+                                onCheckedChange={(checked) => toggleTranscript(checked === true)}
+                                className="w-[16px] h-[16px] rounded-[4px] border-cur-hairline-strong data-[state=checked]:bg-blue-900 data-[state=checked]:text-cur-on-primary data-[state=checked]:border-blue-900 focus-visible:ring-2 focus-visible:ring-blue-900"
+                            />
+                            <label htmlFor="includeTranscript" className="text-[12px] text-cur-muted cursor-pointer select-none">
+                                음성 원문 포함
+                            </label>
+                        </div>
                     )}
                 </div>
             </div>
@@ -337,6 +366,20 @@ export default function ReportPage() {
                 </div>
                 <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
             </div>
+
+            {/* 원문은 법정 서식이 아니므로 서명·사진 뒤 별도 장에서 시작한다 */}
+            {!!transcript && includeTranscript && (
+                <div className="max-w-[210mm] mx-auto bg-cur-card p-[10mm] print:shadow-none print:w-full print:break-before-page min-h-[297mm] relative box-border flex flex-col">
+                    {/* 제목·본문 크기는 한글/워드/엑셀 출력과 같은 12pt·9pt 눈금에 맞춘다 —
+                        같은 문서를 형식만 바꿔 뽑았을 때 원문 장이 서로 달라 보이면 안 된다 */}
+                    <h2 className="text-[16px] font-bold mb-2">음성 원문</h2>
+                    <p className="text-[12px] text-gray-600 mb-4">현장에서 녹음된 음성을 자동으로 받아 적은 기록입니다. 맞춤법·표기가 실제 발화와 다를 수 있습니다.</p>
+                    <div className="whitespace-pre-wrap break-words leading-relaxed text-[12px]">
+                        {transcript}
+                    </div>
+                    <div className="w-full text-center text-sm border-t border-black pt-2 mt-auto print:mt-auto font-bold">{log.company_name || "현장명"}</div>
+                </div>
+            )}
 
         </div>
     )

@@ -184,6 +184,76 @@ function timeRange(start?: string | null, end?: string | null): string {
     return `${start?.slice(0, 5) || ""} ~ ${end?.slice(0, 5) || ""}`
 }
 
+// ---------------- 음성 원문 섹션 (문서 맨 뒤 공통) ----------------
+
+const TRANSCRIPT_NOTE =
+    "현장에서 녹음된 음성을 자동으로 받아 적은 기록입니다. 맞춤법·표기가 실제 발화와 다를 수 있습니다."
+/** 엑셀 셀 상한은 32,767자지만 훨씬 낮게 끊는다 — 한 행이 길면 행 높이 상한(409pt)에 걸려 인쇄에서 잘린다 */
+const TRANSCRIPT_MAX_CHARS = 1000
+/** 9pt 한 줄의 대략 높이(pt) */
+const TRANSCRIPT_LINE_PT = 13
+
+/** 한글·한자·가나는 폭이 2배 — 병합 셀은 자동 높이가 없어 줄 수를 직접 추정해야 한다 */
+function displayWidth(s: string): number {
+    let w = 0
+    for (const ch of s) {
+        w += /[ᄀ-ᇿ⺀-꓏ꥠ-꥿가-퟿豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1
+    }
+    return w
+}
+
+function transcriptRowHeight(s: string, perLine: number): number {
+    const lines = Math.max(1, Math.ceil(displayWidth(s) / perLine))
+    return Math.min(400, lines * TRANSCRIPT_LINE_PT + 4) // 엑셀 행 높이 상한 409pt
+}
+
+function chunkLine(line: string): string[] {
+    if (line.length <= TRANSCRIPT_MAX_CHARS) return [line]
+    const out: string[] = []
+    for (let i = 0; i < line.length; i += TRANSCRIPT_MAX_CHARS) out.push(line.slice(i, i + TRANSCRIPT_MAX_CHARS))
+    return out
+}
+
+/**
+ * 시트 맨 뒤에 "음성 원문"을 덧붙인다(startRow = 기존 표 다음 빈 행 → 두 줄 띄우고 시작).
+ * 원문 전체를 셀 하나에 넣으면 엑셀에서 잘리므로 줄바꿈 단위로 행을 나눈다.
+ * 표 너비만큼만 병합하므로 fitToWidth 인쇄 범위는 그대로다.
+ */
+function appendTranscript(
+    ws: ExcelJS.Worksheet,
+    startRow: number,
+    cols: number,
+    raw: string | null | undefined
+): void {
+    // ExcelJS는 C0 제어문자는 걸러주지만 U+FFFE·U+FFFF(XML 1.0 비문자)는 그대로 써서
+    // 파일이 안 열린다 — 다른 형식과 같은 문자군을 여기서도 떨궈낸다.
+    const text = String(raw ?? "")
+        .replace(/\r\n?/g, "\n")
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
+    if (!text.trim()) return // 원문이 없으면 섹션 자체를 만들지 않는다
+
+    // 기본 11pt 기준 열 폭 합 — 본문은 9pt라 그만큼 더 들어간다
+    const totalWidth = (ws.columns ?? []).slice(0, cols).reduce((a, c) => a + (c.width ?? 10), 0)
+    const perLine = Math.max(20, totalWidth * 1.2)
+
+    let r = startRow + 2 // 기존 표 마지막 행에서 두 줄 띄움
+
+    mergeBox(ws, r, 1, r, cols, "음성 원문", { bold: true, size: 12, noBorder: true })
+    ws.getRow(r).height = 24
+    r++
+    mergeBox(ws, r, 1, r, cols, TRANSCRIPT_NOTE, { size: 9, color: C.gray500, valign: "top", noBorder: true })
+    ws.getRow(r).height = transcriptRowHeight(TRANSCRIPT_NOTE, perLine * 1.15)
+    r++
+
+    for (const line of text.split("\n")) {
+        for (const chunk of chunkLine(line)) {
+            mergeBox(ws, r, 1, r, cols, chunk, { size: 9, valign: "top", noBorder: true })
+            ws.getRow(r).height = transcriptRowHeight(chunk, perLine)
+            r++
+        }
+    }
+}
+
 // ---------------- TBM 회의록 시트 (MinutesView 재현) ----------------
 
 async function fillMinutesSheet(
@@ -314,6 +384,8 @@ async function fillMinutesSheet(
         if (s2) placeImage(wb, ws, s2, r, 4, 110, 30, 0.3)
         r++
     }
+
+    appendTranscript(ws, r, 4, m.raw_transcript)
 }
 
 // ---------------- 안전보건교육일지 시트 (ReportView 재현: 일지 + 참석자 명단 + 사진) ----------------
@@ -476,6 +548,9 @@ async function fillEducationSheet(
         photo ? { align: "center" } : { bold: true, color: C.gray500, align: "center" })
     for (let i = 0; i < PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
     if (photo) placeImage(wb, ws, photo, r, 1, 600, 460, 0.25)
+    r += PHOTO_ROWS
+
+    appendTranscript(ws, r, 6, log.raw_transcript)
 }
 
 // ---------------- 공개 API (exportDocx/exportHwpx와 대칭) ----------------
