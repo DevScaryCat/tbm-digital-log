@@ -6,7 +6,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: `${base}/`, changeFrequency: "weekly", priority: 1 },
     { url: `${base}/pricing`, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${base}/start`, changeFrequency: "monthly", priority: 0.6 },
-    { url: `${base}/login`, changeFrequency: "yearly", priority: 0.3 },
+    // /start는 /login으로 리다이렉트만 하므로 색인 대상에서 빼고, 그 자리를 정본 /login이 받는다
+    { url: `${base}/login`, changeFrequency: "monthly", priority: 0.6 },
   ];
 }

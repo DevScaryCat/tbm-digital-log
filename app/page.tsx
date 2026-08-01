@@ -65,13 +65,10 @@ export default function MainPage() {
   const [suggestionDates, setSuggestionDates] = useState<string[]>(cached?.stats?.suggestionDates ?? [])
   const [unreadSuggestions, setUnreadSuggestions] = useState(cached?.stats?.unreadSuggestions ?? 0)
 
-  // 문서 출력 형식 최초 설정 모달 (user_metadata.preferred_export_format 없을 때 1회)
-  // 구 가입 플로우 유저는 worker_type도 없을 수 있어(온보딩 모달 제거로 유도 경로 상실) 같은 모달에서 함께 수집한다.
-  const [showFormatModal, setShowFormatModal] = useState(false)
-  const [needsWorkerType, setNeedsWorkerType] = useState(false)
-  const [workerTypeInput, setWorkerTypeInput] = useState("현장 근로자 (비사무직)")
-  const [isSavingFormat, setIsSavingFormat] = useState(false)
-  const formatModalRef = useRef<HTMLDivElement>(null)
+  // 카카오 동의 취소·인앱브라우저 실패는 code/error 파라미터만 남긴 채 세션 없이 홈에 떨어진다.
+  // 그 자리에서 마케팅 랜딩이 뜨면 "로그인하려다 광고를 봤다"로 읽혀서 로그인 화면으로 되돌린다.
+  // 판정은 마운트 시점에 잡아둔다 — 성공 시 supabase가 URL에서 파라미터를 지우기 때문.
+  const [oauthLanding, setOauthLanding] = useState(false)
 
   // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 활동 현황 옆 '통계 보기' 버튼 노출
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
@@ -79,7 +76,13 @@ export default function MainPage() {
   const [hintAddSite, setHintAddSite] = useState(false)
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
+    const q = new URLSearchParams(window.location.search)
+    setOauthLanding(q.has("code") || q.has("error"))
   }, [])
+  // 코드 교환이 끝나고도 세션이 없으면(=콜백 실패) 랜딩 대신 로그인으로
+  useEffect(() => {
+    if (oauthLanding && !isLoading && !checking && !user) router.replace("/login")
+  }, [oauthLanding, isLoading, checking, user, router])
   // 일괄 발급된 현장 계정의 첫 로그인 — 새 비밀번호·현장명을 정하기 전엔 앱을 열지 않는다
   const [mustSetup, setMustSetup] = useState(false)
   const [setupPw, setSetupPw] = useState("")
@@ -131,7 +134,7 @@ export default function MainPage() {
           return
         }
 
-        // 감독자도 TBM을 쓴다 — 역할과 무관하게 온보딩·통계를 동일하게 로드한다.
+        // 감독자도 TBM을 쓴다 — 역할과 무관하게 통계를 동일하게 로드한다.
         // (관리 전용 시절엔 여기서 감독자를 건너뛰어, 출력 형식이 없어 hwpx/docx 설정이
         //  무시되고 PDF로 강제되는 구멍이 있었다)
         const hadCache = !!homeCache && homeCache.userId === currentUser.id
@@ -148,32 +151,8 @@ export default function MainPage() {
         refreshUserFromServer()
 
         const meta = currentUser.user_metadata
-        if (!meta?.preferred_export_format || !meta?.worker_type) {
-          // 형식은 보고서 설정 위저드가 admin API로 저장해 로컬 세션 스냅샷이 낡을 수 있다 —
-          // 모달 판정만은 서버 기준으로. 아니면 설정을 마치고 돌아와도 모달이 다시 떠서 깜빡인다.
-          try {
-            const { data: fresh } = await supabase.auth.getUser()
-            const fm = (fresh?.user?.user_metadata ?? {}) as Record<string, unknown>
-            if (fresh?.user && homeCache?.userId === fresh.user.id) {
-              homeCache.user = fresh.user
-              setUser(fresh.user)
-            }
-            if (!fm?.preferred_export_format || !fm?.worker_type) {
-              // member(현장 계정)에게는 모달을 띄우지 않는다 — 형식·근로자 구분 모두 회사가
-              // 관리하고 보고서 설정 페이지도 잠겨 있어, 띄우면 닫을 곳 없는 함정이 된다.
-              // (fetchOrgContext는 세션 캐시라 추가 비용이 거의 없다)
-              const ctx = await fetchOrgContext()
-              if (ctx?.kind !== "member") {
-                setNeedsWorkerType(!fm?.worker_type)
-                setShowFormatModal(true)
-              }
-            }
-          } catch {
-            // 서버 확인 실패 — 첫 가입자가 모달을 못 보는 것보다 낡은 판정이 낫다
-            setNeedsWorkerType(!meta?.worker_type)
-            setShowFormatModal(true)
-          }
-        }
+        // 업종·공종·근로자 구분·출력 형식은 가입 마무리 화면(/start-trial)이 받는다 — 홈은 묻지 않는다.
+        // 값이 없는 구 계정을 위해 아래 계산·표시는 모두 폴백(비사무직 12시간)을 유지한다.
         // 캐시로 이미 그렸으면 통계는 조용히 갱신 (스피너 없이 숫자만 바뀐다)
         fetchUserStats(currentUser.id, meta?.worker_type || "현장 근로자 (비사무직)", hadCache)
 
@@ -185,11 +164,6 @@ export default function MainPage() {
     }
     checkSession()
   }, [])
-
-  // 모달이 뜨면 대화상자로 초점 이동 (배경 카드들이 tabIndex를 가져 오버레이 뒤로 초점이 새는 것 방지)
-  useEffect(() => {
-    if (showFormatModal) formatModalRef.current?.focus()
-  }, [showFormatModal])
 
   // 메일 앱에서 인증을 마치고 돌아온 순간 배너가 스스로 사라지게 — 탭 복귀 시 서버 기준 재조회 (30초 스로틀)
   useEffect(() => {
@@ -273,38 +247,8 @@ export default function MainPage() {
     setTbmMinutesCount(0)
     setSuggestionDates([])
     setUnreadSuggestions(0)
-  }
-
-  // 근로자 구분 저장만 (형식 선택은 온보딩에서 제거 — 보고서 설정 위저드로 이동)
-  const saveWorkerTypeIfNeeded = async (): Promise<boolean> => {
-    if (!needsWorkerType) return true
-    const { data, error } = await supabase.auth.updateUser({ data: { worker_type: workerTypeInput } })
-    if (error) { alert("저장 실패: " + error.message); return false }
-    commitUser(data.user)
-    setRequiredHours(workerTypeInput === '사무직 / 판매직' ? 6 : 12)
-    return true
-  }
-
-  // 근로자 구분만 없는 경우(소속 현장 계정 등) — 저장하고 시작
-  const handleSaveWorkerType = async () => {
-    setIsSavingFormat(true)
-    try {
-      if (await saveWorkerTypeIfNeeded()) setShowFormatModal(false)
-    } finally {
-      setIsSavingFormat(false)
-    }
-  }
-
-  // 문서 형식이 없는 감독자/솔로 — 근로자 구분(있다면) 저장 후 보고서 설정 위저드로
-  const handleGoReportSetup = async () => {
-    setIsSavingFormat(true)
-    try {
-      if (!(await saveWorkerTypeIfNeeded())) return
-      setShowFormatModal(false)
-      router.push("/org/reports")
-    } finally {
-      setIsSavingFormat(false)
-    }
+    // 홈에서만 이동이 없어 "로그아웃했더니 광고가 떴다"로 읽혔다 — 다른 화면과 같이 로그인으로
+    router.push("/login")
   }
 
   // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
@@ -491,6 +435,9 @@ export default function MainPage() {
   }
 
   if (!user) {
+    // 콜백 파라미터를 달고 세션 없이 착지 — 위 effect가 /login으로 보낸다. 그 사이 광고가 비치지 않게.
+    if (oauthLanding) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
+
     const features = [
       { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
       { n: "02", t: "AI 분석 보고서 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
@@ -502,22 +449,14 @@ export default function MainPage() {
         <header className="sticky top-0 z-20 bg-cur-canvas/80 backdrop-blur-sm border-b border-cur-hairline">
           <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
             <Logo size="sm" />
-            {/* 기존 회원은 /start(약관 동의 게이트)를 거치지 않고 바로 로그인 */}
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => router.push("/login")}
-                className="h-10 px-4 text-[14px] font-semibold text-cur-body hover:text-cur-ink hover:bg-cur-elevated rounded-[8px]"
-              >
-                로그인
-              </Button>
-              <Button
-                onClick={() => router.push("/start")}
-                className="h-10 px-5 bg-cur-ink hover:opacity-90 text-white text-[14px] font-semibold rounded-[8px]"
-              >
-                시작하기
-              </Button>
-            </div>
+            {/* 진입구는 /login 하나 — 신규는 로그인 화면이 동의 게이트(/start)로 넘겨준다.
+                라벨만 다르고 목적지가 같은 버튼이 나란히 있으면 어느 쪽이 내 자리인지 고르게 만든다 */}
+            <Button
+              onClick={() => router.push("/login")}
+              className="h-10 px-5 bg-cur-ink hover:opacity-90 text-white text-[14px] font-semibold rounded-[8px]"
+            >
+              로그인
+            </Button>
           </div>
         </header>
 
@@ -536,21 +475,13 @@ export default function MainPage() {
               더 많은 대화로 더 안전한 현장을 만드세요.
             </p>
             <div className="flex flex-col items-center gap-3 w-full sm:w-auto pt-2">
-              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                <Button
-                  onClick={() => router.push("/start")}
-                  className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
-                >
-                  첫 달 무료로 시작하기
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push("/login")}
-                  className="h-12 px-8 border-cur-hairline text-cur-ink hover:bg-cur-elevated text-[16px] font-semibold rounded-[8px]"
-                >
-                  로그인
-                </Button>
-              </div>
+              {/* 옆에 있던 [로그인]은 헤더와 같은 목적지라 뺐다 — 히어로의 강조는 하나여야 눈이 안 갈린다 */}
+              <Button
+                onClick={() => router.push("/login")}
+                className="h-12 px-8 w-full sm:w-auto bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
+              >
+                첫 달 무료로 시작하기
+              </Button>
               <p className="text-[13px] text-cur-muted-soft">첫 달 무료 체험 · 이후 계정 1개당 월 3,900원</p>
             </div>
           </div>
@@ -580,7 +511,7 @@ export default function MainPage() {
               복잡한 설치 없이 카카오/일반 계정으로 바로 시작. 첫 달은 무료 체험이고, 이후 계정 1개당 월 3,900원이에요. 현장이 여러 곳이면 계정을 추가한 만큼만 더 내면 됩니다. 언제든 해지할 수 있습니다.
             </p>
             <Button
-              onClick={() => router.push("/start")}
+              onClick={() => router.push("/login")}
               className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] mt-1"
             >
               첫 달 무료로 시작하기
@@ -813,62 +744,6 @@ export default function MainPage() {
           </div>
         )}
       </div>
-
-      {/* 최초 설정 모달 — 형식 선택은 온보딩에서 뺐다(Chris): 감독자/솔로는 보고서 설정 위저드로 보내고,
-          여기서는 근로자 구분(없을 때만)만 수집한다. 소속 현장 계정은 형식이 회사 공통이라 근로자 구분만. */}
-      {showFormatModal && (() => {
-        // 역할 판정 전(orgCtx null)에는 CTA를 띄우지 않는다 — 소속 현장 계정에 감독자용 모달이 비치는 것 방지
-        const needsSetupCta = !user?.user_metadata?.preferred_export_format && !!orgCtx && orgCtx.kind !== "member"
-        if (!needsSetupCta && !needsWorkerType) return null
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div
-              ref={formatModalRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="format-modal-title"
-              tabIndex={-1}
-              className="bg-cur-card rounded-[12px] p-8 w-full max-w-sm shadow-[0_16px_48px_rgba(0,0,0,0.1)] animate-in zoom-in-95 duration-200 border border-cur-hairline outline-none"
-            >
-              {needsSetupCta ? (
-                <>
-                  <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">보고서 설정을 하러 갑시다</h3>
-                  <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">
-                    문서 출력 형식과 매월 1일 자동 발송되는 보고서의 받는 사람을 정해요. 1분이면 끝나요.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h3 id="format-modal-title" className="text-[22px] font-bold text-cur-ink mb-2 tracking-tight">근로자 구분</h3>
-                  <p className="text-cur-muted text-[14px] mb-1 leading-[1.5]">교육시간 산정 기준을 선택해주세요. 내 정보 수정에서 언제든 바꿀 수 있어요.</p>
-                </>
-              )}
-              {needsWorkerType && (
-                <div className="mt-5 space-y-2">
-                  <label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</label>
-                  <Select value={workerTypeInput} onValueChange={setWorkerTypeInput}>
-                    <SelectTrigger className="w-full h-11 text-[14px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
-                      <SelectValue placeholder="직군 선택" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                      <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                      <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <Button
-                onClick={needsSetupCta ? handleGoReportSetup : handleSaveWorkerType}
-                disabled={isSavingFormat}
-                className="w-full h-12 mt-5 text-[15px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px]"
-              >
-                {isSavingFormat ? <Loader2 className="animate-spin mr-2 w-4 h-4" /> : null}
-                {needsSetupCta ? "보고서 설정 하러 가기" : "저장하고 시작하기"}
-              </Button>
-            </div>
-          </div>
-        )
-      })()}
     </div>
   )
 }

@@ -116,6 +116,10 @@ export async function POST(request: Request) {
         full_name: manager || site,
         company_name: site,
         role: "site_supervisor", // 표시용 — 분기 키는 DB org_members
+        // 감독자가 정한 초기 비밀번호를 본인이 바꾸게 한다 — 일괄 발급과 동작 통일.
+        // 지금 화면에서는 이 분기에 닿지 않는다(발급 모달의 '직접 발급'도 bulk 라우트를 호출).
+        // API를 직접 쓰는 경우를 위해 남겨둔다 — 지워도 UI는 안 바뀐다.
+        must_set_password: true,
         ...(ownerFormat ? { preferred_export_format: ownerFormat } : {}),
         ...ownerProfile,
       },

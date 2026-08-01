@@ -105,9 +105,16 @@ export async function fetchSubscription(): Promise<SubscriptionRow | null> {
 // ── 짧은 캐시 — 페이지 이동/뒤로가기마다 구독을 다시 조회해 스피너가 뜨는 것 방지.
 // 결제·해지 직후 화면(/account, /pricing)은 신선도가 중요하니 원본 fetchSubscription을 쓴다.
 let subCache: { row: SubscriptionRow | null; ts: number } | null = null
+// 마지막 통과 결과 — 같은 세션에서 페이지를 오갈 때마다 게이트 스피너를 다시 띄우지 않는다.
+// (구독 캐시보다 먼저 선언해 아래 리스너에서 안전하게 참조한다)
+let allowedCache: { userId: string; ts: number } | null = null
 if (typeof window !== "undefined") {
     supabase.auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_OUT" || event === "SIGNED_IN" || event === "USER_UPDATED") subCache = null
+        // 계정이 바뀌면 통과 이력도 남의 것이 된다 — 구독 캐시와 반드시 같이 버린다
+        if (event === "SIGNED_OUT" || event === "SIGNED_IN" || event === "USER_UPDATED") {
+            subCache = null
+            allowedCache = null
+        }
     })
 }
 
@@ -122,9 +129,6 @@ export async function fetchSubscriptionCached(ttlMs = 60_000): Promise<Subscript
  * 보호된 페이지 상단에서 호출. 로그인했지만 구독(또는 체험/평생무료)이 없으면
  * /pricing 으로 보낸다. 로그인 안 한 경우엔 각 페이지의 기존 로직에 맡긴다.
  */
-// 마지막 통과 결과 — 같은 세션에서 페이지를 오갈 때마다 게이트 스피너를 다시 띄우지 않는다
-let allowedCache: { userId: string; ts: number } | null = null
-
 export function useRequireSubscription() {
     const router = useRouter()
     // 5분 내 통과 이력이 있으면 즉시 열고, 아래 effect가 백그라운드로 재검증한다
@@ -144,6 +148,12 @@ export function useRequireSubscription() {
                 // 로그인 미들웨어/페이지 로직에 위임
                 setChecking(false)
                 return
+            }
+            // 초기 상태 계산 시점엔 user.id를 모른다 — 남의 통과 기록으로 낙관적으로 열렸다면
+            // 여기서 되돌려야 로그아웃 직후 다른 계정이 홈을 먼저 보고 튕기는 일이 없다
+            if (allowedCache && allowedCache.userId !== user.id) {
+                allowedCache = null
+                setChecking(true)
             }
             const { data, error } = await supabase
                 .from("subscriptions")

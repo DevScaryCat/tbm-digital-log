@@ -10,7 +10,7 @@ import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/li
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
-import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight, Users } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
 
 interface Payment {
     payment_id: string
@@ -41,7 +41,6 @@ export default function AccountPage() {
     const [payments, setPayments] = useState<Payment[]>([])
     const [busy, setBusy] = useState(false)
     const [changingMethod, setChangingMethod] = useState(false)
-    const [showRegister, setShowRegister] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 과금 계정 수(감독자 본인 1 + 활성 현장) — 여기가 '회사 전체 결제'라는 걸 명시하기 위한 값
     const [accountCount, setAccountCount] = useState<number>(1)
@@ -265,93 +264,13 @@ export default function AccountPage() {
                                             다음 결제일부터 요금제가 변경될 예정입니다
                                         </div>
                                     )}
-                                    {/* 계정과 결제는 한 몸 — 설명 대신 진입 버튼 하나로 (문단 설명은 요금 구성 표가 대체) */}
-                                    {seatBilled && (
-                                        <button
-                                            type="button"
-                                            onClick={() => router.push("/org/members")}
-                                            className="mt-1 w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors flex items-center justify-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                                        >
-                                            <Users className="w-4 h-4 text-cur-muted" /> 현장 계정 추가·관리
-                                        </button>
-                                    )}
                                 </div>
                             )}
                         </div>
 
-                        {/* 액션: 무료체험(진행/종료) → 등록 안내 / 그 외 → 변경·해지·재구독 */}
-                        {!isGrandfather && (cardlessTrialActive || committedTrial) && (
-                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
-                                {committedTrial ? (
-                                    <>
-                                        {/* 이미 빌링키 등록 완료 — CTA를 비활성으로 남겨 '할 일이 끝났음'을 보여준다 */}
-                                        <p className="text-[13px] text-cur-muted leading-relaxed">
-                                            결제수단이 등록되어 있어요 — 체험 종료 후 자동으로 이어집니다.
-                                        </p>
-                                        <Button
-                                            disabled
-                                            className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold disabled:opacity-50"
-                                        >
-                                            결제수단 등록하고 계속 이용
-                                        </Button>
-                                    </>
-                                ) : (
-                                <>
-                                {/* '무료체험 중' 헤더·종료일은 위 상태 카드가 이미 말했다 — 여기선 행동만 */}
-                                <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    체험이 끝난 뒤에도 계속 이용하려면 결제수단을 등록해 주세요.{" "}
-                                    <b className="text-cur-ink">등록 전에는 자동으로 결제되지 않습니다.</b>
-                                </p>
-                                {/* 청구될 내역은 청구를 시작하는 등록 CTA 바로 위에서 보여준다 (상태 카드에서 이동) */}
-                                {seatBilled && (
-                                    <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated/50 px-3 py-2.5 space-y-1.5 text-[13px]">
-                                        <div className="flex justify-between">
-                                            <span className="text-cur-muted">내 계정 (감독자)</span>
-                                            <span className="text-cur-ink font-medium">3,900원</span>
-                                        </div>
-                                        {accountCount > 1 && (
-                                            <div className="flex justify-between">
-                                                <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
-                                                <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between pt-1.5 border-t border-cur-hairline">
-                                            <span className="text-cur-ink font-semibold">월 합계 (체험 종료 후)</span>
-                                            <span className="text-cur-ink font-semibold">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
-                                        </div>
-                                    </div>
-                                )}
-                                {showRegister ? (
-                                    <div className="space-y-3">
-                                        <SubscribeButtons
-                                            onSuccess={async () => {
-                                                setShowRegister(false)
-                                                await load()
-                                            }}
-                                            ctaSuffix="로 계속 이용"
-                                            successText="결제수단이 등록되었습니다. 체험 종료 후 자동으로 결제됩니다."
-                                        />
-                                        <Button
-                                            variant="ghost"
-                                            onClick={() => setShowRegister(false)}
-                                            className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
-                                        >
-                                            나중에 하기
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <Button
-                                        onClick={() => setShowRegister(true)}
-                                        className="w-full h-11 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
-                                    >
-                                        결제수단 등록하고 계속 이용
-                                    </Button>
-                                )}
-                                </>
-                                )}
-                            </div>
-                        )}
-
+                        {/* 체험 중에는 결제 유도 카드를 두지 않는다 — 아직 청구가 시작되지 않았는데
+                            청구서를 먼저 보여주면 체험이 유예가 아니라 압박으로 읽힌다.
+                            체험이 끝난 뒤(아래 분기)에 등록을 안내한다 */}
                         {!isGrandfather && cardlessTrialExpired && (
                             <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
                                 <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4">

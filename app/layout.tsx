@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Footer } from "@/components/Footer";
+import { ConsentGate } from "@/components/ConsentGate";
 import "./globals.css";
 
 const inter = Inter({
@@ -56,6 +57,7 @@ export default function RootLayout({
         />
         {children}
         <Footer />
+        <ConsentGate />
       </body>
     </html>
   );

@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, CheckCircle2, Building2 } from "lucide-react"
 import { Logo } from "@/components/Logo"
 
@@ -38,6 +39,9 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
     const [codeSent, setCodeSent] = useState(false)
     const [sending, setSending] = useState(false)
     const [verificationId, setVerificationId] = useState<string | null>(null)
+
+    // 초대 가입도 실제 계정 생성이라 동의가 필수 — 매번 새로 받는다(프리체크·저장 금지)
+    const [agreed, setAgreed] = useState(false)
 
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -75,6 +79,8 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
     }
 
     const sendCode = async () => {
+        // 발송은 번호를 서버로 넘기는 수집 행위다 — 동의 전에는 한 통도 나가면 안 된다
+        if (!agreed) { setError("먼저 약관에 동의해주세요."); return }
         const digits = phone.replace(/\D/g, "")
         if (!/^01\d{8,9}$/.test(digits)) { setError("휴대폰 번호를 확인해주세요."); return }
         setSending(true)
@@ -113,6 +119,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
         if (!siteName.trim()) { setError("현장명을 입력해주세요."); return }
         if (!realEmail.trim()) { setError("보고서를 받을 이메일을 입력해주세요."); return }
         if (phoneEnabled && !verificationId) { setError("휴대폰 인증을 완료해주세요."); return }
+        if (!agreed) { setError("개인정보처리방침 및 서비스 이용약관에 동의해주세요."); return }
         setLoading(true)
         try {
             const res = await fetch("/api/signup", {
@@ -125,6 +132,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                     managerName: managerName.trim(),
                     realEmail: realEmail.trim(),
                     inviteToken: token,
+                    agreedToTerms: true,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 }),
             })
@@ -154,7 +162,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
     if (!info.valid) {
         return (
             <div className="min-h-screen bg-cur-canvas flex items-center justify-center px-6">
-                <div className="w-full max-w-sm bg-cur-card border border-cur-hairline rounded-2xl p-8 text-center space-y-3">
+                <div className="w-full max-w-sm bg-cur-card border border-cur-hairline rounded-[12px] p-8 text-center space-y-3">
                     <div className="text-[36px]">⚠️</div>
                     <h1 className="text-[17px] font-bold text-cur-ink">초대 링크가 유효하지 않아요</h1>
                     <p className="text-[13px] text-cur-muted leading-relaxed">{info.error || "만료되었거나 잘못된 링크입니다. 안전관리자에게 재발급을 요청하세요."}</p>
@@ -183,7 +191,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
 
                 {error && <div className="text-[13px] rounded-lg p-3 bg-cur-error/10 text-cur-error">{error}</div>}
 
-                <div className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-4">
+                <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">아이디</Label>
                         <div className="flex gap-2">
@@ -212,15 +220,30 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                         <p className="text-[12px] text-cur-muted-soft">가입 후 인증 메일이 발송돼요. 인증하면 매달 우리 현장 보고서가 이 주소로 옵니다.</p>
                     </div>
 
+                    {/* 동의가 휴대폰 인증보다 위 — 아래 블록이 번호를 서버로 보내므로 수집 전에 받아야 한다 */}
+                    <div className="flex items-start gap-3 bg-cur-elevated rounded-[10px] p-3.5">
+                        <Checkbox
+                            id="join-agree"
+                            checked={agreed}
+                            onCheckedChange={(c) => setAgreed(c === true)}
+                            className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px] focus-visible:ring-2 focus-visible:ring-cur-primary"
+                        />
+                        <label htmlFor="join-agree" className="text-[13px] text-cur-body leading-[1.5] cursor-pointer">
+                            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
+                            <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
+                        </label>
+                    </div>
+
                     {phoneEnabled && (
                         <div className="space-y-2 pt-1 border-t border-cur-hairline">
                             <Label className="text-[14px] font-semibold text-cur-ink pt-2 block">휴대폰 인증</Label>
                             <div className="flex gap-2">
-                                <Input type="tel" inputMode="numeric" placeholder="01012345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!!verificationId} className={inputCls + " flex-1"} />
-                                <Button onClick={sendCode} disabled={sending || !!verificationId} className="h-12 px-3 rounded-[8px] bg-cur-ink text-white text-[13px] font-bold shrink-0">
+                                <Input type="tel" inputMode="numeric" placeholder="01012345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!agreed || !!verificationId} className={inputCls + " flex-1 disabled:opacity-50"} />
+                                <Button onClick={sendCode} disabled={!agreed || sending || !!verificationId} className="h-12 px-3 rounded-[8px] bg-cur-ink text-white text-[13px] font-bold shrink-0 disabled:opacity-50">
                                     {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : codeSent ? "재발송" : "인증번호"}
                                 </Button>
                             </div>
+                            {!agreed && <p className="text-[12px] text-cur-muted-soft">위 약관에 동의하면 인증번호를 받을 수 있어요.</p>}
                             {codeSent && !verificationId && (
                                 <div className="flex gap-2">
                                     <Input inputMode="numeric" placeholder="인증번호 6자리" value={code} onChange={(e) => setCode(e.target.value)} className={inputCls + " flex-1"} />
@@ -233,7 +256,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                         </div>
                     )}
 
-                    <Button onClick={submit} disabled={loading} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                    <Button onClick={submit} disabled={loading || !agreed} className="w-full h-12 rounded-[8px] bg-cur-primary text-white font-bold hover:opacity-90 disabled:opacity-50">
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "가입하고 시작하기"}
                     </Button>
                     <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">

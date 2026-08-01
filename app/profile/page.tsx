@@ -18,7 +18,7 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
-    // 역할 판정 — member는 보기 전용(회사 공통 설정), owner는 저장 시 현장 계정 전체에 전파.
+    // 역할 판정 — member는 업종·공종만 보기 전용, owner는 저장 시 그 둘을 현장 계정에 전파.
     // 훅 대신 직접 호출: 판정 실패(null)를 화면에 드러내고 재시도할 수 있어야 한다.
     const [ctx, setCtx] = useState<ClientOrgContext | null>(null)
     const [ctxLoading, setCtxLoading] = useState(true)
@@ -76,9 +76,11 @@ export default function ProfilePage() {
     const dirty = initial !== snapshot({ fullName, companyName, workerType, industry, workCategory })
 
     const isMember = ctx?.kind === "member"
-    // fail-closed: owner/solo로 '확정'됐을 때만 편집을 연다 — 판정 실패(null)에서 열어 두면
-    // member가 회사 공통 필드를 고칠 수 있는 구멍이 된다. 실패 시엔 아래 재시도 카드로 복구.
-    const editable = ctx?.kind === "owner" || ctx?.kind === "solo"
+    // 성명·소속 현장명·근로자 구분은 사람과 현장마다 다른 값이라 본인이 고친다(현장 계정 포함).
+    // 회사 공통으로 남는 건 업종·공종뿐 — 이건 fail-closed로 owner/solo 확정 시에만 열고,
+    // 판정 실패(null)에서는 잠근다(아래 재시도 카드로 복구).
+    const ownEditable = !ctxLoading
+    const companyEditable = ctx?.kind === "owner" || ctx?.kind === "solo"
 
     const handleSave = async () => {
         if (!fullName.trim()) {
@@ -105,8 +107,9 @@ export default function ProfilePage() {
             const savedWorkCategory = data.user.user_metadata.work_category ?? ""
             setWorkCategory(savedWorkCategory)
 
-            // owner: 회사 공통 3필드(근로자 구분·업종·공종)를 현장 계정 전체에 전파.
-            // 성명·현장명은 본인 것이라 전파하지 않는다 — 자식 현장명은 현장 계정 관리에서 개별 수정.
+            // owner: 회사 공통 2필드(업종·공종)만 현장 계정 전체에 전파.
+            // 성명·현장명·근로자 구분은 각자의 것이라 전파하지 않는다 — 덮어쓰면 현장 계정이
+            // 스스로 고친 값이 감독자 저장 때마다 되돌아간다.
             let propagated: number | null = null
             if (ctx?.kind === "owner") {
                 const { data: sess } = await supabase.auth.getSession()
@@ -115,7 +118,6 @@ export default function ProfilePage() {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                     body: JSON.stringify({
-                        workerType,
                         industry: industry || null,
                         workCategory: savedWorkCategory || null,
                     }),
@@ -173,7 +175,7 @@ export default function ProfilePage() {
                 {/* 역할 판정 실패 — fail-closed로 잠겨 있으니 복구 수단을 화면에 준다 */}
                 {!ctxLoading && !ctx && (
                     <div className="bg-cur-card rounded-2xl border border-cur-hairline px-4 py-3.5 flex items-center justify-between gap-3">
-                        <p className="text-[13px] text-cur-muted">역할 확인에 실패해 수정이 잠겨 있어요.</p>
+                        <p className="text-[13px] text-cur-muted">역할 확인에 실패해 업종·공종 수정이 잠겨 있어요.</p>
                         <button
                             type="button"
                             onClick={() => loadCtx(true)}
@@ -187,7 +189,7 @@ export default function ProfilePage() {
                 <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
                     {isMember && (
                         <p className="text-[12px] text-cur-muted">
-                            계정 정보는 회사 감독자가 관리해요. 수정이 필요하면 감독자에게 요청해주세요.
+                            업종·공종은 회사 공통 설정이라 감독자가 관리해요. 나머지는 직접 수정하실 수 있어요.
                         </p>
                     )}
                     <div className="space-y-2">
@@ -197,7 +199,7 @@ export default function ProfilePage() {
                             onChange={(e) => setFullName(e.target.value)}
                             placeholder="성명을 입력하세요"
                             className="h-11"
-                            disabled={!editable}
+                            disabled={!ownEditable}
                         />
                     </div>
                     <div className="space-y-2">
@@ -207,12 +209,12 @@ export default function ProfilePage() {
                             onChange={(e) => setCompanyName(e.target.value)}
                             placeholder="소속 현장명 (또는 업체명)"
                             className="h-11"
-                            disabled={!editable}
+                            disabled={!ownEditable}
                         />
                     </div>
                     <div className="space-y-2">
                         <Label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</Label>
-                        <Select value={workerType} onValueChange={setWorkerType} disabled={!editable}>
+                        <Select value={workerType} onValueChange={setWorkerType} disabled={!ownEditable}>
                             <SelectTrigger className="w-full h-11 text-[14px]">
                                 <SelectValue placeholder="직군 선택" />
                             </SelectTrigger>
@@ -232,7 +234,7 @@ export default function ProfilePage() {
                                 const next = findKsicMajor(v)?.minors ?? []
                                 setWorkCategory(next.length === 1 ? next[0].name : "")
                             }}
-                            disabled={!editable}
+                            disabled={!companyEditable}
                         >
                             <SelectTrigger className="w-full h-11 text-[14px]">
                                 <SelectValue placeholder="업종 선택" />
@@ -252,7 +254,7 @@ export default function ProfilePage() {
                     {industry && (
                         <div className="space-y-2">
                             <Label className="text-[13px] font-medium text-cur-body">공종</Label>
-                            <Select value={workCategory} onValueChange={setWorkCategory} disabled={!editable}>
+                            <Select value={workCategory} onValueChange={setWorkCategory} disabled={!companyEditable}>
                                 <SelectTrigger className="w-full h-11 text-[14px]">
                                     <SelectValue placeholder="공종 선택" />
                                 </SelectTrigger>
@@ -272,21 +274,20 @@ export default function ProfilePage() {
                     {/* solo에게는 숨김 — 아직 자식 현장이 없어 '모든 현장 계정' 문구가 혼란만 준다 */}
                     {ctx?.kind === "owner" && (
                         <p className="text-[12px] text-cur-muted">
-                            근로자 구분·업종·공종은 회사 공통 설정이에요 — 저장하면 모든 현장 계정에 함께 적용됩니다.
+                            업종·공종은 회사 공통 설정이에요 — 저장하면 모든 현장 계정에 함께 적용됩니다.
+                            성명·현장명·근로자 구분은 각 현장 계정이 직접 수정해요.
                         </p>
                     )}
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
                 </div>
 
-                {!isMember && (
-                    <Button
-                        onClick={handleSave}
-                        disabled={saving || !dirty || !editable}
-                        className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
-                    >
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
-                    </Button>
-                )}
+                <Button
+                    onClick={handleSave}
+                    disabled={saving || !dirty || !ownEditable}
+                    className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90"
+                >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
+                </Button>
             </div>
         </div>
     )

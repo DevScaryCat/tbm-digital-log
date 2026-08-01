@@ -1,5 +1,6 @@
-// lib/consent.ts — 보고서 수신자 승인(consent) 생성·확인메일·응답 처리
-// 계정(현장)이 수신자를 등록하면 수신자가 승인해야 발송. 스푸핑/스팸 방지.
+// lib/consent.ts — 두 종류의 "동의"가 한 파일에 산다. 이름이 같을 뿐 서로 무관하다.
+//  (1) 보고서 수신자 승인 — 계정(현장)이 등록한 수신자가 승인해야 발송. 스푸핑/스팸 방지.
+//  (2) 약관·개인정보처리방침 동의 — 파일 하단. 서비스 이용자 본인의 동의 증빙.
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { escapeHtml } from "@/lib/monthlyReport";
@@ -156,3 +157,18 @@ export async function listAccountConsents(
     .order("created_at", { ascending: true });
   return (data || []).map((r: any) => ({ email: r.recipient_email, status: r.status }));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 약관·개인정보처리방침 동의 — 공용 계약의 진입점.
+// 구현이 lib/consentTerms.ts에 따로 있는 이유: 이 파일은 최상단에서 nodemailer를
+// 끌어오는 서버 전용 모듈이라, 클라이언트 컴포넌트(ConsentGate)가 여기서 import하면
+// 노드 모듈이 브라우저 번들에 섞여 빌드가 깨진다(동적 import로도 그래프가 끊기지 않는다).
+// 서버 코드는 계속 "@/lib/consent"에서 가져다 쓰면 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+  TERMS_VERSION,
+  PRIVACY_VERSION,
+  isConsentCurrent,
+  consentMetaPatch,
+  recordConsent,
+} from "@/lib/consentTerms";

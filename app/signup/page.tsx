@@ -18,7 +18,8 @@ import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
 import { Checkbox } from "@/components/ui/checkbox"
-import { hasAgreedTerms, setAgreedTerms } from "@/lib/consentStorage"
+import { ExportFormatPicker } from "@/components/ExportFormatPicker"
+import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
@@ -29,7 +30,8 @@ export default function SignupPage() {
     // 탭만 달라진다 — 회사를 만드는 시점은 "첫 현장 계정을 발급할 때"다.
     // 신규 가입에만 해당하므로 /start(로그인 진입)가 아니라 여기서 묻는다.
     const [roleChosen, setRoleChosen] = useState(false)
-    // 약관·개인정보처리방침 동의 — 가입 시점에 받는다. 전에 동의했으면 다시 묻지 않음.
+    // 약관·개인정보처리방침 동의 — 가입 시점에 매번 받는다. 브라우저에 남은 이전 동의를
+    // 재사용하면 공용 PC의 다음 사람이 약관을 보지도 않고 동의한 것으로 기록된다.
     const [agreed, setAgreed] = useState(false)
     // 휴대폰 인증 게이트 활성화 여부(서버 env 기준) — 로딩 전엔 null
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
@@ -42,6 +44,9 @@ export default function SignupPage() {
     const [workCategory, setWorkCategory] = useState("")
     // 근로자 구분 — 교육시간 산정용(기본값 프리셋, 별도 검증 불필요)
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
+    // 출력 형식 — 아이디 가입자는 /start-trial을 거치지 않아 여기서 안 물으면 전원 PDF로 굳는다.
+    // 기본값을 두지 않는 이유: 미선택을 그대로 통과시키면 "안 물어본 것"과 결과가 같아진다.
+    const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
     // 휴대폰 인증 상태
     const [phone, setPhone] = useState("")
     const [code, setCode] = useState("")
@@ -61,18 +66,15 @@ export default function SignupPage() {
     const [autoLoggedIn, setAutoLoggedIn] = useState(false)
 
     useEffect(() => {
+        // 로그인한 채로 가입을 끝내면 signInWithPassword가 기존 세션을 새 계정으로 갈아치워
+        // 결제·체험이 걸린 원래 계정이 사라진 것처럼 보인다 (/start·/login과 동일한 가드)
+        supabase.auth.getSession().then(({ data }) => { if (data.session) router.replace("/") })
         fetch("/api/auth/phone/status")
             .then((r) => r.json())
             .then((j) => setPhoneEnabled(!!j.enabled))
             .catch(() => setPhoneEnabled(false))
-        if (hasAgreedTerms()) setAgreed(true)
         return () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current) }
-    }, [])
-
-    const changeAgreed = (v: boolean) => {
-        setAgreed(v)
-        setAgreedTerms(v)
-    }
+    }, [router])
 
     const stepKeys: StepKey[] = phoneEnabled
         ? ["account", "site", "phone", "confirm"]
@@ -82,7 +84,7 @@ export default function SignupPage() {
     // 단계별 필수 입력이 모두 채워졌는지 — 비어 있으면 "다음" 비활성화 (형식 검증은 클릭 시 메시지로)
     const stepFilled =
         stepKey === "account" ? !!(id.trim() && password && passwordConfirm)
-        : stepKey === "site" ? !!(siteName.trim() && industry && workCategory)
+        : stepKey === "site" ? !!(siteName.trim() && industry && workCategory && exportFormat)
         : stepKey === "phone" ? !!verificationId
         : true
 
@@ -148,6 +150,7 @@ export default function SignupPage() {
             if (!siteName.trim()) return "현장명(회사명)을 입력해주세요."
             if (!industry) return "업종을 선택해주세요."
             if (!workCategory) return "공종을 선택해주세요."
+            if (!exportFormat) return "문서 출력 형식을 선택해주세요."
         }
         if (key === "phone") {
             if (!verificationId) return "휴대폰 인증을 완료해주세요."
@@ -192,6 +195,9 @@ export default function SignupPage() {
                     industry,
                     workCategory,
                     workerType,
+                    exportFormat,
+                    // 동의 증빙은 서버가 남긴다 — 브라우저 localStorage는 증거가 되지 못한다
+                    agreedToTerms: agreed,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 })
             })
@@ -222,7 +228,7 @@ export default function SignupPage() {
     if (success) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
-                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card text-center py-10 rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card text-center py-10 rounded-[12px]">
                     <CardContent className="space-y-4 flex flex-col items-center">
                         <CheckCircle className="w-16 h-16 text-cur-success mb-2" />
                         <h2 className="text-[24px] font-normal text-cur-ink tracking-[-0.72px]">회원가입 완료!</h2>
@@ -264,7 +270,7 @@ export default function SignupPage() {
     if (!roleChosen) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
-                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[12px]">
                     <CardHeader className="space-y-3 text-center pb-2 pt-9">
                         <div className="mx-auto"><Logo size="md" /></div>
                         <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">회원가입</CardTitle>
@@ -278,12 +284,12 @@ export default function SignupPage() {
                             <Checkbox
                                 id="signup-agree"
                                 checked={agreed}
-                                onCheckedChange={(c) => changeAgreed(c === true)}
+                                onCheckedChange={(c) => setAgreed(c === true)}
                                 className="mt-0.5 border-cur-muted data-[state=checked]:bg-cur-primary data-[state=checked]:text-cur-on-primary rounded-[4px]"
                             />
                             <label htmlFor="signup-agree" className="text-[13px] text-cur-body leading-[1.5] cursor-pointer">
-                                <a href="/privacy" target="_blank" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
-                                <a href="/terms" target="_blank" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
+                                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-cur-primary font-medium hover:underline">개인정보처리방침</a> 및{" "}
+                                <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-cur-primary font-medium hover:underline">서비스 이용약관</a>에 동의합니다.
                             </label>
                         </div>
 
@@ -309,7 +315,7 @@ export default function SignupPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-cur-canvas p-4 font-sans text-cur-ink">
-            <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <Card className="w-full max-w-md border border-cur-hairline bg-cur-card rounded-[12px]">
                 <CardHeader className="space-y-3 text-center pb-4 pt-9">
                     <div className="mx-auto"><Logo size="md" /></div>
                     <CardTitle className="text-[22px] font-bold text-cur-ink tracking-[-0.02em] pt-1">현장 계정 만들기</CardTitle>
@@ -405,6 +411,13 @@ export default function SignupPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div className="space-y-2.5">
+                                    <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식</Label>
+                                    <ExportFormatPicker value={exportFormat} onChange={setExportFormat} />
+                                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
+                                        회의록·교육일지를 내려받을 때 쓰는 기본 형식이에요. PDF는 편집할 수 없어요.
+                                    </p>
+                                </div>
                             </>
                         )}
 
@@ -452,6 +465,7 @@ export default function SignupPage() {
                                     ["업종", industry],
                                     ["공종", workCategory],
                                     ["근로자 구분", workerType],
+                                    ["출력 형식", EXPORT_FORMATS.find((f) => f.value === exportFormat)?.label ?? ""],
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">
@@ -477,16 +491,16 @@ export default function SignupPage() {
 
                         <div className="flex gap-2 mt-2">
                             {stepIdx > 0 && (
-                                <Button type="button" variant="outline" onClick={goBack} disabled={loading} className="h-12 px-4 border-cur-hairline text-cur-ink rounded-[10px] font-medium">
+                                <Button type="button" variant="outline" onClick={goBack} disabled={loading} className="h-12 px-4 border-cur-hairline text-cur-ink rounded-[8px] font-medium">
                                     <ChevronLeft className="w-5 h-5" /> 이전
                                 </Button>
                             )}
                             {stepKey !== "confirm" ? (
-                                <Button type="button" onClick={goNext} disabled={checkingId || !stepFilled} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99] disabled:opacity-40">
+                                <Button type="button" onClick={goNext} disabled={checkingId || !stepFilled} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-bold transition-transform active:scale-[0.99] disabled:opacity-40">
                                     {checkingId ? <Loader2 className="h-5 w-5 animate-spin" /> : "다음"}
                                 </Button>
                             ) : (
-                                <Button type="button" onClick={handleSignup} disabled={loading} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-xl font-bold transition-transform active:scale-[0.99]">
+                                <Button type="button" onClick={handleSignup} disabled={loading} className="flex-1 h-12 text-[15px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px] font-bold transition-transform active:scale-[0.99]">
                                     {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : phoneEnabled ? "가입하고 무료체험 시작" : "회원가입 하기"}
                                 </Button>
                             )}

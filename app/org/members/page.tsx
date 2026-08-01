@@ -161,7 +161,10 @@ export default function OrgMembersPage() {
             ...createdIds.map((id) => `아이디: ${id}`),
             `초기 비밀번호: ${initPw}`,
             "",
-            "safetalk.kr 에 로그인하면 첫 화면에서 새 비밀번호와 현장명을 설정하게 됩니다.",
+            // 랜딩의 [시작하기]는 카카오로 빠진다 — 아이디 폼이 먼저 뜨는 딥링크를 그대로 준다
+            "접속 주소: https://www.safetalk.kr/login?m=id",
+            "카카오 버튼이 아니라, 아래 아이디 칸에 위 아이디와 비밀번호를 입력하세요.",
+            "로그인하면 첫 화면에서 새 비밀번호와 현장명을 정하시면 됩니다.",
         ].join("\n")
         try { await navigator.clipboard.writeText(text); setAddMsg({ type: "ok", text: "계정 목록을 복사했어요. 담당자들에게 전달하세요." }) } catch { /* 무시 */ }
     }

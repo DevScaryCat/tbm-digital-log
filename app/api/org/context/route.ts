@@ -11,10 +11,10 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   const ctx = await getOrgContext(user.id);
 
-  // 회사 공통 3필드(근로자 구분·업종·공종) 지연 백필 — 공통화 이전에 발급된 현장 계정은
-  // 값이 비어 교육시간 목표가 기본값(비사무직 12시간)으로 어긋나는데, member는 프로필이
-  // 잠기고 첫 로그인 모달도 억제돼 스스로 채울 길이 없다. 세션마다 오는 이 판정 요청에서
-  // 비어 있는 키만 감독자 값으로 채운다 (owner가 프로필을 저장하면 전체 전파로 덮인다).
+  // 공통화 이전에 발급된 현장 계정은 근로자 구분·업종·공종이 비어 교육시간 목표가
+  // 기본값(비사무직 12시간)으로 어긋난다. 세션마다 오는 이 판정 요청에서 비어 있는 키만
+  // 감독자 값으로 채워 초기값을 맞춘다 — 비어 있을 때만 채우므로, 현장 계정이 자기
+  // 근로자 구분을 직접 고친 뒤에는 다시 덮이지 않는다.
   if (ctx.kind === "member" && ctx.org?.ownerUserId) {
     try {
       const meta = (user.user_metadata ?? {}) as Record<string, unknown>;

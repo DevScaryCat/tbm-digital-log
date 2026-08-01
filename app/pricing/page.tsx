@@ -93,7 +93,7 @@ export default function PricingPage() {
         if (!hasUser) {
             return (
                 <Button
-                    onClick={() => router.push("/start")}
+                    onClick={() => router.push("/login")}
                     className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold"
                 >
                     첫 달 무료로 시작하기
@@ -183,10 +183,12 @@ export default function PricingPage() {
             <BillingRedirectHandler />
             <div className="max-w-lg mx-auto px-5 py-6 space-y-6 pb-20">
                 <div className="flex items-center justify-between">
+                    {/* 뒤로가기 아이콘이 특정 페이지로 점프하면 의미가 어긋난다.
+                        다만 외부 링크로 바로 들어온 경우 back()은 갈 곳이 없으므로 홈으로 떨군다. */}
                     <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => router.push(hasUser ? "/" : "/start")}
+                        onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
                         className="h-10 w-10 border border-cur-hairline bg-cur-card hover:bg-cur-elevated text-cur-ink rounded-[8px]"
                     >
                         <ArrowLeft className="w-5 h-5" />
