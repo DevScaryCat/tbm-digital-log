@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
+import { appendSttFinals } from "@/lib/sttTranscript"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
@@ -667,14 +668,15 @@ export default function TBMPage() {
             recognition.lang = 'ko-KR';
 
             recognition.onresult = (event: SpeechRecognitionEvent) => {
-                let finalTranscript = '';
+                const finals: string[] = [];
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript + ' ';
+                        finals.push(event.results[i][0].transcript);
                     }
                 }
-                if (finalTranscript) {
-                    setAccumulatedTranscript(prev => prev + finalTranscript);
+                if (finals.length) {
+                    // iOS Safari가 확정 결과를 누적 형태로 재전송하는 버그 보정 — 단순 append 금지
+                    setAccumulatedTranscript(prev => appendSttFinals(prev, finals));
                 }
             };
 
