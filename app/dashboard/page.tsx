@@ -274,6 +274,17 @@ export default function DashboardPage() {
         router.push("/report/batch")
     }
 
+    // 선택 기간을 위험성평가 페이지의 기존 규약(ra_range)으로 넘겨 재선택 없이 바로 분석 —
+    // 복귀 범위(dash_restore)는 batchDownloadAll과 동일 포맷으로 저장해 돌아왔을 때 기간이 유지된다
+    const goAnalysisReport = () => {
+        if (!dateRange?.from) return
+        const from = format(dateRange.from, "yyyy-MM-dd")
+        const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
+        sessionStorage.setItem("dash_restore", JSON.stringify({ from, to }))
+        localStorage.setItem("ra_range", JSON.stringify({ from, to }))
+        router.push("/risk-assessment")
+    }
+
     // 선택 기간에 포함된 회의록/교육일지 수 (위험성평가는 회의록만 분석)
     const minutesInRange = dateRange?.from ? logs.filter(log => {
         if (log.type !== 'minute') return false
@@ -498,9 +509,27 @@ export default function DashboardPage() {
                                 <p className="text-[12px] text-amber-600 bg-amber-50 rounded-[8px] px-3 py-2 -mt-1">{rangeNote}</p>
                             )}
                             {selfMode ? (
-                                <Button onClick={batchDownloadAll} disabled={minutesInRange === 0 && logsInRange === 0} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                    문서 PDF 저장 (회의록·교육일지)
-                                </Button>
+                                <>
+                                    <Button onClick={batchDownloadAll} disabled={minutesInRange === 0 && logsInRange === 0} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
+                                        문서 PDF 저장 (회의록·교육일지)
+                                    </Button>
+                                    {/* member는 분석 대상이 아니다(/risk-assessment가 홈으로 돌려보냄) — 막다른 버튼을 아예 감춘다 */}
+                                    {ctx && ctx.kind !== "member" && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={goAnalysisReport}
+                                                disabled={minutesInRange === 0}
+                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                분석보고서 생성
+                                            </button>
+                                            {minutesInRange === 0 && (
+                                                <p className="text-[12px] text-cur-muted-soft text-center">회의록이 있는 기간을 선택하면 분석보고서를 만들 수 있어요</p>
+                                            )}
+                                        </>
+                                    )}
+                                </>
                             ) : (
                                 /* 다현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
                                 <p className="text-[12px] text-cur-muted-soft text-center">

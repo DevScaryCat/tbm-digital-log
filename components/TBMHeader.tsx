@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Sparkles, Settings } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Settings } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
@@ -184,8 +184,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                         </>
                     )}
                     {groupLabel("보고서·분석")}
+                    {/* AI 분석 보고서 진입은 안전달력·통계 페이지의 맥락 버튼으로 이동 — 메뉴에서는 제거 */}
                     {item({ href: "/org/reports", label: "보고서 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                    {item({ href: "/risk-assessment", label: "AI 분석 보고서", icon: <Sparkles className="mr-2 h-4 w-4 text-cur-muted" /> })}
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("회사 관리")}
                     {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> })}

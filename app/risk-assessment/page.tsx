@@ -36,28 +36,6 @@ const SAMPLE_ITEMS: RiskItem[] = [
     { hazard: "분진·소음 노출", cause: "절단·천공 작업 반복", measures: "방진마스크·귀마개 착용, 습식 작업, 작업시간 관리", recurring: false },
 ]
 
-function Steps({ step }: { step: number }) {
-    const labels = ["기간 선택", "결과 확인", "내보내기"]
-    return (
-        <div className="flex items-center gap-1.5">
-            {labels.map((l, i) => {
-                const n = i + 1
-                const active = step === n
-                const done = step > n
-                return (
-                    <div key={l} className="flex items-center gap-1.5">
-                        <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12px] font-semibold ${active ? "bg-cur-primary text-white" : done ? "bg-cur-primary/15 text-cur-primary" : "bg-cur-elevated text-cur-muted"}`}>
-                            <span className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] ${active ? "bg-white/25" : done ? "bg-cur-primary/20" : "bg-cur-hairline"}`}>{n}</span>
-                            {l}
-                        </div>
-                        {i < labels.length - 1 && <span className="text-cur-muted-soft text-[12px]">›</span>}
-                    </div>
-                )
-            })}
-        </div>
-    )
-}
-
 export default function RiskAssessmentPage() {
     const router = useRouter()
     const [checking, setChecking] = useState(true)
@@ -66,7 +44,8 @@ export default function RiskAssessmentPage() {
     // 보고서 설정(문서 형식·수신자) 미완료면 진행 차단 — "설정을 마치고 와주세요" (Chris)
     const [setupNeeded, setSetupNeeded] = useState(false)
 
-    const [step, setStep] = useState<0 | 1 | 2 | 3>(1)
+    // 화면 상태 5개로 단순화: 게이트(setupNeeded) / 체험 인트로(0) / 시작(1) / 분석 중(analyzing) / 결과(2)
+    const [step, setStep] = useState<0 | 1 | 2>(1)
     const [analyzing, setAnalyzing] = useState(false)
     const [range, setRange] = useState<DateRange | undefined>()
     const [preset, setPreset] = useState<string | null>(null)
@@ -80,7 +59,7 @@ export default function RiskAssessmentPage() {
     const [sites, setSites] = useState<{ userId: string; siteName: string }[]>([])
     const [targetSite, setTargetSite] = useState<{ userId: string; siteName: string } | null>(null)
 
-    // 보고서 보내기 (step 3)
+    // 보고서 보내기 (결과 화면)
     const [reportEmail, setReportEmail] = useState("")
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -95,6 +74,18 @@ export default function RiskAssessmentPage() {
 
     useEffect(() => {
         ;(async () => {
+            // 달력 핸드오프(ra_range)는 진입 즉시 소비한다 — 게이트·리다이렉트로 빠져나가도
+            // localStorage에 묵은 범위가 남아 다음 방문(통계 ra_target 등)을 오발사시키지 않게.
+            let pendingRange: { from: string; to?: string } | null = null
+            try {
+                const raw = localStorage.getItem("ra_range")
+                if (raw) {
+                    localStorage.removeItem("ra_range")
+                    const parsed = JSON.parse(raw)
+                    if (parsed?.from) pendingRange = parsed
+                }
+            } catch { /* 무시 */ }
+
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) { router.replace("/login"); return }
             // 역할 분기: member는 AI 분석 없음(안전관리자 전용, §4-C) / owner는 현장 선택 모드
@@ -134,57 +125,67 @@ export default function RiskAssessmentPage() {
             if (kind === "owner") {
                 // 현장 목록 = 감독자 본인 현장 + 소속 현장. 본인을 빼면 회사관리의
                 // '내 현장 → AI 분석' 경로가 조용히 버려지고, 하위 0곳이면 완전 막다른 길이 된다.
+                const meta = user.user_metadata ?? {}
+                const selfSite = {
+                    userId: user.id,
+                    siteName: `${String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "내 현장"} (내 현장)`,
+                }
                 try {
                     const { data: sess } = await supabase.auth.getSession()
                     const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
                     if (res.ok) {
                         const j = await res.json()
-                        const meta = user.user_metadata ?? {}
-                        const selfSite = {
-                            userId: user.id,
-                            siteName: `${String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "내 현장"} (내 현장)`,
-                        }
                         const active = [
                             selfSite,
                             ...(j.members ?? []).filter((m: any) => m.status === "active")
                                 .map((m: any) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정" })),
                         ]
                         setSites(active)
+                        // 달력 진입(pendingRange)이 있으면 그 의도가 최신 — ra_target은 소비만 하고 버린다
                         const saved = sessionStorage.getItem("ra_target")
-                        if (saved) {
-                            sessionStorage.removeItem("ra_target")
+                        if (saved) sessionStorage.removeItem("ra_target")
+                        if (!pendingRange && saved) {
                             const t = JSON.parse(saved)
                             if (t?.userId && active.some((a: any) => a.userId === t.userId)) setTargetSite(t)
-                        } else if (active.length === 1) {
+                        } else if (!pendingRange && active.length === 1) {
                             setTargetSite(active[0])
                         }
                     }
                 } catch { /* 무시 */ }
                 setChecking(false)
+
+                // 안전달력에서 기간을 골라 넘어온 경우 — 달력의 분석 버튼은 '내 현장' 모드 전용이므로
+                // owner도 대상=본인으로 자동 지정. 자동 실행은 Pro만 — 비Pro는 체험 프레이밍 없이
+                // 샘플 결과가 실기간 라벨과 섞여 보이는 오인을 막기 위해 시작 화면에 멈춘다.
+                if (pendingRange) {
+                    try {
+                        const rng = { from: parseISO(pendingRange.from), to: pendingRange.to ? parseISO(pendingRange.to) : parseISO(pendingRange.from) }
+                        setRange(rng)
+                        setPreset(null)
+                        setTargetSite(selfSite)
+                        if (p) analyze(rng, p, selfSite, "owner")
+                    } catch { /* 무시 */ }
+                }
                 return
             }
 
             await loadTbmDates() // 달력 점 표시는 모두에게 (solo)
             setChecking(false)
 
-            // 안전문서 달력에서 기간을 골라 넘어온 경우 → 재선택 없이 바로 분석
-            try {
-                const raRange = localStorage.getItem("ra_range")
-                if (raRange) {
-                    localStorage.removeItem("ra_range")
-                    const { from, to } = JSON.parse(raRange)
-                    if (from) {
-                        const rng = { from: parseISO(from), to: to ? parseISO(to) : parseISO(from) }
-                        setRange(rng)
-                        setPreset(null)
-                        analyze(rng, p)
-                    }
-                }
-            } catch { /* 무시 */ }
+            // 안전문서 달력에서 기간을 골라 넘어온 경우 → 재선택 없이 바로 분석 (Pro만 자동 실행 —
+            // 비Pro는 체험 인트로를 유지하고 기간만 미리 채워, '체험해보기'에서 이어가게 한다)
+            if (pendingRange) {
+                try {
+                    const rng = { from: parseISO(pendingRange.from), to: pendingRange.to ? parseISO(pendingRange.to) : parseISO(pendingRange.from) }
+                    setRange(rng)
+                    setPreset(null)
+                    if (p) analyze(rng, p)
+                } catch { /* 무시 */ }
+            }
         })()
     }, [router])
 
-    // owner: 대상 현장이 바뀌면 그 현장의 회의록 작성일을 서버에서 로드 (달력 점·건수)
+    // owner: 대상 현장이 바뀌면 그 현장의 회의록 작성일을 서버에서 로드 (건수 표시)
     useEffect(() => {
         if (orgKind !== "owner") return
         if (!targetSite) { setTbmDates([]); return }
@@ -254,9 +255,13 @@ export default function RiskAssessmentPage() {
         setEduStats({ sessions, days, headcount, avg })
     }
 
-    const analyze = async (rangeArg?: DateRange, proArg?: boolean) => {
+    // targetArg·kindArg: 초기 마운트 직후 자동 분석은 state 반영 전이라 대상·역할을 인자로 받는다 (달력→내 현장)
+    const analyze = async (rangeArg?: DateRange, proArg?: boolean, targetArg?: { userId: string; siteName: string } | null, kindArg?: "owner" | "member" | "solo") => {
         const r = rangeArg ?? range
         const isPro = proArg ?? pro
+        const kind = kindArg ?? orgKind
+        const target = targetArg !== undefined ? targetArg : targetSite
+        const targetUserId = kind === "owner" ? target?.userId : undefined
         if (!r?.from) { setMsg({ type: "err", text: "기간을 선택해주세요." }); return }
         setMsg(null)
         const fromS = format(r.from, "yyyy-MM-dd")
@@ -270,7 +275,7 @@ export default function RiskAssessmentPage() {
                 setItems(SAMPLE_ITEMS)
                 setPeriodLabel(label)
                 setSendMsg(null)
-                await loadPreviews(fromS, toS, SAMPLE_ITEMS)
+                await loadPreviews(fromS, toS, SAMPLE_ITEMS, targetUserId)
                 setStep(2)
                 return
             }
@@ -279,12 +284,12 @@ export default function RiskAssessmentPage() {
             const token = sessionData?.session?.access_token
 
             // 안전관리자: 대상 현장 지정 → 서버가 그 현장 회의록로 컨텍스트를 빌드 (클라 RLS로는 못 읽음)
-            if (orgKind === "owner") {
-                if (!targetSite) { setMsg({ type: "err", text: "분석할 현장을 먼저 선택해주세요." }); return }
+            if (kind === "owner") {
+                if (!target) { setMsg({ type: "err", text: "분석할 현장을 먼저 선택해주세요." }); return }
                 const res = await fetch("/api/ai/risk-assessment", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ targetUserId: targetSite.userId, from: fromS, to: toS, workName: `${label} 종합` }),
+                    body: JSON.stringify({ targetUserId: target.userId, from: fromS, to: toS, workName: `${label} 종합` }),
                 })
                 const json = await res.json()
                 if (!res.ok) { setMsg({ type: "err", text: json.error || "분석 실패" }); return }
@@ -293,7 +298,7 @@ export default function RiskAssessmentPage() {
                 setSendMsg(null)
                 const sessions = Number(json.eduSessions) || 0
                 setEduStats(sessions > 0 ? { sessions, days: 0, headcount: 0, avg: "-" } : null)
-                await loadPreviews(fromS, toS, json.items as RiskItem[])
+                await loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId)
                 setStep(2)
                 return
             }
@@ -311,23 +316,22 @@ export default function RiskAssessmentPage() {
             setPeriodLabel(label)
             setSendMsg(null)
             // 서로 독립인 로더 2개는 병렬로 (교육통계 ↔ 미리보기)
-            await Promise.all([loadEduStats(fromS, toS), loadPreviews(fromS, toS, json.items as RiskItem[])])
+            await Promise.all([loadEduStats(fromS, toS), loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId)])
             setStep(2)
         } catch {
-            setMsg({ type: "err", text: "AI 분석 중 오류가 발생했습니다." })
+            setMsg({ type: "err", text: "분석 중 오류가 발생했습니다." })
         } finally {
             setAnalyzing(false)
         }
     }
 
-    // 회의록·교육 이메일 형식 미리보기 HTML 로드 (분석 후)
-    const loadPreviews = async (fromS: string, toS: string, riskItems: RiskItem[]) => {
+    // 회의록·교육 이메일 형식 미리보기 HTML 로드 (분석 후) — targetUserId는 analyze가 확정해 넘긴다
+    const loadPreviews = async (fromS: string, toS: string, riskItems: RiskItem[], targetUserId?: string) => {
         setLoadingPreviews(true)
         setMinutesHtml(""); setEduHtml("")
         try {
             const { data: s } = await supabase.auth.getSession()
             const headers = { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` }
-            const targetUserId = orgKind === "owner" ? targetSite?.userId : undefined
             const [mRes, eRes] = await Promise.all([
                 fetch("/api/reports/minutes/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, items: riskItems, targetUserId }) }),
                 fetch("/api/reports/education/render", { method: "POST", headers, body: JSON.stringify({ from: fromS, to: toS, targetUserId }) }),
@@ -382,7 +386,7 @@ export default function RiskAssessmentPage() {
 
             if (!ok1 && !eduSent) { setSendMsg({ type: "err", text: j1.error || "발송 실패" }); return }
             const parts: string[] = []
-            if (ok1) parts.push("회의록 AI 분석 보고서")
+            if (ok1) parts.push("회의록 분석 보고서")
             if (eduSent) parts.push("안전보건교육일지 종합")
             setSendMsg({
                 type: "ok",
@@ -395,23 +399,23 @@ export default function RiskAssessmentPage() {
 
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-    // 보고서 설정 미완료 — AI 분석은 설정을 끝내야 진행할 수 있다
+    // 게이트: 보고서 설정 미완료 — 설정을 끝내야 진행할 수 있다
     if (setupNeeded) {
         return (
             <div className="min-h-screen bg-cur-canvas font-sans">
                 <div className="max-w-lg mx-auto px-4 pt-4">
-                    <TBMHeader title="AI 분석 보고서" backHref="/" />
+                    <TBMHeader title="분석 보고서" backHref="/" />
                 </div>
                 <main className="max-w-lg mx-auto px-5 py-10">
-                    <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-8 text-center space-y-3">
+                    <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 py-8 text-center space-y-3">
                         <p className="text-[16px] font-bold text-cur-ink">보고서 설정을 마치고 와주세요</p>
                         <p className="text-[13px] text-cur-muted leading-relaxed">
                             문서 출력 형식과 보고서 받는 사람을 먼저 설정해야
-                            <br />AI 분석 보고서를 만들 수 있어요. 1분이면 끝나요.
+                            <br />분석 보고서를 만들 수 있어요. 1분이면 끝나요.
                         </p>
                         <Button
                             onClick={() => router.push("/org/reports")}
-                            className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                            className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
                         >
                             보고서 설정 하러 가기
                         </Button>
@@ -421,64 +425,34 @@ export default function RiskAssessmentPage() {
         )
     }
 
-    // 이메일 형식 보고서 미리보기 — 탭으로 하나씩, iframe 없이 인라인으로 전체 펼침(실제 발송 형식과 동일). step 2·3 공용
-    const activePreviewHtml = previewTab === "minutes" ? minutesHtml : eduHtml
-    const emptyPreviewMsg = previewTab === "minutes" ? "이 기간에 회의록이 없습니다." : "이 기간에 교육일지가 없습니다."
-    const reportPreviews = (
-        <div className="space-y-3">
-            <div className="flex gap-1 p-1 bg-cur-elevated rounded-lg">
-                {([["minutes", "TBM 회의록 종합"], ["edu", "안전보건교육일지 종합"]] as const).map(([key, label]) => (
-                    <button
-                        key={key}
-                        onClick={() => setPreviewTab(key)}
-                        className={`flex-1 h-9 rounded-md text-[13px] font-semibold transition-colors ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
-                    >
-                        {label}
-                    </button>
-                ))}
-            </div>
-            {loadingPreviews ? (
-                <div className="flex items-center justify-center py-20 border border-cur-hairline rounded-xl bg-white">
-                    <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
-                </div>
-            ) : activePreviewHtml ? (
-                <HtmlPreview html={activePreviewHtml} />
-            ) : (
-                <div className="py-16 text-center text-[13px] text-cur-muted-soft border border-cur-hairline rounded-xl bg-white">{emptyPreviewMsg}</div>
-            )}
-        </div>
-    )
-
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden flex flex-col">
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10 print:hidden">
                     <TBMHeader
-                        title="AI 분석 보고서"
+                        title="분석 보고서"
                         backHref="/dashboard"
                         pageBadge={pro ? undefined : "체험"}
                     />
                 </div>
 
-                <div className="p-5 space-y-5 flex-1 bg-cur-canvas-soft">
-                    {step >= 1 && <div className="print:hidden"><Steps step={analyzing ? 2 : step} /></div>}
+                <div className="p-5 space-y-4 flex-1 bg-cur-canvas-soft">
+                    {msg && <div className={`text-[13px] rounded-[8px] p-3 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>}
 
-                    {msg && <div className={`text-[14px] rounded-xl p-4 ${msg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/10 text-cur-error"}`}>{msg.text}</div>}
-
-                    {/* STEP 0: 베이직 설명/체험 안내 */}
+                    {/* 체험 인트로: 비Pro 솔로 — 카피 유지, 카드만 idiom */}
                     {!analyzing && step === 0 && (
                         <div className="space-y-5">
                             <div className="text-center space-y-3 pt-6">
-                                <h2 className="text-[22px] font-bold">TBM 종합 AI 분석 보고서</h2>
+                                <h2 className="text-[22px] font-bold text-cur-ink">TBM 종합 분석 보고서</h2>
                                 <p className="text-cur-muted text-[14px] leading-relaxed">
-                                    기간만 선택하면 그 기간의 TBM을 AI가 분석해<br />
+                                    기간만 선택하면 그 기간의 TBM을 분석해<br />
                                     위험요인 분석 자료를 자동으로 만들어줍니다.
                                 </p>
                             </div>
 
-                            <div className="bg-cur-card rounded-2xl border border-cur-hairline divide-y divide-cur-hairline">
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline divide-y divide-cur-hairline">
                                 {[
-                                    { t: "기간만 선택", d: "이번 달·3개월·6개월 또는 직접 기간 지정" },
+                                    { t: "기간만 선택", d: "이번 주·이번 달·지난 달 버튼으로 끝" },
                                     { t: "AI가 종합 분석", d: "중복 위험은 통합, 반복 위험은 따로 표시" },
                                     { t: "엑셀·PDF·메일 발송", d: "사장·안전보건 담당자에게 바로 제출" },
                                 ].map((f, i) => (
@@ -493,34 +467,33 @@ export default function RiskAssessmentPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Button onClick={() => setStep(1)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
+                                <Button onClick={() => setStep(1)} className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary">
                                     체험해보기
                                 </Button>
-                                <p className="text-[12px] text-cur-muted-soft text-center">월 3,900원 · 첫 달 무료 · AI 분석 보고서 + 월간 보고서</p>
+                                <p className="text-[12px] text-cur-muted-soft text-center">월 3,900원 · 첫 달 무료 · 분석 보고서 + 월간 보고서</p>
                             </div>
                         </div>
                     )}
 
                     {/* 분석 중 */}
                     {analyzing && (
-                        <div className="bg-cur-card rounded-2xl p-10 border border-cur-hairline text-center space-y-4">
-                            <Loader2 className="w-12 h-12 text-cur-primary animate-spin mx-auto" />
+                        <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 py-12 text-center space-y-4">
+                            <Loader2 className="w-10 h-10 text-cur-primary animate-spin mx-auto" />
                             <div>
-                                <p className="text-[17px] font-bold text-cur-ink">분석 중입니다…</p>
-                                <p className="text-[14px] text-cur-muted mt-1">TBM 내용을 분석해 AI 분석 보고서를 만들고 있어요.<br />잠시 기다려 주세요. (10~20초)</p>
+                                <p className="text-[15px] font-bold text-cur-ink">TBM 내용을 분석하고 있어요</p>
+                                <p className="text-[13px] text-cur-muted mt-1">잠시만 기다려 주세요. (10~20초)</p>
                             </div>
                         </div>
                     )}
 
-                    {/* STEP 1: 기간 선택 (프리셋 버튼) */}
+                    {/* 시작: 직접 진입·통계 경로 — 현장(owner)·기간·시작 버튼을 카드 하나로 */}
                     {!analyzing && step === 1 && (
-                        <div className="space-y-4">
-                            {/* 안전관리자: 대상 현장 선택 */}
+                        <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                             {orgKind === "owner" && (
                                 <div className="space-y-2">
-                                    <p className="text-[15px] font-semibold text-cur-ink px-1">분석할 현장을 선택하세요</p>
+                                    <p className="text-[14px] font-bold text-cur-ink">분석할 현장</p>
                                     {sites.length === 0 ? (
-                                        <div className="bg-cur-card border border-cur-hairline rounded-xl p-4 text-[13px] text-cur-muted">
+                                        <div className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
                                             연결된 현장이 없어요. 현장 계정 관리에서 현장 계정을 먼저 만들어주세요.
                                         </div>
                                     ) : (
@@ -530,7 +503,7 @@ export default function RiskAssessmentPage() {
                                                 const s = sites.find((x) => x.userId === e.target.value) || null
                                                 setTargetSite(s)
                                             }}
-                                            className="w-full h-12 rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[15px] font-medium text-cur-ink focus:outline-none focus:ring-1 focus:ring-cur-primary"
+                                            className="w-full h-11 rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[14px] font-medium text-cur-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                                         >
                                             <option value="" disabled>현장 선택</option>
                                             {sites.map((s) => (
@@ -540,69 +513,94 @@ export default function RiskAssessmentPage() {
                                     )}
                                 </div>
                             )}
-                            <p className="text-[15px] font-semibold text-cur-ink px-1">보고서를 생성할 기간을 선택하세요</p>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                {PRESETS.map((p) => (
-                                    <Button
-                                        key={p.key}
-                                        variant="outline"
-                                        onClick={() => { setRange(p.range()); setPreset(p.key) }}
-                                        className={`h-12 rounded-[8px] text-[14px] font-medium border ${preset === p.key ? "border-cur-primary bg-cur-primary/[0.06] text-cur-primary" : "border-cur-hairline text-cur-ink"}`}
-                                    >
-                                        {p.label}
-                                    </Button>
-                                ))}
+                            <div className="space-y-2">
+                                <p className="text-[14px] font-bold text-cur-ink">분석 기간</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {PRESETS.map((p) => (
+                                        <button
+                                            key={p.key}
+                                            type="button"
+                                            onClick={() => { setRange(p.range()); setPreset(p.key) }}
+                                            className={`h-10 rounded-[8px] border text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${preset === p.key ? "border-cur-primary bg-cur-primary/[0.06] text-cur-primary" : "border-cur-hairline bg-cur-elevated text-cur-ink hover:border-cur-primary/40"}`}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             {range?.from && (
-                                <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-4 space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <div className="font-semibold text-[15px] text-cur-ink">
-                                            {format(range.from, "yyyy.MM.dd")} ~ {format(range.to ?? range.from, "yyyy.MM.dd")}
-                                        </div>
-                                        <span className="text-[13px] text-cur-muted">TBM {countInRange()}건</span>
-                                    </div>
-                                    <Button onClick={() => analyze()} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-medium rounded-[8px]">
-                                        다음: AI 분석
-                                    </Button>
-                                </div>
+                                <p className="text-[13px] text-cur-muted">
+                                    {format(range.from, "yyyy.MM.dd")} ~ {format(range.to ?? range.from, "yyyy.MM.dd")} · 회의록 {countInRange()}건
+                                </p>
                             )}
-                        </div>
-                    )}
 
-                    {/* STEP 2: 결과 확인 (실제 발송될 이메일 형식 미리보기) */}
-                    {!analyzing && step === 2 && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-2">
-                                <Button variant="ghost" onClick={restart} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 기간 다시</Button>
-                                <span className="text-[13px] text-cur-muted">발송될 보고서를 확인하세요</span>
-                            </div>
-
-                            {reportPreviews}
-
-                            <Button onClick={() => setStep(3)} className="w-full h-12 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90">
-                                다음 — 내보내기 / 전송
+                            <Button
+                                onClick={() => analyze()}
+                                disabled={!range?.from || (orgKind === "owner" && !targetSite)}
+                                className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
+                            >
+                                분석 시작
                             </Button>
                         </div>
                     )}
 
-                    {/* STEP 3: 내보내기 */}
-                    {!analyzing && step === 3 && (
+                    {/* 결과: 요약 행 → 미리보기 탭 → 이메일 발송, 전부 한 화면 */}
+                    {!analyzing && step === 2 && (
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between gap-2">
-                                <Button variant="ghost" onClick={() => setStep(2)} className="text-cur-muted hover:text-cur-ink h-9 px-2">← 미리보기</Button>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[14px] font-bold text-cur-ink truncate">{periodLabel}</p>
+                                    <div className="flex items-center gap-1.5 mt-1 text-[12px] text-cur-muted">
+                                        <span className="shrink-0">회의록 {countInRange()}건</span>
+                                        {orgKind === "owner" && targetSite && (
+                                            <span className="px-2 py-0.5 rounded-full bg-cur-elevated border border-cur-hairline text-[11px] font-medium truncate">{targetSite.siteName}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={restart}
+                                    className="h-10 px-3 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary shrink-0"
+                                >
+                                    기간 다시 선택
+                                </button>
                             </div>
 
-                            {reportPreviews}
+                            <div className="space-y-3">
+                                <div className="flex gap-1 p-1 bg-cur-elevated rounded-[8px]">
+                                    {([["minutes", "TBM 종합"], ["edu", "교육일지 종합"]] as const).map(([key, label]) => (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() => setPreviewTab(key)}
+                                            className={`flex-1 h-9 rounded-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {loadingPreviews ? (
+                                    <div className="flex items-center justify-center py-20 border border-cur-hairline rounded-[12px] bg-cur-card">
+                                        <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
+                                    </div>
+                                ) : (previewTab === "minutes" ? minutesHtml : eduHtml) ? (
+                                    <HtmlPreview html={previewTab === "minutes" ? minutesHtml : eduHtml} />
+                                ) : (
+                                    <div className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
+                                        {previewTab === "minutes" ? "이 기간에 회의록이 없습니다." : "이 기간에 교육일지가 없습니다."}
+                                    </div>
+                                )}
+                            </div>
 
                             {/* 이메일로 보고서 전송 (회의록 종합 + 안전보건교육일지 종합, 메일 2개) */}
-                            <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-2 print:hidden">
-                                <h3 className="font-bold text-[15px]">이메일로 보고서 전송</h3>
+                            <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-2 print:hidden">
+                                <h3 className="text-[14px] font-bold text-cur-ink">이메일로 보고서 전송</h3>
                                 <p className="text-[12px] text-cur-muted-soft">여러 명은 쉼표(,)로 구분해 최대 5명까지 보낼 수 있어요.</p>
                                 <div className="flex gap-2">
-                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (쉼표로 여러 명)" className="h-11" />
-                                    <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-xl bg-cur-primary text-white font-bold hover:opacity-90 shrink-0">
+                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (쉼표로 여러 명)" className="h-11 rounded-[8px] focus-visible:ring-2 focus-visible:ring-cur-primary" />
+                                    <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold shrink-0 focus-visible:ring-2 focus-visible:ring-cur-primary">
                                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
                                     </Button>
                                 </div>
