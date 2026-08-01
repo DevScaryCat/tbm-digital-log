@@ -127,6 +127,11 @@ export async function POST(request: Request) {
     // 유저 생성 (Admin API 사용: 가상 이메일이라 이메일 인증을 우회하기 위해 email_confirm=true 처리)
     const managerNameStr = typeof managerName === "string" ? managerName.trim().slice(0, 30) : "";
     const realEmailStr = typeof realEmail === "string" ? realEmail.trim() : "";
+    // 단독 가입 실이메일(보고서 수신용) — 형식 오류는 계정 생성 전에 막는다.
+    // 초대 경로는 위 invite 블록에서 이미 같은 검증을 통과했다.
+    if (!invite && realEmailStr && !isValidEmail(realEmailStr)) {
+      return NextResponse.json({ error: "이메일 형식이 올바르지 않습니다." }, { status: 400 });
+    }
     const { data: user, error: userError } = await supabaseAdmin.auth.admin.createUser({
       email: fullEmailId,
       password,
@@ -141,6 +146,9 @@ export async function POST(request: Request) {
         worker_type: workerTypeStr,
         phone: verifiedOtpId ? normalizedPhone : null,
         phone_verified_at: verifiedOtpId ? new Date().toISOString() : null,
+        // 보고서 수신용 실이메일 — 인증 전이므로 real_email만 심는다(verified_at은 /verify-email에서).
+        // 초대 경로는 자체 수집(sendRealEmailVerification)이 기록하므로 여기서 겹쳐 쓰지 않는다.
+        ...(!invite && realEmailStr ? { real_email: realEmailStr } : {}),
         // 동의 캐시는 생성 시점에 함께 심는다 — 별도 updateUserById는 전체 치환이라
         // 방금 넣은 프로필을 통째로 날릴 위험이 있다.
         ...(consented ? consentMetaPatch() : {}),
@@ -251,6 +259,7 @@ export async function POST(request: Request) {
     // 게이트가 꺼져 있어도(솔라피 미설정) 체험을 발급한다. 구독행이 없으면 가입 직후
     // /start-trial로 되돌려보내져 방금 끝낸 가입 화면을 한 번 더 통과하게 된다.
     let trialStarted = false;
+    let emailVerificationSent = false;
     if (user?.user) {
       // 번호 1회 제한은 게이트가 켜져 있을 때만 — 꺼져 있으면 검증할 번호 자체가 없다.
       // 번호 소진(unique)이 최종 관문: 동시 가입 레이스에서도 한 번호는 한 번만 성공한다.
@@ -302,9 +311,29 @@ export async function POST(request: Request) {
       } else {
         trialStarted = true;
       }
+
+      // 실이메일 인증 메일(주간·월간·분석 보고서 수신용) — 초대 경로와 동일 호출.
+      // 번호 소진 롤백(위 409)보다 뒤에 두는 이유: 삭제될 계정에 인증 메일을 보내면 안 된다.
+      // 발송 실패는 가입을 막지 않는다 — 여기서 throw가 새면 계정은 있는데 응답만 500이 된다.
+      if (realEmailStr) {
+        try {
+          const proto = request.headers.get("x-forwarded-proto") || "https";
+          const host = request.headers.get("host");
+          const r = await sendRealEmailVerification(
+            supabaseAdmin,
+            user.user.id,
+            realEmailStr,
+            host ? `${proto}://${host}` : undefined,
+          );
+          emailVerificationSent = r.ok;
+          if (!r.ok) console.error("signup 실이메일 인증 메일 발송 실패:", r.error);
+        } catch (e) {
+          console.error("signup 실이메일 인증 메일 발송 실패:", e);
+        }
+      }
     }
 
-    return NextResponse.json({ success: true, trialStarted });
+    return NextResponse.json({ success: true, trialStarted, emailVerificationSent });
   } catch (error: any) {
     console.error("Signup Error:", error);
     return NextResponse.json({ error: "회원가입 처리 중 서버 오류가 발생했습니다." }, { status: 500 });

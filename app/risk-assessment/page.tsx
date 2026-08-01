@@ -7,11 +7,11 @@ import { formatRangeLabelKo } from "@/lib/utils"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
-import { HtmlPreview } from "@/components/HtmlPreview"
+import { resolveMyReportEmail } from "@/lib/myEmail"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DateRange } from "react-day-picker"
-import { Loader2 } from "lucide-react"
+import { ExternalLink, Loader2 } from "lucide-react"
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth, startOfWeek, endOfMonth, subMonths } from "date-fns"
 
 interface RiskItem {
@@ -59,8 +59,9 @@ export default function RiskAssessmentPage() {
     const [sites, setSites] = useState<{ userId: string; siteName: string }[]>([])
     const [targetSite, setTargetSite] = useState<{ userId: string; siteName: string } | null>(null)
 
-    // 보고서 보내기 (결과 화면)
+    // 보고서 보내기 (결과 화면) — 서버가 내 이메일(인증 real_email·카카오)을 자동 포함하므로 입력은 추가 수신자만
     const [reportEmail, setReportEmail] = useState("")
+    const [myEmail, setMyEmail] = useState<string | null>(null)
     const [sending, setSending] = useState(false)
     const [sendMsg, setSendMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 같은 기간 안전보건교육일지 통계 (회의록 위험성평가와 함께 메일 발송)
@@ -69,7 +70,6 @@ export default function RiskAssessmentPage() {
     const [minutesHtml, setMinutesHtml] = useState("")
     const [eduHtml, setEduHtml] = useState("")
     const [loadingPreviews, setLoadingPreviews] = useState(false)
-    const [previewTab, setPreviewTab] = useState<"minutes" | "edu">("minutes")
 
 
     useEffect(() => {
@@ -88,6 +88,8 @@ export default function RiskAssessmentPage() {
 
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) { router.replace("/login"); return }
+            // 발송 카드에서 "내 이메일 자동 수신" 여부를 가르는 값 — 인증 real_email > 카카오 > null
+            setMyEmail(resolveMyReportEmail(user))
             // 역할 분기: member는 AI 분석 없음(안전관리자 전용, §4-C) / owner는 현장 선택 모드
             const ctx = await fetchOrgContext()
             if (ctx?.kind === "member") { router.replace("/"); return }
@@ -346,15 +348,25 @@ export default function RiskAssessmentPage() {
     }
 
     const sendReport = async () => {
-        const recipients = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
-        if (recipients.length === 0) { setSendMsg({ type: "err", text: "받는 사람 이메일을 입력해주세요." }); return }
-        if (recipients.length > 5) { setSendMsg({ type: "err", text: "최대 5명까지 보낼 수 있어요." }); return }
+        // 서버가 내 이메일을 자동 포함하므로 body에는 추가 수신자만 담는다 (계약: emails, 최대 3)
+        // 중복은 소문자 키로 걸러낸다 — 추가 칸에 내 이메일을 또 적으면 인원수가 부풀고
+        // 상한 슬롯만 잡아먹는다 (서버도 같은 규칙으로 한 번 더 거른다)
+        const seenEmails = new Set<string>(myEmail ? [myEmail.toLowerCase()] : [])
+        const emails = reportEmail.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean).filter((e) => {
+            const k = e.toLowerCase()
+            if (seenEmails.has(k)) return false
+            seenEmails.add(k)
+            return true
+        })
+        if (!myEmail && emails.length === 0) { setSendMsg({ type: "err", text: "받는 사람 이메일을 입력해주세요." }); return }
+        if (emails.length > 3) { setSendMsg({ type: "err", text: "추가 수신자는 최대 3명까지 보낼 수 있어요." }); return }
+        const total = emails.length + (myEmail ? 1 : 0)
         setSending(true); setSendMsg(null)
         try {
             // 베이직 체험: 실제 발송하지 않음
             if (!pro) {
                 await new Promise((r) => setTimeout(r, 800))
-                setSendMsg({ type: "ok", text: `체험 모드 — Pro에서는 ${recipients.length}곳으로 엑셀 첨부 메일이 실제 발송됩니다.` })
+                setSendMsg({ type: "ok", text: `체험 모드 — Pro에서는 ${myEmail ? "내 이메일 포함 " : ""}${total}명에게 엑셀 첨부 메일이 실제 발송됩니다.` })
                 return
             }
             const { data: sessionData } = await supabase.auth.getSession()
@@ -369,12 +381,12 @@ export default function RiskAssessmentPage() {
             const [r1, r2] = await Promise.all([
                 fetch("/api/reports/risk-assessment/send", {
                     method: "POST", headers,
-                    body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: sendCompany, recipients, from: fromS, to: toS, targetUserId }),
+                    body: JSON.stringify({ items, period: `${periodLabel} 종합`, company: sendCompany, emails, from: fromS, to: toS, targetUserId }),
                 }),
                 hasEdu
                     ? fetch("/api/reports/education/send", {
                         method: "POST", headers,
-                        body: JSON.stringify({ company: sendCompany, recipients, from: fromS, to: toS, targetUserId }),
+                        body: JSON.stringify({ company: sendCompany, emails, from: fromS, to: toS, targetUserId }),
                     })
                     : Promise.resolve(null),
             ])
@@ -390,9 +402,17 @@ export default function RiskAssessmentPage() {
             if (eduSent) parts.push("안전보건교육일지 종합")
             setSendMsg({
                 type: "ok",
-                text: `${recipients.length}곳으로 ${parts.join(" + ")} 메일${parts.length > 1 ? " 2개" : ""}를 발송했습니다.${hasEdu && !eduSent ? " (교육 메일은 실패)" : ""}`,
+                text: `${myEmail ? "내 이메일 포함 " : ""}${total}명에게 ${parts.join(" + ")} 메일${parts.length > 1 ? " 2개" : ""}를 보냈어요.${hasEdu && !eduSent ? " (교육 메일은 실패)" : ""}`,
             })
         } finally { setSending(false) }
+    }
+
+    // 이미 렌더된 이메일 HTML을 새 탭 전체 화면으로 — 팝업 차단을 피하려면 반드시 클릭 핸들러 안에서 연다.
+    // Blob URL은 새 탭이 로드되기 전에 revoke하면 빈 화면이 되므로 넉넉히 늦춰 누수만 막는다.
+    const openPreviewTab = (html: string) => {
+        const url = URL.createObjectURL(new Blob([html], { type: "text/html" }))
+        window.open(url, "_blank", "noopener")
+        setTimeout(() => URL.revokeObjectURL(url), 60_000)
     }
 
     const restart = () => { setStep(1); setItems([]); setMsg(null); setSendMsg(null) }
@@ -568,38 +588,61 @@ export default function RiskAssessmentPage() {
                                 </button>
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="flex gap-1 p-1 bg-cur-elevated rounded-[8px]">
-                                    {([["minutes", "TBM 종합"], ["edu", "교육일지 종합"]] as const).map(([key, label]) => (
-                                        <button
-                                            key={key}
-                                            type="button"
-                                            onClick={() => setPreviewTab(key)}
-                                            className={`flex-1 h-9 rounded-[6px] text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${previewTab === key ? "bg-cur-card text-cur-ink shadow-sm" : "text-cur-muted hover:text-cur-ink"}`}
-                                        >
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
+                            {/* 결과 미리보기 — 인라인 렌더 대신 새 탭 전체 화면 (보고서 설정 '예시 보기' 패턴과 통일) */}
+                            <div className="space-y-2">
+                                <p className="text-[12px] text-cur-muted-soft">실제 발송되는 이메일과 같은 모습입니다.</p>
                                 {loadingPreviews ? (
-                                    <div className="flex items-center justify-center py-20 border border-cur-hairline rounded-[12px] bg-cur-card">
+                                    <div className="flex items-center justify-center py-10 border border-cur-hairline rounded-[12px] bg-cur-card">
                                         <Loader2 className="w-6 h-6 animate-spin text-cur-muted" />
                                     </div>
-                                ) : (previewTab === "minutes" ? minutesHtml : eduHtml) ? (
-                                    <HtmlPreview html={previewTab === "minutes" ? minutesHtml : eduHtml} />
+                                ) : minutesHtml || eduHtml ? (
+                                    <div className="rounded-[12px] border border-cur-hairline bg-cur-card divide-y divide-cur-hairline overflow-hidden">
+                                        {([["TBM 회의록 종합", minutesHtml], ["안전보건교육일지 종합", eduHtml]] as const)
+                                            .filter(([, html]) => !!html)
+                                            .map(([label, html]) => (
+                                                <button
+                                                    key={label}
+                                                    type="button"
+                                                    onClick={() => openPreviewTab(html)}
+                                                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cur-primary"
+                                                >
+                                                    <span className="text-[14px] text-cur-ink flex-1 min-w-0 truncate text-left">{label}</span>
+                                                    <span className="text-[12px] text-cur-primary font-semibold shrink-0">새 탭에서 보기</span>
+                                                    <ExternalLink className="w-3.5 h-3.5 text-cur-muted-soft shrink-0" />
+                                                </button>
+                                            ))}
+                                    </div>
                                 ) : (
                                     <div className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
-                                        {previewTab === "minutes" ? "이 기간에 회의록이 없습니다." : "이 기간에 교육일지가 없습니다."}
+                                        이 기간에 미리볼 보고서가 없습니다.
                                     </div>
                                 )}
                             </div>
 
-                            {/* 이메일로 보고서 전송 (회의록 종합 + 안전보건교육일지 종합, 메일 2개) */}
+                            {/* 이메일로 보고서 전송 (회의록 종합 + 안전보건교육일지 종합, 메일 2개)
+                                내 이메일(인증 real_email·카카오)이 있으면 서버가 자동 포함 — 입력은 추가 수신자만 */}
                             <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-2 print:hidden">
                                 <h3 className="text-[14px] font-bold text-cur-ink">이메일로 보고서 전송</h3>
-                                <p className="text-[12px] text-cur-muted-soft">여러 명은 쉼표(,)로 구분해 최대 5명까지 보낼 수 있어요.</p>
+                                {myEmail ? (
+                                    <div className="flex items-center gap-2 rounded-[8px] border border-cur-hairline bg-cur-elevated px-3 py-2.5 min-w-0">
+                                        <p className="text-[13px] text-cur-ink min-w-0 truncate">
+                                            <span className="font-semibold">{myEmail}</span>
+                                            <span className="text-cur-muted">(내 이메일)로 자동으로 보내드려요</span>
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-[12px] text-cur-muted-soft">
+                                        이메일 인증을 하지 않아 내 이메일로는 자동 수신이 안 돼요. 인증을 마치면 다음부터 자동으로 받아요.
+                                    </p>
+                                )}
                                 <div className="flex gap-2">
-                                    <Input type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} placeholder="이메일 (쉼표로 여러 명)" className="h-11 rounded-[8px] focus-visible:ring-2 focus-visible:ring-cur-primary" />
+                                    <Input
+                                        type="email"
+                                        value={reportEmail}
+                                        onChange={(e) => setReportEmail(e.target.value)}
+                                        placeholder={myEmail ? "다른 받는 분 이메일 (쉼표로 최대 3명)" : "이메일 (쉼표로 최대 3명)"}
+                                        className="h-11 rounded-[8px] focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                    />
                                     <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold shrink-0 focus-visible:ring-2 focus-visible:ring-cur-primary">
                                         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
                                     </Button>
