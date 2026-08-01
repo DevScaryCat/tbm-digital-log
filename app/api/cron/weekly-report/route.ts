@@ -7,6 +7,7 @@ import { getAdminClient, subscriptionAllows, isProPlan } from "@/lib/portone";
 import { buildMergedMinutesForRange, renderReportHtml, buildReportAttachments } from "@/lib/monthlyReport";
 import { buildMergedEducationForRange, renderEducationReportHtml, buildEducationAttachments } from "@/lib/educationReport";
 import { mailerConfigured, sendMail } from "@/lib/mailer";
+import { AiBatch } from "@/lib/aiBatch";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -64,6 +65,11 @@ async function run(request: Request) {
 
     const results = { candidates: 0, sent: 0, skipped: 0, failed: 0, today: todayKST, weekday: kstWeekday, period: periodLabel };
 
+    // 2단계 구조: ① 대상별 콘텐츠 빌드(AI 요약은 배치에 예약) → ② 배치 1회 실행(50% 할인,
+    // 실패·시간초과는 동기 폴백) → ③ 발송. 발송 지연·품질 저하 없이 요금만 아끼는 배치다.
+    const aiBatch = new AiBatch();
+    const sendJobs: Array<() => Promise<void>> = [];
+
     for (const s of (subs as any[]) || []) {
       if (!force && (s.report_weekday ?? 1) !== kstWeekday) continue;
       if (!isProPlan(s.plan) || !subscriptionAllows(s)) continue;
@@ -106,34 +112,48 @@ async function run(request: Request) {
       if (recipients.length === 0) { results.skipped++; continue; }
 
       try {
-        const minutes = await buildMergedMinutesForRange(admin, accounts, from, to, periodLabel, companyName);
-        const edu = await buildMergedEducationForRange(admin, accounts.map((a) => a.userId), from, to, periodLabel, companyName);
+        const minutes = await buildMergedMinutesForRange(admin, accounts, from, to, periodLabel, companyName, undefined, aiBatch);
+        const edu = await buildMergedEducationForRange(admin, accounts.map((a) => a.userId), from, to, periodLabel, companyName, aiBatch);
         const tag = accounts.length > 1 ? ` (전 ${accounts.length}현장 통합)` : "";
         const title = companyName || accounts[0]?.siteName || "현장";
+        // 같은 이메일이 중복 승인돼 있어도 1회만 — 멱등 기록(recordSent)이 발송 단계로 미뤄져
+        // 같은 실행 안의 중복은 여기서 걸러야 한다
+        const emailList = [...new Set(recipients)];
 
-        for (const email of recipients) {
-          if (minutes.stats.total > 0 && !(await alreadySent(admin, email, py, pm, kindMinutes))) {
-            const html = renderReportHtml(minutes);
-            const attachments = await buildReportAttachments(minutes, `${title} 주간 TBM 회의록 종합 (${periodLabel})`, todayKST);
-            const sent = await sendMail({ to: email, subject: `[안톡] ${title} 주간 TBM 회의록 종합${tag} (${periodLabel})`, html, attachments });
-            if (sent.ok) { await recordSent(admin, email, py, pm, kindMinutes, accounts.length); results.sent++; }
-            else results.failed++;
+        sendJobs.push(async () => {
+          try {
+            for (const email of emailList) {
+              if (minutes.stats.total > 0 && !(await alreadySent(admin, email, py, pm, kindMinutes))) {
+                const html = renderReportHtml(minutes);
+                const attachments = await buildReportAttachments(minutes, `${title} 주간 TBM 회의록 종합 (${periodLabel})`, todayKST);
+                const sent = await sendMail({ to: email, subject: `[안톡] ${title} 주간 TBM 회의록 종합${tag} (${periodLabel})`, html, attachments });
+                if (sent.ok) { await recordSent(admin, email, py, pm, kindMinutes, accounts.length); results.sent++; }
+                else results.failed++;
+              }
+              if (edu && !(await alreadySent(admin, email, py, pm, kindEdu))) {
+                const html = renderEducationReportHtml(edu);
+                const attachments = await buildEducationAttachments(edu, `${title} 주간 안전보건교육일지 종합`, todayKST);
+                const sent = await sendMail({ to: email, subject: `[안톡] ${title} 주간 안전보건교육일지 종합${tag} (${periodLabel})`, html, attachments });
+                if (sent.ok) { await recordSent(admin, email, py, pm, kindEdu, accounts.length); results.sent++; }
+                else results.failed++;
+              }
+            }
+          } catch (e) {
+            console.error("weekly report send error:", s.user_id, e);
+            results.failed++;
           }
-          if (edu && !(await alreadySent(admin, email, py, pm, kindEdu))) {
-            const html = renderEducationReportHtml(edu);
-            const attachments = await buildEducationAttachments(edu, `${title} 주간 안전보건교육일지 종합`, todayKST);
-            const sent = await sendMail({ to: email, subject: `[안톡] ${title} 주간 안전보건교육일지 종합${tag} (${periodLabel})`, html, attachments });
-            if (sent.ok) { await recordSent(admin, email, py, pm, kindEdu, accounts.length); results.sent++; }
-            else results.failed++;
-          }
-        }
+        });
       } catch (e) {
         console.error("weekly report error:", s.user_id, e);
         results.failed++;
       }
     }
 
-    return NextResponse.json({ success: true, ...results });
+    // AI 요약 배치 실행(시간 예산 내 미완료 시 동기 폴백) 후 발송
+    const batchStat = await aiBatch.flush(120_000);
+    for (const job of sendJobs) await job();
+
+    return NextResponse.json({ success: true, ...results, aiBatch: batchStat });
   } catch (e: any) {
     console.error("weekly-report cron error:", e);
     return NextResponse.json({ error: "서버 오류", detail: e?.message }, { status: 500 });

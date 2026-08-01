@@ -4,6 +4,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { formatRangeLabelKo } from "@/lib/utils";
+import type { AiBatch } from "@/lib/aiBatch";
 
 export interface EducationDay {
   date: string;
@@ -34,16 +35,12 @@ const MAX_DAYS = 40;
  * 날짜별 교육 내용 → 날짜별 1줄 요약 + 주제 키워드 (AI, Haiku).
  * education-insight 라우트와 보고서 발송이 공유하는 단일 출처.
  */
-export async function generateEducationInsight(
+/** 인사이트 요청 파라미터 — 동기 호출과 배치(AiBatch) 경로가 같은 프롬프트를 쓰도록 단일 출처 */
+function educationInsightParams(
   dayBlocks: { date: string; content: string }[]
-): Promise<{ days: { date: string; summary: string }[]; keywords: string[] }> {
-  const empty = { days: [], keywords: [] };
-  if (!process.env.ANTHROPIC_API_KEY || dayBlocks.length === 0) return empty;
-  try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const userText = dayBlocks.map((b) => `=== ${b.date} ===\n${b.content}`).join("\n\n");
-
-    const msg = await anthropic.messages.create({
+): Anthropic.Messages.MessageCreateParamsNonStreaming {
+  const userText = dayBlocks.map((b) => `=== ${b.date} ===\n${b.content}`).join("\n\n");
+  return {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1800,
       temperature: 0.2,
@@ -89,24 +86,41 @@ export async function generateEducationInsight(
       ],
       tool_choice: { type: "tool", name: "format_education_summary" },
       messages: [{ role: "user", content: userText }],
-    });
+    };
+}
 
-    const toolUse = msg.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    );
-    const raw = (toolUse?.input ?? {}) as { days?: unknown; keywords?: unknown };
+/** 배치/동기 공용 응답 파서 — 날짜 검증 포함 */
+function educationInsightFromMessage(
+  msg: Anthropic.Message,
+  dayBlocks: { date: string; content: string }[]
+): { days: { date: string; summary: string }[]; keywords: string[] } {
+  const toolUse = msg.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+  );
+  const raw = (toolUse?.input ?? {}) as { days?: unknown; keywords?: unknown };
 
-    const validDates = new Set(dayBlocks.map((b) => b.date));
-    const days = (Array.isArray(raw.days) ? raw.days : [])
-      .map((d: any) => ({ date: String(d?.date ?? "").trim(), summary: String(d?.summary ?? "").trim() }))
-      .filter((d) => validDates.has(d.date) && d.summary);
+  const validDates = new Set(dayBlocks.map((b) => b.date));
+  const days = (Array.isArray(raw.days) ? raw.days : [])
+    .map((d: any) => ({ date: String(d?.date ?? "").trim(), summary: String(d?.summary ?? "").trim() }))
+    .filter((d) => validDates.has(d.date) && d.summary);
 
-    const keywords = (Array.isArray(raw.keywords) ? raw.keywords : [])
-      .map((k: any) => String(k ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 8);
+  const keywords = (Array.isArray(raw.keywords) ? raw.keywords : [])
+    .map((k: any) => String(k ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
 
-    return { days, keywords };
+  return { days, keywords };
+}
+
+export async function generateEducationInsight(
+  dayBlocks: { date: string; content: string }[]
+): Promise<{ days: { date: string; summary: string }[]; keywords: string[] }> {
+  const empty = { days: [], keywords: [] };
+  if (!process.env.ANTHROPIC_API_KEY || dayBlocks.length === 0) return empty;
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await anthropic.messages.create(educationInsightParams(dayBlocks));
+    return educationInsightFromMessage(msg, dayBlocks);
   } catch (e) {
     console.error("education insight AI error:", e);
     return empty;
@@ -188,12 +202,13 @@ export async function buildMergedEducationContent(
   userIds: string[],
   year: number,
   month: number,
-  companyName: string | null
+  companyName: string | null,
+  aiBatch?: AiBatch
 ): Promise<EducationReportContent | null> {
   const p = (n: number) => String(n).padStart(2, "0");
   const from = `${year}-${p(month)}-01`;
   const to = `${year}-${p(month)}-${p(new Date(Date.UTC(year, month, 0)).getUTCDate())}`;
-  return buildMergedEducationForRange(admin, userIds, from, to, `${year}년 ${month}월`, companyName);
+  return buildMergedEducationForRange(admin, userIds, from, to, `${year}년 ${month}월`, companyName, aiBatch);
 }
 
 /** 통합 교육일지 콘텐츠 — 임의 기간(주간/월간 공용) */
@@ -203,7 +218,8 @@ export async function buildMergedEducationForRange(
   from: string,
   to: string,
   periodLabel: string,
-  companyName: string | null
+  companyName: string | null,
+  aiBatch?: AiBatch
 ): Promise<EducationReportContent | null> {
   const { data: rows } = await admin
     .from("tbm_logs")
@@ -246,16 +262,31 @@ export async function buildMergedEducationForRange(
     .slice(0, MAX_DAYS)
     .map(([date, contents]) => ({ date, content: contents.join("\n").slice(0, MAX_CONTENT_PER_DAY) }));
 
-  const insight = await generateEducationInsight(dayBlocks);
-  const summaryMap = new Map(insight.days.map((d) => [d.date, d.summary]));
-
   const dayMap = new Map<string, number>();
   for (const l of logs) dayMap.set(l.date, (dayMap.get(l.date) || 0) + 1);
   const days: EducationDay[] = [...dayMap.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([date, n]) => ({ date, sessions: n, summary: summaryMap.get(date) || "" }));
+    .map(([date, n]) => ({ date, sessions: n, summary: "" }));
 
-  return { companyName, periodLabel, stats: { sessions, days: dayCount, headcount, avg }, types, days, keywords: insight.keywords };
+  const content: EducationReportContent = {
+    companyName, periodLabel, stats: { sessions, days: dayCount, headcount, avg }, types, days, keywords: [],
+  };
+  const applyInsight = (insight: { days: { date: string; summary: string }[]; keywords: string[] }) => {
+    const summaryMap = new Map(insight.days.map((d) => [d.date, d.summary]));
+    for (const d of content.days) d.summary = summaryMap.get(d.date) || "";
+    content.keywords = insight.keywords;
+  };
+  if (aiBatch && process.env.ANTHROPIC_API_KEY && dayBlocks.length > 0) {
+    // 크론 경로: 날짜별 요약 생성을 배치로 미룬다 — flush()가 content를 채운 뒤 렌더된다
+    aiBatch.defer({
+      params: educationInsightParams(dayBlocks),
+      apply: (msg) => applyInsight(educationInsightFromMessage(msg, dayBlocks)),
+      fallback: async () => applyInsight(await generateEducationInsight(dayBlocks)),
+    });
+  } else {
+    applyInsight(await generateEducationInsight(dayBlocks));
+  }
+  return content;
 }
 
 function escapeHtml(s: string): string {

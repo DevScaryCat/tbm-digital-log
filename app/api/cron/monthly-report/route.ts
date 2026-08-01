@@ -4,6 +4,7 @@ import { getAdminClient, subscriptionAllows, isProPlan } from "@/lib/portone";
 import { buildMergedMinutesContent, renderReportHtml, buildReportAttachments } from "@/lib/monthlyReport";
 import { buildMergedEducationContent, renderEducationReportHtml, buildEducationAttachments } from "@/lib/educationReport";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
+import { AiBatch } from "@/lib/aiBatch";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -66,6 +67,12 @@ async function run(request: Request) {
     if (month === 0) { month = 12; year -= 1; }
     const date = todayKST;
 
+    // 2단계 구조: 각 경로는 콘텐츠를 빌드하며 AI 요약을 배치에 예약하고, 저장·발송은
+    // 클로저(postJobs)로 미룬다. 모든 경로 순회 후 배치 1회 실행(50% 할인, 실패·시간초과는
+    // 동기 폴백) → postJobs를 큐 순서대로 실행. 발송 지연·품질 저하 없이 요금만 아낀다.
+    const aiBatch = new AiBatch();
+    const postJobs: Array<() => Promise<void>> = [];
+
     // ══ ① 회사 경로 ════════════════════════════════════════════════════
     // 단독 경로(②)에서 배제할 계정 — 감독자 본인과 소속 현장 전부.
     const orgLinked = new Set<string>();
@@ -116,76 +123,85 @@ async function run(request: Request) {
         }
         const allIds = accounts.map((a) => a.userId);
 
-        // (a) 병합 보고서 → 안전관리자 웹 열람 저장 (monthly_reports, user_id=owner)
+        // (a)+(b) 병합 보고서 — 빌드(AI는 배치 예약)만 여기서, 저장·발송은 postJobs로
         try {
-          const mergedContent = await buildMergedMinutesContent(admin, accounts, year, month, org.name);
+          const mergedContent = await buildMergedMinutesContent(admin, accounts, year, month, org.name, aiBatch);
           // 교육 종합은 회의록 유무와 독립 — 회의록 0건 달에도 교육 보고서는 나가야 한다 (리뷰 I).
           // 수신자 루프 밖에서 1회만 빌드 (AI 요약 중복 비용 방지).
-          const mergedEdu = await buildMergedEducationContent(admin, allIds, year, month, org.name);
+          const mergedEdu = await buildMergedEducationContent(admin, allIds, year, month, org.name, aiBatch);
 
-          if (mergedContent.stats.total > 0) {
-            const { data: existing } = await admin
-              .from("monthly_reports")
-              .select("token")
-              .eq("user_id", org.owner_user_id)
-              .eq("period_year", year)
-              .eq("period_month", month)
-              .maybeSingle();
-            const token = existing?.token || randomUUID();
-            const { error: upErr } = await admin.from("monthly_reports").upsert(
-              {
-                user_id: org.owner_user_id,
-                period_year: year,
-                period_month: month,
-                token,
-                content: mergedContent as any,
-                recipients: [],
-                sent_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id,period_year,period_month" }
-            );
-            if (!upErr) orgResults.ownerSaved++;
-          }
-
-          // (b) 상위 승인 수신처(외부·원청)로 병합본 발송 — 전용 멱등 kind(org_*)
+          // (b) 수신처 명단은 빌드 단계에서 확정 (읽기 전용 쿼리) — 중복 이메일은 1회만
           const { data: ownerConsents } = await admin
             .from("report_recipient_consents")
             .select("recipient_email")
             .eq("account_user_id", org.owner_user_id)
             .eq("status", "approved");
+          const emails = [...new Set((((ownerConsents as any[]) || [])).map((c) => c.recipient_email as string))];
           const merged = accounts.length > 1;
           const tag = merged ? ` (전 ${accounts.length}현장 통합)` : "";
           // 멱등 키를 회사별로 분리 — 같은 원청 이메일을 여러 회사가 승인해도 각각 발송된다.
           const kMinutes: Kind = `org_minutes_${org.owner_user_id}`;
           const kEdu: Kind = `org_education_${org.owner_user_id}`;
-          for (const c of (ownerConsents as any[]) || []) {
-            const email = c.recipient_email as string;
-            if (mergedContent.stats.total > 0 && !(await alreadySent(admin, email, year, month, kMinutes))) {
-              const html = renderReportHtml(mergedContent);
-              const docTitle = `${org.name} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
-              const attachments = await buildReportAttachments(mergedContent, docTitle, date);
-              const sent = await sendMail({
-                to: email,
-                subject: `[안톡] ${org.name} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
-                html,
-                attachments,
-              });
-              if (sent.ok) { await recordSent(admin, email, year, month, kMinutes, accounts.length); orgResults.ownerSent++; }
-              else orgResults.failed++;
+
+          postJobs.push(async () => {
+            try {
+              // (a) 안전관리자 웹 열람 저장 (monthly_reports, user_id=owner) — AI 총평 반영본
+              if (mergedContent.stats.total > 0) {
+                const { data: existing } = await admin
+                  .from("monthly_reports")
+                  .select("token")
+                  .eq("user_id", org.owner_user_id)
+                  .eq("period_year", year)
+                  .eq("period_month", month)
+                  .maybeSingle();
+                const token = existing?.token || randomUUID();
+                const { error: upErr } = await admin.from("monthly_reports").upsert(
+                  {
+                    user_id: org.owner_user_id,
+                    period_year: year,
+                    period_month: month,
+                    token,
+                    content: mergedContent as any,
+                    recipients: [],
+                    sent_at: new Date().toISOString(),
+                  },
+                  { onConflict: "user_id,period_year,period_month" }
+                );
+                if (!upErr) orgResults.ownerSaved++;
+              }
+
+              for (const email of emails) {
+                if (mergedContent.stats.total > 0 && !(await alreadySent(admin, email, year, month, kMinutes))) {
+                  const html = renderReportHtml(mergedContent);
+                  const docTitle = `${org.name} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
+                  const attachments = await buildReportAttachments(mergedContent, docTitle, date);
+                  const sent = await sendMail({
+                    to: email,
+                    subject: `[안톡] ${org.name} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
+                    html,
+                    attachments,
+                  });
+                  if (sent.ok) { await recordSent(admin, email, year, month, kMinutes, accounts.length); orgResults.ownerSent++; }
+                  else orgResults.failed++;
+                }
+                if (mergedEdu && !(await alreadySent(admin, email, year, month, kEdu))) {
+                  const html = renderEducationReportHtml(mergedEdu);
+                  const attachments = await buildEducationAttachments(mergedEdu, `${org.name} 안전보건교육일지 종합 보고서`, date);
+                  const sent = await sendMail({
+                    to: email,
+                    subject: `[안톡] ${org.name} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
+                    html,
+                    attachments,
+                  });
+                  if (sent.ok) { await recordSent(admin, email, year, month, kEdu, accounts.length); orgResults.ownerSent++; }
+                  else orgResults.failed++;
+                }
+              }
+            } catch (e) {
+              console.error("org merged report error:", org.id, e);
+              orgResults.failed++;
             }
-            if (mergedEdu && !(await alreadySent(admin, email, year, month, kEdu))) {
-              const html = renderEducationReportHtml(mergedEdu);
-              const attachments = await buildEducationAttachments(mergedEdu, `${org.name} 안전보건교육일지 종합 보고서`, date);
-              const sent = await sendMail({
-                to: email,
-                subject: `[안톡] ${org.name} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
-                html,
-                attachments,
-              });
-              if (sent.ok) { await recordSent(admin, email, year, month, kEdu, accounts.length); orgResults.ownerSent++; }
-              else orgResults.failed++;
-            }
-          }
+          });
         } catch (e) {
           console.error("org merged report error:", org.id, e);
           orgResults.failed++;
@@ -203,39 +219,47 @@ async function run(request: Request) {
           const kMemberMinutes: Kind = `member_minutes_${acc.userId}`;
           const kMemberEdu: Kind = `member_education_${acc.userId}`;
           try {
-            let anySent = false;
-            if (!(await alreadySent(admin, email, year, month, kMemberMinutes))) {
-              const own = await buildMergedMinutesContent(admin, [acc], year, month, acc.siteName);
-              if (own.stats.total > 0) {
-                const html = renderReportHtml(own);
-                const docTitle = `${acc.siteName} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
-                const attachments = await buildReportAttachments(own, docTitle, date);
-                const sent = await sendMail({
-                  to: email,
-                  subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 TBM 회의록 분석 보고서`,
-                  html,
-                  attachments,
-                });
-                if (sent.ok) { await recordSent(admin, email, year, month, kMemberMinutes, 1); anySent = true; }
-                else orgResults.failed++;
+            // 멱등 확인은 빌드 단계에서 (이미 보낸 문서는 빌드 자체를 생략 — 오늘과 동일)
+            const doMinutes = !(await alreadySent(admin, email, year, month, kMemberMinutes));
+            const doEdu = !(await alreadySent(admin, email, year, month, kMemberEdu));
+            const own = doMinutes ? await buildMergedMinutesContent(admin, [acc], year, month, acc.siteName, aiBatch) : null;
+            const edu = doEdu ? await buildMergedEducationContent(admin, [acc.userId], year, month, acc.siteName, aiBatch) : null;
+            if (!own && !edu) continue;
+
+            postJobs.push(async () => {
+              try {
+                let anySent = false;
+                if (own && own.stats.total > 0) {
+                  const html = renderReportHtml(own);
+                  const docTitle = `${acc.siteName} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
+                  const attachments = await buildReportAttachments(own, docTitle, date);
+                  const sent = await sendMail({
+                    to: email,
+                    subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 TBM 회의록 분석 보고서`,
+                    html,
+                    attachments,
+                  });
+                  if (sent.ok) { await recordSent(admin, email, year, month, kMemberMinutes, 1); anySent = true; }
+                  else orgResults.failed++;
+                }
+                if (edu) {
+                  const html = renderEducationReportHtml(edu);
+                  const attachments = await buildEducationAttachments(edu, `${acc.siteName} 안전보건교육일지 종합 보고서`, date);
+                  const sent = await sendMail({
+                    to: email,
+                    subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 안전보건교육일지 종합`,
+                    html,
+                    attachments,
+                  });
+                  if (sent.ok) { await recordSent(admin, email, year, month, kMemberEdu, 1); anySent = true; }
+                  else orgResults.failed++;
+                }
+                if (anySent) orgResults.memberSent++;
+              } catch (e) {
+                console.error("org member monthly error:", acc.userId, e);
+                orgResults.failed++;
               }
-            }
-            if (!(await alreadySent(admin, email, year, month, kMemberEdu))) {
-              const edu = await buildMergedEducationContent(admin, [acc.userId], year, month, acc.siteName);
-              if (edu) {
-                const html = renderEducationReportHtml(edu);
-                const attachments = await buildEducationAttachments(edu, `${acc.siteName} 안전보건교육일지 종합 보고서`, date);
-                const sent = await sendMail({
-                  to: email,
-                  subject: `[안톡] ${acc.siteName} ${year}년 ${month}월 안전보건교육일지 종합`,
-                  html,
-                  attachments,
-                });
-                if (sent.ok) { await recordSent(admin, email, year, month, kMemberEdu, 1); anySent = true; }
-                else orgResults.failed++;
-              }
-            }
-            if (anySent) orgResults.memberSent++;
+            });
           } catch (e) {
             console.error("org member monthly error:", acc.userId, e);
             orgResults.failed++;
@@ -277,22 +301,24 @@ async function run(request: Request) {
             const meta = (u?.user?.user_metadata ?? {}) as Record<string, any>;
             label = String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "현장";
           } catch { /* 라벨만 기본값 */ }
-          const own = await buildMergedMinutesContent(admin, [{ userId: s.user_id, siteName: label }], year, month, label);
+          const own = await buildMergedMinutesContent(admin, [{ userId: s.user_id, siteName: label }], year, month, label, aiBatch);
           if (own.stats.total === 0) continue; // 기록 없는 달은 저장할 것도 없다
-          const { error: upErr } = await admin.from("monthly_reports").upsert(
-            {
-              user_id: s.user_id,
-              period_year: year,
-              period_month: month,
-              token: randomUUID(),
-              content: own as any,
-              recipients: [],
-              sent_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id,period_year,period_month" }
-          );
-          if (upErr) { soloStored.failed++; console.error("solo report store error:", s.user_id, upErr); }
-          else soloStored.stored++;
+          postJobs.push(async () => {
+            const { error: upErr } = await admin.from("monthly_reports").upsert(
+              {
+                user_id: s.user_id,
+                period_year: year,
+                period_month: month,
+                token: randomUUID(),
+                content: own as any,
+                recipients: [],
+                sent_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,period_year,period_month" }
+            );
+            if (upErr) { soloStored.failed++; console.error("solo report store error:", s.user_id, upErr); }
+            else soloStored.stored++;
+          });
         } catch (e) {
           soloStored.failed++;
           console.error("solo report build error:", s.user_id, e);
@@ -307,8 +333,9 @@ async function run(request: Request) {
       .select("recipient_email, account_user_id")
       .eq("status", "approved")
       .limit(3000);
+    // 회사 경로의 postJobs가 남아 있을 수 있어 여기서 조기 반환하지 않는다 —
+    // 수신 동의가 없으면 아래 루프가 자연히 비어 지나간다.
     const rows = (consents as { recipient_email: string; account_user_id: string }[]) || [];
-    if (rows.length === 0) return NextResponse.json({ success: true, recipients: 0, org: orgResults, solo: soloStored });
 
     // 유효한 Pro 계정만 (해지+기간만료 제외)
     const accountIds = [...new Set(rows.map((r) => r.account_user_id))];
@@ -355,46 +382,57 @@ async function run(request: Request) {
       const merged = accounts.length > 1;
       const tag = merged ? ` (전 ${accounts.length}현장 통합)` : "";
 
-      // ① 회의록 종합
-      if (await alreadySent(admin, email, year, month, "minutes")) {
-        results.skipped++;
-      } else {
-        const content = await buildMergedMinutesContent(admin, accounts, year, month, company);
-        if (content.stats.total > 0) {
-          const html = renderReportHtml(content);
-          const docTitle = `${company} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
-          const attachments = await buildReportAttachments(content, docTitle, date);
-          const sent = await sendMail({
-            to: email,
-            subject: `[안톡] ${company} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
-            html,
-            attachments,
-          });
-          if (sent.ok) { await recordSent(admin, email, year, month, "minutes", accounts.length); results.minutesSent++; }
-          else results.failed++;
-        }
-      }
+      // 멱등 확인은 빌드 단계에서 (이미 보낸 문서는 빌드 자체를 생략 — 오늘과 동일)
+      const doMinutes = !(await alreadySent(admin, email, year, month, "minutes"));
+      if (!doMinutes) results.skipped++;
+      const content = doMinutes ? await buildMergedMinutesContent(admin, accounts, year, month, company, aiBatch) : null;
+      const doEdu = !(await alreadySent(admin, email, year, month, "education"));
+      const edu = doEdu ? await buildMergedEducationContent(admin, accounts.map((a) => a.userId), year, month, company, aiBatch) : null;
+      if (!content && !edu) continue;
 
-      // ② 안전보건교육일지 종합
-      if (!(await alreadySent(admin, email, year, month, "education"))) {
-        const edu = await buildMergedEducationContent(admin, accounts.map((a) => a.userId), year, month, company);
-        if (edu) {
-          const html = renderEducationReportHtml(edu);
-          const docTitle = `${company} 안전보건교육일지 종합 보고서`;
-          const attachments = await buildEducationAttachments(edu, docTitle, date);
-          const sent = await sendMail({
-            to: email,
-            subject: `[안톡] ${company} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
-            html,
-            attachments,
-          });
-          if (sent.ok) { await recordSent(admin, email, year, month, "education", accounts.length); results.eduSent++; }
-          else results.failed++;
+      postJobs.push(async () => {
+        try {
+          // ① 회의록 종합
+          if (content && content.stats.total > 0) {
+            const html = renderReportHtml(content);
+            const docTitle = `${company} ${year}년 ${month}월 TBM 회의록 종합분석 결재 보고서`;
+            const attachments = await buildReportAttachments(content, docTitle, date);
+            const sent = await sendMail({
+              to: email,
+              subject: `[안톡] ${company} ${year}년 ${month}월 TBM 회의록 분석 보고서${tag}`,
+              html,
+              attachments,
+            });
+            if (sent.ok) { await recordSent(admin, email, year, month, "minutes", accounts.length); results.minutesSent++; }
+            else results.failed++;
+          }
+
+          // ② 안전보건교육일지 종합
+          if (edu) {
+            const html = renderEducationReportHtml(edu);
+            const docTitle = `${company} 안전보건교육일지 종합 보고서`;
+            const attachments = await buildEducationAttachments(edu, docTitle, date);
+            const sent = await sendMail({
+              to: email,
+              subject: `[안톡] ${company} ${year}년 ${month}월 안전보건교육일지 종합${tag}`,
+              html,
+              attachments,
+            });
+            if (sent.ok) { await recordSent(admin, email, year, month, "education", accounts.length); results.eduSent++; }
+            else results.failed++;
+          }
+        } catch (e) {
+          console.error("solo monthly send error:", email, e);
+          results.failed++;
         }
-      }
+      });
     }
 
-    return NextResponse.json({ success: true, period: { year, month }, today: todayKST, ...results, org: orgResults, solo: soloStored });
+    // AI 요약 배치 실행(시간 예산 내 미완료 시 동기 폴백) 후 저장·발송을 큐 순서대로
+    const batchStat = await aiBatch.flush(120_000);
+    for (const job of postJobs) await job();
+
+    return NextResponse.json({ success: true, period: { year, month }, today: todayKST, ...results, org: orgResults, solo: soloStored, aiBatch: batchStat });
   } catch (e: any) {
     console.error("consolidated monthly-report cron error:", e);
     return NextResponse.json({ error: "서버 오류", detail: e?.message }, { status: 500 });

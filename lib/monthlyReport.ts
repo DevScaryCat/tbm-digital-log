@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { formatRangeLabelKo } from "@/lib/utils";
+import type { AiBatch } from "@/lib/aiBatch";
 
 export interface ReportSubscription {
   id: string;
@@ -132,12 +133,13 @@ export async function buildMergedMinutesContent(
   accounts: { userId: string; siteName: string }[],
   year: number,
   month: number,
-  companyName: string | null
+  companyName: string | null,
+  aiBatch?: AiBatch
 ): Promise<ReportContent> {
   const from = `${year}-${pad(month)}-01`;
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const to = `${year}-${pad(month)}-${pad(lastDay)}`;
-  return buildMergedMinutesForRange(admin, accounts, from, to, `${year}년 ${month}월`, companyName, { year, month });
+  return buildMergedMinutesForRange(admin, accounts, from, to, `${year}년 ${month}월`, companyName, { year, month }, aiBatch);
 }
 
 /**
@@ -151,7 +153,8 @@ export async function buildMergedMinutesForRange(
   to: string,
   periodLabel: string,
   companyName: string | null,
-  monthCtx?: { year: number; month: number }
+  monthCtx?: { year: number; month: number },
+  aiBatch?: AiBatch
 ): Promise<ReportContent> {
   const items: HazardRow[] = [];
   const sites: { name: string; total: number; high: number; mid: number }[] = [];
@@ -201,9 +204,19 @@ export async function buildMergedMinutesForRange(
   const improvements = monthCtx
     ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
     : [];
-  const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
 
-  return { companyName, periodLabel, stats, keywords, hazards, aiSummary, sites, improvements };
+  const content: ReportContent = { companyName, periodLabel, stats, keywords, hazards, aiSummary: "", sites, improvements };
+  if (aiBatch && process.env.ANTHROPIC_API_KEY) {
+    // 크론 경로: 총평 생성을 배치로 미룬다 — flush()가 content.aiSummary를 채운 뒤 렌더된다
+    aiBatch.defer({
+      params: summaryRequestParams(companyName, periodLabel, stats, keywords),
+      apply: (msg) => { content.aiSummary = summaryFromMessage(msg); },
+      fallback: async () => { content.aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords); },
+    });
+  } else {
+    content.aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
+  }
+  return content;
 }
 
 /**
@@ -313,6 +326,46 @@ function sanitizeSummary(text: string): string {
     .trim();
 }
 
+/** 총평 요청 파라미터 — 동기 호출과 배치(AiBatch) 경로가 같은 프롬프트를 쓰도록 단일 출처 */
+function summaryRequestParams(
+  companyName: string | null,
+  periodLabel: string,
+  stats: ReportStats,
+  keywords: { word: string; count: number }[]
+): Anthropic.Messages.MessageCreateParamsNonStreaming {
+  const facts = [
+    `현장/업체: ${companyName ?? "미상"}`,
+    `대상 기간: ${periodLabel} (TBM 회의록 기준)`,
+    `회의록 ${stats.total}건, 위험요인 등급 상 ${stats.high}건 / 중 ${stats.mid}건`,
+    `자주 논의된 위험요인: ${keywords.map((k) => `${k.word}(${k.count})`).join(", ") || "없음"}`,
+  ].join("\n");
+  return {
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 400,
+    temperature: 0.4,
+    system: [
+      "당신은 건설·물류 현장의 베테랑 안전보건 관리자입니다.",
+      "아래 TBM 회의록 위험요인 집계만 보고, 사업주에게 보고하듯 '안전 총평'을 씁니다.",
+      "",
+      "[형식]",
+      "- 마크다운 절대 금지: #, *, **, -, ---, 번호목록(①, 1.) 어떤 기호도 쓰지 마세요. 순수한 줄글 문장만.",
+      "- 제목·머리말 없이 본문 문장으로 바로 시작합니다. ('안전 총평', '기간:' 같은 라벨 금지)",
+      "- 2~3문장, 200자 내외. 짧고 단정하게.",
+      "",
+      "[내용·어조]",
+      "- 가장 우선 관리할 위험을 구체적인 위험요인 이름으로 짚고, 실무적인 권고 한 가지를 덧붙입니다.",
+      "- 'AI가 분석한', '~로 보입니다', '~필요가 있어 보입니다' 같은 군더더기·기계적 표현을 피하고 현장 관리자가 말하듯 단정적으로.",
+      "- 주어진 집계 수치만 사용하고, 없는 수치·사실을 지어내지 마세요.",
+    ].join("\n"),
+    messages: [{ role: "user", content: facts }],
+  };
+}
+
+function summaryFromMessage(msg: Anthropic.Message): string {
+  const raw = msg.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+  return sanitizeSummary(raw);
+}
+
 async function generateAISummary(
   companyName: string | null,
   periodLabel: string,
@@ -322,35 +375,8 @@ async function generateAISummary(
   if (!process.env.ANTHROPIC_API_KEY) return "";
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const facts = [
-      `현장/업체: ${companyName ?? "미상"}`,
-      `대상 기간: ${periodLabel} (TBM 회의록 기준)`,
-      `회의록 ${stats.total}건, 위험요인 등급 상 ${stats.high}건 / 중 ${stats.mid}건`,
-      `자주 논의된 위험요인: ${keywords.map((k) => `${k.word}(${k.count})`).join(", ") || "없음"}`,
-    ].join("\n");
-
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      temperature: 0.4,
-      system: [
-        "당신은 건설·물류 현장의 베테랑 안전보건 관리자입니다.",
-        "아래 TBM 회의록 위험요인 집계만 보고, 사업주에게 보고하듯 '안전 총평'을 씁니다.",
-        "",
-        "[형식]",
-        "- 마크다운 절대 금지: #, *, **, -, ---, 번호목록(①, 1.) 어떤 기호도 쓰지 마세요. 순수한 줄글 문장만.",
-        "- 제목·머리말 없이 본문 문장으로 바로 시작합니다. ('안전 총평', '기간:' 같은 라벨 금지)",
-        "- 2~3문장, 200자 내외. 짧고 단정하게.",
-        "",
-        "[내용·어조]",
-        "- 가장 우선 관리할 위험을 구체적인 위험요인 이름으로 짚고, 실무적인 권고 한 가지를 덧붙입니다.",
-        "- 'AI가 분석한', '~로 보입니다', '~필요가 있어 보입니다' 같은 군더더기·기계적 표현을 피하고 현장 관리자가 말하듯 단정적으로.",
-        "- 주어진 집계 수치만 사용하고, 없는 수치·사실을 지어내지 마세요.",
-      ].join("\n"),
-      messages: [{ role: "user", content: facts }],
-    });
-    const raw = msg.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
-    return sanitizeSummary(raw);
+    const msg = await anthropic.messages.create(summaryRequestParams(companyName, periodLabel, stats, keywords));
+    return summaryFromMessage(msg);
   } catch (e) {
     console.error("AI summary error:", e);
     return "";
