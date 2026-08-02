@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Printer, ChevronRight, Loader2, FileText, Building2, Sparkles } from "lucide-react"
+import { Plus, Printer, ChevronRight, Loader2, FileText, Building2 } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { showAlert, showConfirm } from "@/lib/uiDialog"
 
@@ -251,6 +251,7 @@ export default function DashboardPage() {
     }
     const minutesInRange = from ? logs.filter(l => l.type === 'minute' && inRange(l)).length : 0
     const logsInRange = from ? logs.filter(l => l.type !== 'minute' && inRange(l)).length : 0
+    const hasDocs = minutesInRange > 0 || logsInRange > 0
 
     const rangeKeys = () => ({
         from: format(from!, "yyyy-MM-dd"),
@@ -374,7 +375,9 @@ export default function DashboardPage() {
                                         ? format(from, "M월 d일 (EEE)", { locale: ko })
                                         : `${format(from, "MM.dd")} ~ ${format(to!, "MM.dd")}`}
                                 </div>
-                                <span className="text-[12px] text-cur-muted shrink-0">회의록 {minutesInRange}건 · 교육일지 {logsInRange}건</span>
+                                {hasDocs && (
+                                    <span className="text-[12px] text-cur-muted shrink-0">회의록 {minutesInRange} · 교육일지 {logsInRange}</span>
+                                )}
                             </div>
 
                             {rangeNote && (
@@ -388,7 +391,7 @@ export default function DashboardPage() {
                                 ) : dayDocs.length === 0 ? (
                                     <div className="py-6 flex flex-col items-center text-cur-muted-soft">
                                         <FileText className="w-9 h-9 mb-2 opacity-25" />
-                                        <p className="text-[13px]">이 날에는 작성된 문서가 없어요.</p>
+                                        <p className="text-[13px]">작성된 문서가 없어요</p>
                                     </div>
                                 ) : (
                                     <div className="rounded-[8px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
@@ -442,42 +445,38 @@ export default function DashboardPage() {
                                 )
                             )}
 
-                            {/* 출력·분석 — 하루든 기간이든 같은 자리에서 같은 버튼으로 */}
+                            {/* 할 수 없는 버튼은 아예 그리지 않는다(Chris) — 비활성 버튼 두 개와 안내문이
+                                동시에 떠 있으니 무엇을 눌러야 하는지가 안 읽혔다.
+                                문서가 없는 날엔 할 일이 '작성' 하나뿐이므로 그것만 남긴다. */}
                             {selfMode ? (
-                                <div className="space-y-2">
-                                    <Button
-                                        onClick={batchDownloadAll}
-                                        disabled={minutesInRange === 0 && logsInRange === 0}
-                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Printer className="mr-2 w-4 h-4" /> 문서 PDF 저장 (회의록·교육일지)
-                                    </Button>
-                                    {/* member는 분석 대상이 아니다(/risk-assessment가 홈으로 돌려보냄) — 막다른 버튼을 아예 감춘다 */}
-                                    {ctx && ctx.kind !== "member" && (
-                                        <>
+                                hasDocs ? (
+                                    <div className="space-y-2">
+                                        <Button
+                                            onClick={batchDownloadAll}
+                                            className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px]"
+                                        >
+                                            <Printer className="mr-2 w-4 h-4" /> PDF로 저장
+                                        </Button>
+                                        {/* member는 분석 대상이 아니고(홈으로 돌려보냄), 회의록 없는 구간은
+                                            분석할 것 자체가 없다 — 두 경우 모두 버튼을 감춘다 */}
+                                        {ctx && ctx.kind !== "member" && minutesInRange > 0 && (
                                             <button
                                                 type="button"
                                                 onClick={goAnalysisReport}
-                                                disabled={minutesInRange === 0}
-                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                                                className="w-full h-10 rounded-[8px] text-[13px] font-semibold text-cur-body hover:text-cur-ink hover:bg-cur-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary transition-colors"
                                             >
-                                                <Sparkles className="mr-2 w-4 h-4" /> 분석보고서 생성
+                                                AI 분석보고서 만들기
                                             </button>
-                                            {minutesInRange === 0 && (
-                                                <p className="text-[12px] text-cur-muted-soft text-center">회의록이 있는 날짜·기간을 고르면 분석보고서를 만들 수 있어요</p>
-                                            )}
-                                        </>
-                                    )}
-                                    {dayDocs.length === 0 && singleDay && (
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => router.push('/')}
-                                            className="w-full h-10 border-cur-hairline text-cur-ink text-[13px] font-semibold rounded-[8px]"
-                                        >
-                                            <Plus className="mr-2 w-4 h-4" /> 이 날짜에 작성하기
-                                        </Button>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <Button
+                                        onClick={() => router.push('/')}
+                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px]"
+                                    >
+                                        <Plus className="mr-2 w-4 h-4" /> 이 날짜에 작성하기
+                                    </Button>
+                                )
                             ) : (
                                 /* 다른 현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
                                 <p className="text-[12px] text-cur-muted-soft text-center">
