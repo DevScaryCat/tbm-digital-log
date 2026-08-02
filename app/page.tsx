@@ -8,7 +8,8 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus } from "lucide-react"
+import { fetchRecipients } from "@/lib/reportRecipients"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
@@ -36,6 +37,10 @@ if (typeof window !== "undefined") {
     if (event === "SIGNED_OUT" || event === "SIGNED_IN") homeCache = null
   })
 }
+
+// 수신처 안내 배너를 닫은 시각(ms). 영구 숨김이 아니라 7일 뒤 다시 뜬다 —
+// 한 번 닫고 잊으면 보고서가 계속 아무 데도 안 가는데 아무도 모르게 된다.
+const RECIPIENT_HINT_HIDDEN_KEY = "antok_recipient_hint_hidden_at"
 
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
 const toLocalDateStr = (iso: string) => {
@@ -74,6 +79,9 @@ export default function MainPage() {
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
   // 온보딩에서 '여러 현장'을 고르고 셋업을 건너뛴 솔로 — 홈에서 현장 추가 입구를 이어준다
   const [hintAddSite, setHintAddSite] = useState(false)
+  // 보고서를 받을 사람이 아직 없음(=주간·월간 보고서가 아무 데도 안 나감).
+  // 설정 입구가 헤더 드롭다운과 분석 보고서 게이트뿐이라 대부분 기능 존재 자체를 모른다.
+  const [recipientGap, setRecipientGap] = useState<{ pending: number } | null>(null)
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
     const q = new URLSearchParams(window.location.search)
@@ -179,6 +187,25 @@ export default function MainPage() {
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [])
 
+  // 수신처 공백 점검 — 승인된 수신자가 0명이면 보고서는 만들어지고도 아무 데도 안 간다.
+  // 현장 계정(member)은 수신처 개념이 없고(API가 403), 비Pro는 등록 자체가 막혀 있어 대상이 아니다.
+  useEffect(() => {
+    if (!user || !orgCtx || orgCtx.kind === "member") return
+    let cancelled = false
+      ; (async () => {
+        // 닫아둔 지 7일이 안 됐으면 조회조차 하지 않는다 — 매번 조르지 않기 위해
+        try {
+          const hidAt = Number(window.localStorage.getItem(RECIPIENT_HINT_HIDDEN_KEY) || 0)
+          if (hidAt && Date.now() - hidAt < 7 * 24 * 60 * 60 * 1000) return
+        } catch { /* 무시 */ }
+        const { data } = await supabase.auth.getSession()
+        const r = await fetchRecipients(data?.session?.access_token)
+        if (cancelled || !r || !r.isPro) return
+        setRecipientGap(r.counts.approved === 0 ? { pending: r.counts.pending } : null)
+      })()
+    return () => { cancelled = true }
+  }, [user, orgCtx])
+
   const fetchUserStats = async (userId: string, currentWorkerType: string, silent = false) => {
     if (!silent) setStatsLoading(true)
     try {
@@ -255,7 +282,7 @@ export default function MainPage() {
   // 일괄 발급 시 회사 공통 업종·공종을 이미 상속받았다면 첫 로그인 화면에서 다시 묻지 않는다 —
   // 여기서 강제로 다시 고르게 하면 상속값을 사용자 선택이 덮어써 회사 값과 어긋난다
   const setupInheritedProfile = !!user?.user_metadata?.industry
-  // 첫 로그인 설정 저장 — 비밀번호 교체 + 현장명·담당자 확정
+  // 첫 로그인 설정 저장 — 비밀번호 교체 + 현장명·현장담당자 확정
   const handleFirstSetup = async () => {
     setSetupErr(null)
     if (setupPw.length < 8) { setSetupErr("비밀번호는 8자 이상이어야 해요."); return }
@@ -417,7 +444,7 @@ export default function MainPage() {
               </div>
             )}
             <div className="space-y-1">
-              <label className="text-[13px] font-medium text-cur-body">담당자 이름 (선택)</label>
+              <label className="text-[13px] font-medium text-cur-body">현장담당자 이름 (선택)</label>
               <input value={setupManager} onChange={(e) => setSetupManager(e.target.value)} placeholder="본인 성함"
                 className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
             </div>
@@ -590,6 +617,39 @@ export default function MainPage() {
                 onClick={async () => {
                   const { data } = await supabase.auth.updateUser({ data: { tutorial_seen_at: new Date().toISOString() } })
                   if (data?.user) commitUser(data.user)
+                }}
+                className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* 보고서 수신처 공백 — 승인된 사람이 0명이면 주간·월간 보고서가 아무 데도 안 간다.
+              등록만 하고 승인 전인 경우와 아예 없는 경우는 할 일이 달라서 문구를 나눈다. */}
+          {recipientGap && (
+            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-card border border-cur-hairline-strong">
+              <MailPlus className="w-5 h-5 shrink-0 text-cur-ink" />
+              <button
+                type="button"
+                onClick={() => router.push('/org/reports')}
+                className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+              >
+                <span className="block text-[14px] font-semibold text-cur-ink">
+                  {recipientGap.pending > 0 ? `보고서 수신 승인 대기 ${recipientGap.pending}명` : "보고서 받을 사람이 아직 없어요"}
+                </span>
+                <span className="block text-[12px] text-cur-body mt-0.5">
+                  {recipientGap.pending > 0
+                    ? "승인 링크를 눌러야 주간·월간 보고서가 발송돼요"
+                    : "등록하면 주간·월간 보고서가 이메일로 자동 발송돼요"}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label="보고서 수신처 안내 닫기"
+                onClick={() => {
+                  try { window.localStorage.setItem(RECIPIENT_HINT_HIDDEN_KEY, String(Date.now())) } catch { /* 무시 */ }
+                  setRecipientGap(null)
                 }}
                 className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
               >

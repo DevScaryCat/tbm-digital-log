@@ -210,8 +210,8 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                         <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="예: OO물류센터 신축현장" className={inputCls} />
                     </div>
                     <div className="space-y-1.5">
-                        <Label className="text-[14px] font-semibold text-cur-ink">담당자 이름</Label>
-                        <Input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="현장 담당자 성함 (나중에 변경 가능)" className={inputCls} />
+                        <Label className="text-[14px] font-semibold text-cur-ink">현장담당자 이름</Label>
+                        <Input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="현장담당자 성함 (나중에 변경 가능)" className={inputCls} />
                         <p className="text-[12px] text-cur-muted-soft">업종·공종 등 현장 정보는 회사(안전관리자) 설정을 따라요.</p>
                     </div>
                     <div className="space-y-1.5">

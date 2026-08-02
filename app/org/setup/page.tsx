@@ -107,8 +107,8 @@ export default function OrgSetupPage() {
                     >
                         <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-primary/10 text-cur-primary flex items-center justify-center"><KeyRound className="w-5 h-5" /></span>
                         <span className="flex-1 min-w-0">
-                            <span className="block text-[14px] font-bold text-cur-ink">내가 만들어서 전달할래요</span>
-                            <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">아이디·초기 비밀번호를 한 번에 만들어 담당자에게 알려줘요</span>
+                            <span className="block text-[14px] font-bold text-cur-ink">내가 만들어서 현장담당자에게 줄래요</span>
+                            <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">아이디·초기 비밀번호를 한 번에 만들어 드려요</span>
                         </span>
                         <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                     </button>
@@ -118,8 +118,8 @@ export default function OrgSetupPage() {
                     >
                         <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-ink/8 text-cur-ink flex items-center justify-center"><Link2 className="w-5 h-5" /></span>
                         <span className="flex-1 min-w-0">
-                            <span className="block text-[14px] font-bold text-cur-ink">담당자가 직접 만들게 할래요</span>
-                            <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">초대 링크를 보내면 담당자가 스스로 가입해요 · 기존 계정 편입도 여기서</span>
+                            <span className="block text-[14px] font-bold text-cur-ink">현장담당자가 직접 만들게 할래요</span>
+                            <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">초대 링크를 보내면 현장담당자가 스스로 가입해요 · 기존 계정 편입도 여기서</span>
                         </span>
                         <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                     </button>

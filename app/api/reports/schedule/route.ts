@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const admin = getAdminClient();
   const ctx = await getOrgContext(user.id, admin);
   if (ctx.kind === "member") {
-    return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+    return NextResponse.json({ error: "조직 소속 계정입니다. 출력/발송 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
   }
   const { data } = await admin
     .from("subscriptions")
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const admin = getAdminClient();
   const ctx = await getOrgContext(user.id, admin);
   if (ctx.kind === "member") {
-    return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+    return NextResponse.json({ error: "조직 소속 계정입니다. 출력/발송 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));

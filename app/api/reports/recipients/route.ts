@@ -13,10 +13,10 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const admin = getAdminClient();
-  // 역할 게이트(§4-C): 조직 하위는 보고서 설정 접근 불가 (owner·solo 전용)
+  // 역할 게이트(§4-C): 조직 하위는 출력/발송 설정 접근 불가 (owner·solo 전용)
   const ctx = await getOrgContext(user.id, admin);
   if (ctx.kind === "member") {
-    return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+    return NextResponse.json({ error: "조직 소속 계정입니다. 출력/발송 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
   }
   const recipients = await listAccountConsents(admin, user.id);
   return NextResponse.json({ recipients, isPro });
@@ -26,12 +26,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const { user, isPro } = await getUserAndSubscription(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!isPro) return NextResponse.json({ error: "보고서 설정은 Pro 플랜 기능입니다." }, { status: 403 });
+  if (!isPro) return NextResponse.json({ error: "출력/발송 설정은 Pro 플랜 기능입니다." }, { status: 403 });
   {
     // 역할 게이트(§4-C): 조직 하위는 수신처 등록 불가 (메뉴 숨김만으론 URL 직접 접근이 뚫림)
     const ctx = await getOrgContext(user.id);
     if (ctx.kind === "member") {
-      return NextResponse.json({ error: "조직 소속 계정입니다. 보고서 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
+      return NextResponse.json({ error: "조직 소속 계정입니다. 출력/발송 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
     }
   }
 

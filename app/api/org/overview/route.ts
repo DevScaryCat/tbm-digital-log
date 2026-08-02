@@ -86,7 +86,7 @@ export async function GET(request: Request) {
   ]);
 
   // 감독자 본인도 하나의 현장 — 목록 맨 앞에 둔다.
-  const roster: { userId: string; siteName: string; managerName: string; status: "active" | "detached"; isOwner: boolean }[] = [];
+  const roster: { userId: string; siteName: string; managerName: string; workerType: string; status: "active" | "detached"; isOwner: boolean }[] = [];
   if (ownerUserId) {
     roster.push({
       userId: ownerUserId,
@@ -94,12 +94,13 @@ export async function GET(request: Request) {
       // '본사 현장' 폴백은 진짜 회사를 소유한 owner에게만 적용한다.
       siteName: siteLabel(ownerMeta, ctx.kind === "owner"),
       managerName: String(ownerMeta.full_name ?? ""),
+      workerType: String(ownerMeta.worker_type ?? ""),
       status: "active",
       isOwner: true,
     });
   }
   for (const m of members) {
-    roster.push({ userId: m.userId, siteName: m.siteName || "현장명 미설정", managerName: m.managerName, status: m.status, isOwner: false });
+    roster.push({ userId: m.userId, siteName: m.siteName || "현장명 미설정", managerName: m.managerName, workerType: m.workerType, status: m.status, isOwner: false });
   }
 
   // 위험요인 대시보드 — 감독자가 실제로 보고 싶은 건 "우리 현장들, 뭐가 위험한가"다.
@@ -207,6 +208,8 @@ export async function GET(request: Request) {
       userId: m.userId,
       siteName: m.siteName,
       managerName: m.managerName,
+      // 교육 진행도 카드가 의무시간(6h/12h)을 가르는 키 — 별도 조회 없이 여기서 같이 내려준다
+      workerType: m.workerType,
       status: m.status,
       isOwner: m.isOwner,
       isSelf: m.userId === user.id,

@@ -17,7 +17,9 @@ export interface OrgInfo {
 export interface OrgMemberSummary {
   userId: string;
   siteName: string;      // user_metadata.company_name (현장명)
-  managerName: string;   // user_metadata.full_name (담당자)
+  managerName: string;   // user_metadata.full_name (현장담당자)
+  /** user_metadata.worker_type — 법정 정기교육 의무시간 분기 키(사무직 6h / 그 외 12h) */
+  workerType: string;
   /** 실제 로그인 아이디 — 발급 계정(@tbm.com)은 @ 앞부분, 그 외는 이메일 전체 */
   loginId: string;
   status: "active" | "detached";
@@ -101,7 +103,7 @@ export async function assertOwnerOfMember(
   return ctx.kind === "owner" && (ctx.memberIds ?? []).includes(memberUserId);
 }
 
-/** owner의 하위 현장 목록(현장명·담당자 포함). 좌석 관리·관제 대시보드용 */
+/** owner의 하위 현장 목록(현장명·현장담당자 포함). 좌석 관리·관제 대시보드용 */
 export async function listOrgMembers(orgId: string, adminClient?: SupabaseClient): Promise<OrgMemberSummary[]> {
   const admin = adminClient ?? getAdminClient();
   const { data: rows } = await admin
@@ -133,6 +135,7 @@ export async function listOrgMembers(orgId: string, adminClient?: SupabaseClient
         userId: r.member_user_id,
         siteName: String(metas[j].meta.company_name ?? ""),
         managerName: String(metas[j].meta.full_name ?? ""),
+        workerType: String(metas[j].meta.worker_type ?? ""),
         // 감독자가 비번 재설정·전달 시 어느 아이디인지 알아야 한다 — 발급 계정은 가짜 도메인을 떼고 아이디만
         loginId: email.endsWith("@tbm.com") ? email.slice(0, -"@tbm.com".length) : email,
         status: r.status as "active" | "detached",

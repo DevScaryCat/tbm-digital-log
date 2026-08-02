@@ -6,10 +6,8 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ExternalLink, Loader2, Sparkles } from "lucide-react"
-
-type ConsentStatus = "pending" | "approved" | "declined"
-type Recipient = { email: string; status: ConsentStatus }
+import { ExternalLink, Loader2, Sparkles, MailWarning } from "lucide-react"
+import { countRecipients, type ConsentStatus, type Recipient, type RecipientCounts } from "@/lib/reportRecipients"
 
 const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
     pending: { label: "승인 대기", cls: "text-cur-muted bg-cur-elevated" },
@@ -22,7 +20,7 @@ const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
  * 전용 페이지(/report-settings)에서 사용. 보고서는 매월 1일 지난달 종합으로 발송.
  * pro=false면 '예시 화면' 모드: 미리보기는 보이되 저장은 막고 업그레이드를 유도.
  */
-export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?: boolean; onRecipientsChange?: (count: number) => void }) {
+export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?: boolean; onRecipientsChange?: (counts: RecipientCounts) => void }) {
     const router = useRouter()
     const [recipients, setRecipients] = useState<Recipient[]>([])
     const [newEmail, setNewEmail] = useState("")
@@ -38,7 +36,9 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
     const applyResponse = (j: any) => {
         if (Array.isArray(j.recipients)) {
             setRecipients(j.recipients)
-            onRecipientsChange?.(j.recipients.length) // 보고서 설정 위저드의 완료 판정용
+            // 위저드 완료 판정용 — 개수가 아니라 승인 상태별 집계를 넘긴다.
+            // 크론은 approved만 발송하므로 pending을 완료로 세면 화면만 완료가 된다.
+            onRecipientsChange?.(countRecipients(j.recipients))
         }
     }
 
@@ -93,6 +93,11 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
     }
     const removeRecipient = async (email: string) => { if (!pro) return; await post({ removeRecipient: email }) }
 
+    // 승인 0명 + 대기 1명 이상 = 화면상 "등록됐다"고 보이지만 실제로는 한 통도 안 나가는 상태.
+    // 이 구간을 조용히 두면 사용자는 설정을 끝냈다고 믿는다.
+    const counts = countRecipients(recipients)
+    const stalled = counts.approved === 0 && counts.pending > 0
+
     return (
         <div className="space-y-5">
             {!pro && (
@@ -123,6 +128,19 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                             여러 현장이 같은 이메일을 등록하면 <b>한 통으로 합쳐</b> 보내드려요.
                         </p>
                     </div>
+                    {stalled && (
+                        <div className="rounded-xl bg-cur-elevated border border-cur-hairline-strong p-3 flex gap-2.5">
+                            <MailWarning className="w-4 h-4 text-cur-ink shrink-0 mt-0.5" />
+                            <div className="min-w-0 space-y-1">
+                                <p className="text-[13px] font-bold text-cur-ink">아직 아무에게도 발송되지 않아요</p>
+                                <p className="text-[12px] text-cur-body leading-relaxed">
+                                    등록은 됐지만 <b>승인한 사람이 0명</b>이에요. 받는 사람이 확인 메일의 승인 링크를 눌러야
+                                    그때부터 보고서가 나갑니다. 메일이 안 보이면 스팸함을 확인해달라고 알려주시고,
+                                    필요하면 아래 <b>재발송</b>을 눌러주세요.
+                                </p>
+                            </div>
+                        </div>
+                    )}
                     {!loaded ? (
                         <div className="py-3 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-cur-muted-soft" /></div>
                     ) : recipients.length === 0 ? (

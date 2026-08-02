@@ -7,6 +7,8 @@ import { formatRangeLabelKo } from "@/lib/utils"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
+import { AnalyzeProgress, type ProgressStep } from "@/components/AnalyzeProgress"
+import { countRecipients } from "@/lib/reportRecipients"
 import { resolveMyReportEmail } from "@/lib/myEmail"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,10 +45,15 @@ export default function RiskAssessmentPage() {
     const [companyName, setCompanyName] = useState("")
     // 보고서 설정(문서 형식·수신자) 미완료면 진행 차단 — "설정을 마치고 와주세요" (Chris)
     const [setupNeeded, setSetupNeeded] = useState(false)
+    // 등록은 했는데 아무도 승인 안 한 상태 — 안내 문구가 달라야 한다("등록하세요"가 아니라 "승인을 받으세요")
+    const [setupPendingOnly, setSetupPendingOnly] = useState(false)
 
     // 화면 상태 5개로 단순화: 게이트(setupNeeded) / 체험 인트로(0) / 시작(1) / 분석 중(analyzing) / 결과(2)
     const [step, setStep] = useState<0 | 1 | 2>(1)
     const [analyzing, setAnalyzing] = useState(false)
+    // 분석 진행 표시 — 단계 목록과 현재 단계는 analyze()가 실제 작업 경계에서만 바꾼다
+    const [phaseSteps, setPhaseSteps] = useState<ProgressStep[]>([])
+    const [phase, setPhase] = useState("")
     const [range, setRange] = useState<DateRange | undefined>()
     const [preset, setPreset] = useState<string | null>(null)
     const [items, setItems] = useState<RiskItem[]>([])
@@ -101,19 +108,24 @@ export default function RiskAssessmentPage() {
             if (!p && kind !== "owner") setStep(0) // 베이직: 설명 화면 먼저
             setCompanyName(user.user_metadata?.company_name || "")
 
-            // 보고서 설정 완료 판정 — 문서 형식 + (Pro면) 수신자 1명 이상. 판정 실패 시엔 막지 않는다.
+            // 보고서 설정 완료 판정 — 문서 형식 + (Pro면) '승인된' 수신자 1명 이상. 판정 실패 시엔 막지 않는다.
+            // 등록만 하고 승인 전인 상태를 통과시키면, 게이트만 열리고 실제 발송은 0통이 된다.
             {
                 let needs = !user.user_metadata?.preferred_export_format
+                let pendingOnly = false
                 if (!needs && p) {
                     try {
                         const { data: sess } = await supabase.auth.getSession()
                         const rres = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
                         if (rres.ok) {
                             const rj = await rres.json()
-                            needs = ((rj.recipients ?? []) as unknown[]).length === 0
+                            const c = countRecipients(rj.recipients)
+                            needs = c.approved === 0
+                            pendingOnly = c.approved === 0 && c.pending > 0
                         }
                     } catch { /* 네트워크 실패로 기능을 잠그지 않는다 */ }
                 }
+                setSetupPendingOnly(pendingOnly)
                 if (needs) {
                     // 게이트로 나가면 현장 선택 의도(ra_target)는 소비되지 않는다 — 남겨두면
                     // 다음 방문에서 엉뚱한 현장이 자동 선택되므로 지운다
@@ -220,7 +232,8 @@ export default function RiskAssessmentPage() {
         return tbmDates.filter((d) => isWithinInterval(parseISO(d), { start: from, end: to })).length
     }
 
-    const buildRangeContext = async (fromS: string, toS: string): Promise<string> => {
+    // 진행 표시가 "회의록 N건 모았어요"로 실제 건수를 말할 수 있게 개수도 함께 돌려준다
+    const buildRangeContext = async (fromS: string, toS: string): Promise<{ text: string; count: number }> => {
         // 위험성평가는 TBM 회의록(minutes)만 분석 — 안전보건교육일지(tbm_logs) 제외
         const { data: minutes } = await supabase
             .from("tbm_minutes")
@@ -238,7 +251,7 @@ export default function RiskAssessmentPage() {
         }
         let text = blocks.join("\n\n")
         if (text.length > 11000) text = text.slice(0, 11000)
-        return text
+        return { text, count: blocks.length }
     }
 
     // 같은 기간 안전보건교육일지(tbm_logs) 통계 — 미리보기 + 발송 여부 판단용 (RLS로 본인 데이터만)
@@ -269,6 +282,19 @@ export default function RiskAssessmentPage() {
         const fromS = format(r.from, "yyyy-MM-dd")
         const toS = format(r.to ?? r.from, "yyyy-MM-dd")
         const label = formatRangeLabelKo(fromS, toS)
+
+        // 진행 표시 단계 — 경로마다 실제로 일어나는 일이 달라서 목록도 다르다.
+        // (owner는 회의록 수집을 서버가 AI 호출 안에서 하므로 클라가 관측할 수 있는 경계가 없다)
+        const AI_STEP: ProgressStep = { key: "ai", label: "AI가 위험요인을 뽑는 중", doneLabel: "위험요인 정리 완료" }
+        const COMPOSE_STEP: ProgressStep = { key: "compose", label: "보고서 만드는 중", doneLabel: "보고서 완성" }
+        const steps: ProgressStep[] = !isPro
+            ? [{ key: "collect", label: "예시 데이터를 준비하는 중", doneLabel: "예시 데이터 준비 완료" }, COMPOSE_STEP]
+            : kind === "owner"
+              ? [AI_STEP, COMPOSE_STEP]
+              : [{ key: "collect", label: "기간 안 회의록을 모으는 중", doneLabel: "회의록 수집 완료" }, AI_STEP, COMPOSE_STEP]
+        setPhaseSteps(steps)
+        setPhase(steps[0].key)
+
         setAnalyzing(true)
         try {
             // 베이직: 체험(더미 결과). Pro: 실제 AI 분석
@@ -277,6 +303,7 @@ export default function RiskAssessmentPage() {
                 setItems(SAMPLE_ITEMS)
                 setPeriodLabel(label)
                 setSendMsg(null)
+                setPhase("compose")
                 await loadPreviews(fromS, toS, SAMPLE_ITEMS, targetUserId)
                 setStep(2)
                 return
@@ -300,13 +327,17 @@ export default function RiskAssessmentPage() {
                 setSendMsg(null)
                 const sessions = Number(json.eduSessions) || 0
                 setEduStats(sessions > 0 ? { sessions, days: 0, headcount: 0, avg: "-" } : null)
+                setPhase("compose")
                 await loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId)
                 setStep(2)
                 return
             }
 
-            const content = await buildRangeContext(fromS, toS)
+            const { text: content, count: collected } = await buildRangeContext(fromS, toS)
             if (!content.trim()) { setMsg({ type: "err", text: "선택한 기간에 작성된 TBM이 없습니다." }); return }
+            // 수집이 실제로 끝났으므로 몇 건이었는지 그대로 적는다
+            setPhaseSteps(steps.map((s) => (s.key === "collect" ? { ...s, doneLabel: `회의록 ${collected}건 모았어요` } : s)))
+            setPhase("ai")
             const res = await fetch("/api/ai/risk-assessment", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -317,6 +348,7 @@ export default function RiskAssessmentPage() {
             setItems(json.items as RiskItem[])
             setPeriodLabel(label)
             setSendMsg(null)
+            setPhase("compose")
             // 서로 독립인 로더 2개는 병렬로 (교육통계 ↔ 미리보기)
             await Promise.all([loadEduStats(fromS, toS), loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId)])
             setStep(2)
@@ -428,16 +460,21 @@ export default function RiskAssessmentPage() {
                 </div>
                 <main className="max-w-lg mx-auto px-5 py-10">
                     <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 py-8 text-center space-y-3">
-                        <p className="text-[16px] font-bold text-cur-ink">보고서 설정을 마치고 와주세요</p>
+                        <p className="text-[16px] font-bold text-cur-ink">
+                            {setupPendingOnly ? "받는 사람의 승인을 기다리는 중이에요" : "출력/발송 설정을 마치고 와주세요"}
+                        </p>
                         <p className="text-[13px] text-cur-muted leading-relaxed">
-                            문서 출력 형식과 보고서 받는 사람을 먼저 설정해야
-                            <br />분석 보고서를 만들 수 있어요. 1분이면 끝나요.
+                            {setupPendingOnly ? (
+                                <>등록한 수신자가 확인 메일의 승인 링크를 눌러야<br />보고서가 나가고 이 화면도 열려요. 스팸함도 확인해달라고 알려주세요.</>
+                            ) : (
+                                <>문서 출력 형식과 보고서 받는 사람을 먼저 설정해야<br />분석 보고서를 만들 수 있어요. 1분이면 끝나요.</>
+                            )}
                         </p>
                         <Button
                             onClick={() => router.push("/org/reports")}
                             className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
                         >
-                            보고서 설정 하러 가기
+                            {setupPendingOnly ? "승인 상태 확인·재발송" : "출력/발송 설정 하러 가기"}
                         </Button>
                     </div>
                 </main>
@@ -495,15 +532,14 @@ export default function RiskAssessmentPage() {
                         </div>
                     )}
 
-                    {/* 분석 중 */}
-                    {analyzing && (
-                        <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 py-12 text-center space-y-4">
-                            <Loader2 className="w-10 h-10 text-cur-primary animate-spin mx-auto" />
-                            <div>
-                                <p className="text-[15px] font-bold text-cur-ink">TBM 내용을 분석하고 있어요</p>
-                                <p className="text-[13px] text-cur-muted mt-1">잠시만 기다려 주세요. (10~20초)</p>
-                            </div>
-                        </div>
+                    {/* 분석 중 — 단계가 실제로 끝날 때마다 체크가 켜진다 */}
+                    {analyzing && phaseSteps.length > 0 && (
+                        <AnalyzeProgress
+                            steps={phaseSteps}
+                            activeKey={phase}
+                            title="TBM 내용을 분석하고 있어요"
+                            subtitle="보통 10~20초 걸려요. 화면을 닫지 말아주세요."
+                        />
                     )}
 
                     {/* 시작: 직접 진입·통계 경로 — 현장(owner)·기간·시작 버튼을 카드 하나로 */}

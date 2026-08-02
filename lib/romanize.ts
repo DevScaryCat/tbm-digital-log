@@ -44,7 +44,7 @@ export function suggestIdStems(companyName: string): string[] {
     return out
 }
 
-/** 읽어주기 쉬운 초기 비밀번호 — 담당자가 첫 로그인 때 반드시 새로 정한다 */
+/** 읽어주기 쉬운 초기 비밀번호 — 현장담당자가 첫 로그인 때 반드시 새로 정한다 */
 export function suggestInitialPassword(): string {
     const n = Math.floor(1000 + Math.random() * 9000)
     return `antok${n}!`

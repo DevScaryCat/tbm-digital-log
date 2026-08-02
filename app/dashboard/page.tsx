@@ -1,6 +1,18 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+/* Hallmark · component: page (출력 — 달력에서 날짜/기간을 잡아 문서를 뽑는 화면)
+ * genre: modern-minimal · theme: DESIGN.md (Cursor DNA, locked)
+ * states: loading · empty(미선택) · single-day · range · other-site(읽기전용) · pick
+ * tokens only — hairline depth, card radius 12px
+ */
+
+// 선택 모델은 하나뿐이다(Chris): 모드 토글 없음.
+//   1번 누름 → 그 날. 그 상태에서 다른 날을 누르면 → 그 기간.
+//   한 번 더 누르면 → 거기서 새로 시작.
+// 그 날 문서는 모달(드로어)이 아니라 달력 아래에 그대로 펼친다 — 모달은 "이건 딴 화면"이라고
+// 말하는 표현인데, 여기서 날짜 선택과 문서 확인은 같은 한 가지 일이다.
+
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
@@ -11,14 +23,9 @@ import { ko } from "date-fns/locale"
 import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Plus, Printer, ChevronRight, Loader2, Calendar as CalendarIcon, CheckCircle2, FileText, Circle, Building2 } from "lucide-react"
+import { Plus, Printer, ChevronRight, Loader2, CheckCircle2, FileText, Circle, Building2, Sparkles } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 
 export default function DashboardPage() {
@@ -28,44 +35,43 @@ export default function DashboardPage() {
     const [logs, setLogs] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
-    // 감독자: 현장을 먼저 고르고(최대 3곳 — 많이 고르면 로드가 길어진다) 달력으로 진행 (Chris)
+    // 현장은 한 번에 한 곳만 본다(Chris) — 여러 현장 합쳐보기는 실사용이 없어 걷어냈다
     const [stage, setStage] = useState<"pick" | "cal">("cal")
     const [selfId, setSelfId] = useState<string | null>(null)
     const [siteOptions, setSiteOptions] = useState<{ userId: string; siteName: string; isSelf: boolean }[]>([])
-    const [picked, setPicked] = useState<string[]>([])
+    const [siteId, setSiteId] = useState<string | null>(null)
     const [pickErr, setPickErr] = useState<string | null>(null)
-    // 본인 현장만 볼 때(true)는 기존 경로(문서 열기·삭제·일괄 PDF) 그대로,
-    // 다른 현장이 섞이면 서버 경유 읽기 전용 모드
-    const [selfMode, setSelfMode] = useState(true)
     const [siteNameOf, setSiteNameOf] = useState<Map<string, string>>(new Map())
-    const MAX_SITES = 3
+    // 내 현장일 때만 기존 경로(문서 열기·삭제·일괄 PDF). 다른 현장은 서버 경유 읽기 전용
+    const selfMode = !siteId || siteId === selfId
 
-    const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
     const [dateRange, setDateRange] = useState<DateRange | undefined>()
-    const [isRangeMode, setIsRangeMode] = useState(true)
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-    const [selectedLogs, setSelectedLogs] = useState<any[]>([])
-    const [drawerLoading, setDrawerLoading] = useState(false)
+    const [dayDocs, setDayDocs] = useState<any[]>([])
+    const [dayLoading, setDayLoading] = useState(false)
     const [rangeNote, setRangeNote] = useState<string | null>(null)
 
-    // 기간 선택은 최대 1개월까지. rdp 표준 onSelect(단일 소스 제어)로 이중 하이라이트를 막고,
+    const from = dateRange?.from
+    const to = dateRange?.to
+    // 끝점을 안 찍었거나 같은 날을 두 번 찍었으면 '하루' — 이때만 그 날 문서를 펼친다
+    const singleDay = !!from && (!to || isSameDay(to, from))
+
+    // 기간은 최대 1개월까지. rdp 표준 onSelect(단일 소스 제어)로 이중 하이라이트를 막고,
     // 클릭한 날(day) 기준으로 직접 판단: 시작 → 끝 → (다시 누르면) 새로 시작.
-    // 이미 완성된 범위에서 다른 날(다른 달 포함)을 누르면 이전 범위를 풀고 그 날부터 새 범위를 시작한다.
     const MAX_RANGE_DAYS = 31
-    const handleRangeSelect = (_range: DateRange | undefined, day: Date | undefined) => {
+    const handleSelect = (_range: DateRange | undefined, day: Date | undefined) => {
         if (!day) return
         if (dateRange?.from && !dateRange?.to) {
-            // 끝점 선택 → 범위 완성 (앞뒤 순서 보정 + 1개월 초과 시 클램프)
-            let from = dateRange.from
-            let to = day
-            if (to < from) { const t = from; from = to; to = t }
-            if (differenceInCalendarDays(to, from) > MAX_RANGE_DAYS) {
-                to = addDays(from, MAX_RANGE_DAYS)
+            // 끝점 선택 → 기간 완성 (앞뒤 순서 보정 + 1개월 초과 시 클램프)
+            let a = dateRange.from
+            let b = day
+            if (b < a) { const t = a; a = b; b = t }
+            if (differenceInCalendarDays(b, a) > MAX_RANGE_DAYS) {
+                b = addDays(a, MAX_RANGE_DAYS)
                 setRangeNote("기간은 최대 1개월까지 선택할 수 있어요. 1개월로 맞췄어요.")
             } else {
                 setRangeNote(null)
             }
-            setDateRange({ from, to })
+            setDateRange({ from: a, to: b })
         } else {
             // 비어있거나 이미 완성됨 → 이전 선택 풀고 이 날부터 새로 시작
             setDateRange({ from: day, to: undefined })
@@ -74,31 +80,23 @@ export default function DashboardPage() {
     }
 
     // 위험성평가/일괄 PDF에서 돌아온 경우: 직전 선택 범위 복원 (1회용)
-    const restoredRef = useRef(false)
-    // 마지막으로 '적용된' 현장 선택 — 픽커에서 취소하면 이 값으로 되돌린다 (화면과 선택 상태 불일치 방지)
-    const appliedRef = useRef<string[]>([])
     useEffect(() => {
         try {
             const saved = sessionStorage.getItem("dash_restore")
             if (saved) {
                 sessionStorage.removeItem("dash_restore")
-                const { from, to } = JSON.parse(saved)
-                if (from) {
-                    restoredRef.current = true
-                    setIsRangeMode(true)
-                    setDateRange({ from: parseISO(from), to: to ? parseISO(to) : parseISO(from) })
-                }
+                const r = JSON.parse(saved)
+                if (r?.from) setDateRange({ from: parseISO(r.from), to: r.to ? parseISO(r.to) : undefined })
             }
         } catch { /* 무시 */ }
     }, [])
 
-    // 드로어용: 해당 날짜의 문서 상세만 온디맨드 조회 (본인=RLS 직조회 / 다현장=서버 경유)
-    // forceSelf: setState 직후 stale 클로저를 피해야 하는 호출자(loadOwn)용
-    const fetchDayDetails = async (date: Date, forceSelf?: boolean) => {
+    // 하루치 문서 상세는 온디맨드 조회 (본인=RLS 직조회 / 다른 현장=서버 경유)
+    const fetchDayDetails = async (date: Date) => {
         const key = format(date, 'yyyy-MM-dd')
-        if (!(forceSelf ?? selfMode)) {
+        if (!selfMode) {
             const { data: s } = await supabase.auth.getSession()
-            const res = await fetch(`/api/org/site-docs?ids=${picked.join(",")}&day=${key}`, {
+            const res = await fetch(`/api/org/site-docs?ids=${siteId}&day=${key}`, {
                 headers: { Authorization: `Bearer ${s?.session?.access_token}` },
             })
             if (!res.ok) return []
@@ -124,64 +122,80 @@ export default function DashboardPage() {
         return day
     }
 
-    // 본인 문서 로드 — 기존 경로 그대로 (달력 점·기간 카운트는 id/date만)
+    // 하루를 고른 순간에만 상세를 불러온다 — 기간은 건수만 있으면 되므로 조회하지 않는다
+    useEffect(() => {
+        if (!from || !singleDay) { setDayDocs([]); return }
+        if (!logs.some(l => isSameDay(parseISO(l.date), from))) { setDayDocs([]); return }
+        let cancelled = false
+        setDayLoading(true)
+        ;(async () => {
+            try {
+                const d = await fetchDayDetails(from)
+                if (!cancelled) setDayDocs(d)
+            } catch {
+                if (!cancelled) setDayDocs([])
+            } finally {
+                if (!cancelled) setDayLoading(false)
+            }
+        })()
+        return () => { cancelled = true }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [from?.getTime(), singleDay, logs, siteId])
+
+    // 본인 문서 로드 — 달력 점·기간 카운트는 id/date만
     const loadOwn = async () => {
         setLoading(true)
-        const [logsData, minutesData] = await Promise.all([
-            fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_logs').select('id, date').order('id').range(f, t)),
-            fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_minutes').select('id, date').order('id').range(f, t))
-        ])
-        const combinedLogs: any[] = []
-        combinedLogs.push(...logsData.map(log => ({ id: log.id, date: log.date, type: 'log' })))
-        combinedLogs.push(...minutesData.map(min => ({ id: min.id, date: min.date, type: 'minute' })))
-        combinedLogs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        setSelfMode(true)
-        setLogs(combinedLogs)
-        setLoading(false)
-        if (combinedLogs.some(log => isSameDay(parseISO(log.date), new Date()))) {
-            try { setSelectedLogs(await fetchDayDetails(new Date(), true)) } catch { /* 무시: 드로어 오픈 시 재조회됨 */ }
-        }
-    }
-
-    // 감독자 다현장 로드 — 서버 경유 읽기 전용
-    const loadSites = async (ids: string[]) => {
-        setLoading(true)
         try {
-            const { data: s } = await supabase.auth.getSession()
-            const res = await fetch(`/api/org/site-docs?ids=${ids.join(",")}`, {
-                headers: { Authorization: `Bearer ${s?.session?.access_token}` },
-            })
-            if (!res.ok) {
-                const j = await res.json().catch(() => ({}))
-                setPickErr(j.error || "문서를 불러오지 못했어요.")
-                setStage("pick")
-                return
-            }
-            const j = await res.json()
-            setSiteNameOf(new Map((j.sites ?? []).map((x: any) => [x.userId, x.siteName])))
-            setSelfMode(false)
-            setLogs(((j.docs ?? []) as any[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+            const [logsData, minutesData] = await Promise.all([
+                fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_logs').select('id, date').order('id').range(f, t)),
+                fetchAllRows<{ id: string; date: string }>((f, t) => supabase.from('tbm_minutes').select('id, date').order('id').range(f, t))
+            ])
+            const combined: any[] = []
+            combined.push(...logsData.map(log => ({ id: log.id, date: log.date, type: 'log' })))
+            combined.push(...minutesData.map(min => ({ id: min.id, date: min.date, type: 'minute' })))
+            combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            setLogs(combined)
+            return true
         } finally {
             setLoading(false)
         }
     }
 
-    // 진입 분기 — 감독자 포함 전원 내 현장 달력 직행(Chris). 다른 현장은 달력 안
-    // '다른 현장 같이 보기'에서만 고른다 (매 진입마다 픽커를 거치게 하면 상용 동선이 무거워진다)
+    // 다른 현장 로드 — 서버 경유 읽기 전용
+    const loadSites = async (id: string) => {
+        setLoading(true)
+        try {
+            const { data: s } = await supabase.auth.getSession()
+            const res = await fetch(`/api/org/site-docs?ids=${id}`, {
+                headers: { Authorization: `Bearer ${s?.session?.access_token}` },
+            })
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}))
+                setPickErr(j.error || "문서를 불러오지 못했어요.")
+                return false
+            }
+            const j = await res.json()
+            setSiteNameOf(new Map((j.sites ?? []).map((x: any) => [x.userId, x.siteName])))
+            setLogs(((j.docs ?? []) as any[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+            return true
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // 진입 분기 — 감독자 포함 전원 내 현장 달력 직행(Chris). 현장 변경은 달력 안에서만.
     useEffect(() => {
         if (ctxLoading) return
         ;(async () => {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) { router.push("/login"); return }
-            const uid = session.user.id
-            setSelfId(uid)
-            appliedRef.current = [uid]
+            setSelfId(session.user.id)
+            setSiteId(session.user.id)
             await loadOwn()
         })()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ctxLoading, router])
 
-    // 다른 현장 같이 보기 (감독자 전용) — 명단은 픽커를 열 때만 불러온다
+    // 현장 목록은 픽커를 열 때만 불러온다
     const openPicker = async () => {
         if (!selfId) return
         if (siteOptions.length === 0) {
@@ -201,101 +215,68 @@ export default function DashboardPage() {
                 setSiteOptions([{ userId: selfId, siteName: "내 현장", isSelf: true }])
             }
         }
-        setPicked((prev) => (prev.length ? prev : [selfId]))
         setPickErr(null)
         setStage("pick")
     }
 
-    const togglePick = (id: string) => {
+    // 고르는 즉시 적용 — '선택 → 확인 버튼' 2단계는 한 곳만 고르는 화면에서 군더더기다.
+    // 로드에 실패하면 픽커에 남는다(화면과 실제 데이터가 어긋나지 않게).
+    const pickSite = async (id: string) => {
         setPickErr(null)
-        setPicked((prev) => {
-            if (prev.includes(id)) return prev.filter((x) => x !== id)
-            if (prev.length >= MAX_SITES) {
-                setPickErr(`현장은 최대 ${MAX_SITES}곳까지 볼 수 있어요.`)
-                return prev
-            }
-            return [...prev, id]
-        })
-    }
-
-    const startCalendar = async () => {
-        if (picked.length === 0) { setPickErr("현장을 하나 이상 선택해주세요."); return }
-        setStage("cal")
+        const ok = id === selfId ? await loadOwn() : await loadSites(id)
+        if (!ok) return
+        setSiteId(id)
         setDateRange(undefined)
-        setSelectedDate(new Date())
-        appliedRef.current = picked
-        if (picked.length === 1 && picked[0] === selfId) await loadOwn()
-        else await loadSites(picked)
+        setDayDocs([])
+        setRangeNote(null)
+        setStage("cal")
     }
 
-    const handleDayClick = async (date: Date) => {
-        if (isRangeMode) return;
-
-        setSelectedDate(date)
-        setIsDrawerOpen(true)
-        // 점 없는 날은 조회 생략(빈 상태 즉시 표시)
-        if (!logs.some(log => isSameDay(parseISO(log.date), date))) {
-            setSelectedLogs([])
-            return
-        }
-        setDrawerLoading(true)
-        try { setSelectedLogs(await fetchDayDetails(date)) }
-        catch { setSelectedLogs([]) }
-        finally { setDrawerLoading(false) }
-    }
-
-    const handleDelete = async (log: any) => {
-        const label = log.type === 'minute' ? '회의록' : '교육일지'
+    const handleDelete = async (doc: any) => {
+        const label = doc.type === 'minute' ? '회의록' : '교육일지'
         if (!confirm(`이 ${label}을(를) 삭제할까요?\n참석자·서명도 함께 삭제되며 되돌릴 수 없습니다.`)) return
-        const table = log.type === 'minute' ? 'tbm_minutes' : 'tbm_logs'
-        const { error } = await supabase.from(table).delete().eq('id', log.id)
+        const table = doc.type === 'minute' ? 'tbm_minutes' : 'tbm_logs'
+        const { error } = await supabase.from(table).delete().eq('id', doc.id)
         if (error) { alert('삭제 실패: ' + error.message); return }
-        setLogs(prev => prev.filter(l => !(l.id === log.id && l.type === log.type)))
-        setSelectedLogs(prev => prev.filter(l => !(l.id === log.id && l.type === log.type)))
+        setLogs(prev => prev.filter(l => !(l.id === doc.id && l.type === doc.type)))
+        setDayDocs(prev => prev.filter(l => !(l.id === doc.id && l.type === doc.type)))
     }
 
-    // 기간 내 특정 타입(log=교육일지 / minute=회의록) 문서를 별도 PDF로 일괄 저장
+    // 선택 구간(하루면 그 하루) 안의 문서 id — PDF 일괄 저장용
+    const inRange = (l: { date: string }) => {
+        if (!from) return false
+        const d = parseISO(l.date).getTime()
+        return d >= from.getTime() && d <= (to ?? from).getTime()
+    }
+    const minutesInRange = from ? logs.filter(l => l.type === 'minute' && inRange(l)).length : 0
+    const logsInRange = from ? logs.filter(l => l.type !== 'minute' && inRange(l)).length : 0
+
+    const rangeKeys = () => ({
+        from: format(from!, "yyyy-MM-dd"),
+        to: format(to ?? from!, "yyyy-MM-dd"),
+    })
+
     // 회의록+교육일지를 한 번에 — 문서 종류별 버튼 두 개는 "둘 다 받고 싶은" 대다수 상황에서 두 번 일하게 했다
     const batchDownloadAll = () => {
-        if (!dateRange?.from) return alert("기간을 선택해주세요.")
-        const from = dateRange.from.getTime()
-        const to = (dateRange.to ?? dateRange.from).getTime()
-        const inRange = (l: { date: string }) => { const d = parseISO(l.date).getTime(); return d >= from && d <= to }
+        if (!from) return
         const minuteIds = logs.filter(l => l.type === 'minute' && inRange(l)).map(l => l.id)
         const logIds = logs.filter(l => l.type !== 'minute' && inRange(l)).map(l => l.id)
-        if (minuteIds.length === 0 && logIds.length === 0) return alert("선택된 기간에 문서가 없습니다.")
-        sessionStorage.setItem("dash_restore", JSON.stringify({
-            from: format(dateRange.from, "yyyy-MM-dd"),
-            to: format(dateRange.to ?? dateRange.from, "yyyy-MM-dd"),
-        }))
+        if (minuteIds.length === 0 && logIds.length === 0) return alert("선택한 날짜에 문서가 없습니다.")
+        sessionStorage.setItem("dash_restore", JSON.stringify(rangeKeys()))
         localStorage.setItem("batch_minute_ids", JSON.stringify(minuteIds))
         localStorage.setItem("batch_print_ids", JSON.stringify(logIds))
         sessionStorage.setItem("batch_combined", "1") // 1회용 — batch 페이지가 읽고 지운다
         router.push("/report/batch")
     }
 
-    // 선택 기간을 위험성평가 페이지의 기존 규약(ra_range)으로 넘겨 재선택 없이 바로 분석 —
-    // 복귀 범위(dash_restore)는 batchDownloadAll과 동일 포맷으로 저장해 돌아왔을 때 기간이 유지된다
+    // 선택 구간을 위험성평가 페이지의 기존 규약(ra_range)으로 넘겨 재선택 없이 바로 분석
     const goAnalysisReport = () => {
-        if (!dateRange?.from) return
-        const from = format(dateRange.from, "yyyy-MM-dd")
-        const to = format(dateRange.to ?? dateRange.from, "yyyy-MM-dd")
-        sessionStorage.setItem("dash_restore", JSON.stringify({ from, to }))
-        localStorage.setItem("ra_range", JSON.stringify({ from, to }))
+        if (!from) return
+        const keys = rangeKeys()
+        sessionStorage.setItem("dash_restore", JSON.stringify(keys))
+        localStorage.setItem("ra_range", JSON.stringify(keys))
         router.push("/risk-assessment")
     }
-
-    // 선택 기간에 포함된 회의록/교육일지 수 (위험성평가는 회의록만 분석)
-    const minutesInRange = dateRange?.from ? logs.filter(log => {
-        if (log.type !== 'minute') return false
-        const d = parseISO(log.date).getTime()
-        return d >= dateRange!.from!.getTime() && d <= (dateRange.to ?? dateRange.from)!.getTime()
-    }).length : 0;
-    const logsInRange = dateRange?.from ? logs.filter(log => {
-        if (log.type === 'minute') return false
-        const d = parseISO(log.date).getTime()
-        return d >= dateRange!.from!.getTime() && d <= (dateRange.to ?? dateRange.from)!.getTime()
-    }).length : 0;
 
     // 그 날짜에 교육일지(log) / 회의록(minute)이 있는지
     const hasLogOn = (date: Date) => logs.some(l => l.type !== 'minute' && isSameDay(parseISO(l.date), date))
@@ -319,30 +300,29 @@ export default function DashboardPage() {
 
     if (loading || ctxLoading) return <div className="min-h-screen flex justify-center items-center bg-cur-canvas"><Loader2 className="animate-spin w-10 h-10 text-cur-ink" /></div>
 
-    // 감독자 1단계 — 어떤 현장을 볼지 먼저 (최대 3곳)
+    const currentSiteName = selfMode
+        ? "내 현장"
+        : (siteOptions.find((s) => s.userId === siteId)?.siteName ?? siteNameOf.get(siteId!) ?? "현장")
+
+    // 현장 고르기 — 한 곳만, 누르는 즉시 적용
     if (stage === "pick") {
         return (
             <div className="min-h-screen bg-cur-canvas font-sans text-cur-ink">
                 <div className="max-w-lg mx-auto px-4 pt-4">
-                    <TBMHeader title="안전달력" backHref="/" />
+                    <TBMHeader title="출력" backHref="/" />
                 </div>
                 <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                     <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-3">
-                        <div>
-                            <h2 className="text-[15px] font-bold text-cur-ink">어떤 현장을 볼까요?</h2>
-                            <p className="text-[12px] text-cur-muted mt-1 leading-relaxed">
-                                한 번에 최대 {MAX_SITES}곳까지 — 많이 고르면 로드가 길어져요.
-                            </p>
-                        </div>
+                        <h2 className="text-[15px] font-bold text-cur-ink">어떤 현장을 볼까요?</h2>
                         <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                             {siteOptions.map((s) => {
-                                const on = picked.includes(s.userId)
+                                const on = s.userId === siteId
                                 return (
                                     <button
                                         key={s.userId}
                                         type="button"
-                                        onClick={() => togglePick(s.userId)}
-                                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-cur-elevated/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                                        onClick={() => pickSite(s.userId)}
+                                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-cur-elevated/50 active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
                                     >
                                         {on ? (
                                             <CheckCircle2 className="w-5 h-5 text-cur-primary shrink-0" />
@@ -359,16 +339,8 @@ export default function DashboardPage() {
                         </div>
                         {pickErr && <p className="text-[12px] text-cur-error">{pickErr}</p>}
                         <Button
-                            onClick={startCalendar}
-                            disabled={picked.length === 0}
-                            className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold disabled:opacity-40"
-                        >
-                            선택한 {picked.length}곳 달력 보기
-                        </Button>
-                        {/* 픽커는 달력 안에서 열리는 부가 화면 — 되돌아갈 길을 준다 (선택은 마지막 적용값으로 복원) */}
-                        <Button
                             variant="outline"
-                            onClick={() => { setPicked(appliedRef.current); setPickErr(null); setStage("cal") }}
+                            onClick={() => { setPickErr(null); setStage("cal") }}
                             className="w-full h-10 rounded-[8px] border-cur-hairline text-cur-ink text-[13px] font-semibold"
                         >
                             취소
@@ -383,135 +355,132 @@ export default function DashboardPage() {
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
                 <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10">
-                    <TBMHeader title="안전달력" />
+                    <TBMHeader title="출력" />
                 </div>
 
-                <div className="p-6 space-y-6 flex-1 bg-cur-canvas-soft">
+                <div className="p-6 space-y-4 flex-1 bg-cur-canvas-soft">
 
-                    {/* 감독자 — 지금 보고 있는 현장 + 다른 현장 합쳐 보기 입구 (기본은 내 현장만) */}
+                    {/* 감독자 — 지금 보고 있는 현장 (한 곳만) */}
                     {ctx?.kind === "owner" && (
                         <button
                             type="button"
                             onClick={openPicker}
-                            className="w-full flex items-center gap-2.5 bg-cur-card px-4 py-3 rounded-[12px] border border-cur-hairline hover:border-cur-primary/40 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                            className="w-full flex items-center gap-2 bg-cur-card px-3.5 py-2.5 rounded-[12px] border border-cur-hairline hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                         >
                             <Building2 className="w-4 h-4 text-cur-muted shrink-0" />
-                            <span className="flex-1 min-w-0 text-[13px] font-semibold text-cur-ink truncate">
-                                {selfMode
-                                    ? "내 현장"
-                                    : picked.map((id) => siteNameOf.get(id) ?? "현장").join(" · ")}
-                            </span>
-                            <span className="shrink-0 text-[12px] text-cur-primary font-semibold">
-                                {selfMode ? "다른 현장 같이 보기" : "현장 다시 선택"}
-                            </span>
+                            <span className="flex-1 min-w-0 text-[13px] font-semibold text-cur-ink truncate text-left">{currentSiteName}</span>
+                            <span className="shrink-0 text-[12px] text-cur-primary font-semibold">변경</span>
                         </button>
                     )}
 
-                    <div className="space-y-3">
-                        <div
-                            className={cn("flex items-center justify-between bg-cur-card p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", isRangeMode ? "border-cur-primary ring-1 ring-cur-primary" : "border-cur-hairline")}
-                            onClick={() => {
-                                setIsRangeMode(true);
-                                setDateRange(undefined);
-                                setSelectedDate(new Date());
-                            }}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={cn("p-2 rounded-[8px] transition-colors", isRangeMode ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-ink")}>
-                                    <Printer className="w-5 h-5" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <Label className="font-semibold text-cur-ink text-[15px] cursor-pointer pointer-events-none">
-                                        기간 선택
-                                    </Label>
-                                    <span className="text-[13px] text-cur-muted-soft">
-                                        일괄 PDF · AI 분석 보고서 생성
-                                    </span>
-                                </div>
-                            </div>
-                            <Switch
-                                checked={isRangeMode}
-                                onCheckedChange={() => {
-                                    setIsRangeMode(true);
-                                    setDateRange(undefined);
-                                    setSelectedDate(new Date());
-                                }}
-                            />
-                        </div>
-
-                        <div
-                            className={cn("flex items-center justify-between bg-cur-card p-4 rounded-[12px] border shadow-[0_4px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all", !isRangeMode ? "border-cur-primary ring-1 ring-cur-primary" : "border-cur-hairline")}
-                            onClick={() => {
-                                setIsRangeMode(false);
-                                setDateRange(undefined);
-                                setSelectedDate(new Date());
-                            }}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={cn("p-2 rounded-[8px] transition-colors", !isRangeMode ? "bg-cur-primary text-cur-on-primary" : "bg-cur-elevated text-cur-ink")}>
-                                    <CalendarIcon className="w-5 h-5" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <Label className="font-semibold text-cur-ink text-[15px] cursor-pointer pointer-events-none">
-                                        일별 보기
-                                    </Label>
-                                    <span className="text-[13px] text-cur-muted-soft">
-                                        날짜를 눌러 내용을 확인하세요
-                                    </span>
-                                </div>
-                            </div>
-                            <Switch
-                                checked={!isRangeMode}
-                                onCheckedChange={() => {
-                                    setIsRangeMode(false);
-                                    setDateRange(undefined);
-                                    setSelectedDate(new Date());
-                                }}
-                            />
-                        </div>
-                    </div>
-
                     <div className="border border-cur-hairline rounded-[12px] p-2 sm:p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center overflow-x-auto">
-                        {isRangeMode ? (
-                            <Calendar
-                                mode="range"
-                                selected={dateRange}
-                                onSelect={handleRangeSelect}
-                                locale={ko}
-                                className="w-full"
-                                modifiers={commonModifiers}
-                                modifiersClassNames={commonModifiersClassNames}
-                                classNames={commonClassNames}
-                            />
-                        ) : (
-                            <Calendar
-                                mode="single"
-                                selected={selectedDate}
-                                onDayClick={handleDayClick}
-                                locale={ko}
-                                className="w-full"
-                                modifiers={commonModifiers}
-                                modifiersClassNames={commonModifiersClassNames}
-                                classNames={commonClassNames}
-                            />
-                        )}
+                        <Calendar
+                            mode="range"
+                            selected={dateRange}
+                            onSelect={handleSelect}
+                            locale={ko}
+                            className="w-full"
+                            modifiers={commonModifiers}
+                            modifiersClassNames={commonModifiersClassNames}
+                            classNames={commonClassNames}
+                        />
                     </div>
 
-                    {isRangeMode && dateRange?.from && (
-                        <div className="bg-cur-card border border-cur-hairline p-4 rounded-[12px] animate-in slide-in-from-bottom-4 space-y-3">
-                            <div className="flex justify-between items-center">
+                    {!from ? (
+                        <div className="text-center space-y-3 py-1">
+                            <p className="text-[13px] text-cur-muted leading-relaxed">
+                                날짜를 누르면 그 날 문서가 보이고,
+                                <br />한 번 더 누르면 그 사이 기간으로 잡혀요.
+                            </p>
+                            <Button onClick={() => router.push('/')} className="w-full bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary h-12 text-[15px] font-medium rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors">
+                                <Plus className="mr-2 w-5 h-5" /> 오늘 일지 작성하기
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="bg-cur-card border border-cur-hairline p-4 rounded-[12px] space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
+                            <div className="flex justify-between items-center gap-2">
                                 <div className="font-semibold text-[15px] text-cur-ink">
-                                    {format(dateRange.from, "MM.dd")} ~ {dateRange.to ? format(dateRange.to, "MM.dd") : "-"}
+                                    {singleDay
+                                        ? format(from, "M월 d일 (EEE)", { locale: ko })
+                                        : `${format(from, "MM.dd")} ~ ${format(to!, "MM.dd")}`}
                                 </div>
                                 <span className="text-[12px] text-cur-muted shrink-0">회의록 {minutesInRange}건 · 교육일지 {logsInRange}건</span>
                             </div>
+
                             {rangeNote && (
                                 <p className="text-[12px] text-amber-600 bg-amber-50 rounded-[8px] px-3 py-2 -mt-1">{rangeNote}</p>
                             )}
+
+                            {/* 하루를 골랐을 때만 그 날 문서를 펼친다 (기간은 건수로 충분) */}
+                            {singleDay && (
+                                dayLoading ? (
+                                    <div className="py-6 flex justify-center"><Loader2 className="animate-spin w-5 h-5 text-cur-muted-soft" /></div>
+                                ) : dayDocs.length === 0 ? (
+                                    <div className="py-6 flex flex-col items-center text-cur-muted-soft">
+                                        <FileText className="w-9 h-9 mb-2 opacity-25" />
+                                        <p className="text-[13px]">이 날에는 작성된 문서가 없어요.</p>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-[8px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                                        {dayDocs.map((doc) => {
+                                            // 본인 문서만 열람·삭제 가능 — 다른 현장 문서는 정보 행으로만 (서버 문서 뷰 미지원)
+                                            const mine = selfMode || doc.siteId === selfId
+                                            const isMinute = doc.type === 'minute'
+                                            return (
+                                                <div key={`${doc.type}-${doc.id}`} className="flex items-stretch bg-cur-card">
+                                                    <span className={cn("w-[3px] shrink-0", isMinute ? "bg-[#8145b5]" : "bg-cur-primary")} />
+                                                    <button
+                                                        type="button"
+                                                        disabled={!mine}
+                                                        onClick={() => router.push(isMinute ? `/report/minutes/${doc.id}` : `/report/${doc.id}`)}
+                                                        className="flex-1 min-w-0 text-left px-3 py-3 enabled:hover:bg-cur-elevated/60 enabled:active:bg-cur-elevated transition-colors disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
+                                                    >
+                                                        <span className="flex items-center gap-1.5 flex-wrap mb-1">
+                                                            <span className={cn("text-[11px] font-medium text-cur-on-primary px-1.5 py-0.5 rounded-[4px]", isMinute ? "bg-[#8145b5]" : "bg-cur-primary")}>
+                                                                {isMinute ? 'TBM 회의록' : '안전보건교육일지'}
+                                                            </span>
+                                                            {!selfMode && doc.siteName && (
+                                                                <span className="text-[11px] font-semibold text-cur-ink bg-cur-elevated border border-cur-hairline px-1.5 py-0.5 rounded-[4px]">{doc.siteName}</span>
+                                                            )}
+                                                            <span className="text-[11px] text-cur-muted font-mono bg-cur-elevated px-1.5 py-0.5 rounded-[4px]">
+                                                                {doc.start_time?.slice(0, 5)} ~ {doc.end_time?.slice(0, 5)}
+                                                            </span>
+                                                        </span>
+                                                        <span className="block text-[14px] font-semibold text-cur-ink truncate">{doc.location}</span>
+                                                        {doc.instructor_name && doc.instructor_name !== 'TBM (자율)' && (
+                                                            <span className="block text-[12px] text-cur-muted-soft mt-0.5 truncate">
+                                                                {isMinute ? '작성자' : '강사'}: {doc.instructor_name}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                    {mine && (
+                                                        <div className="flex items-center gap-0.5 pr-2 shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDelete(doc)}
+                                                                className="text-[12px] text-cur-muted hover:text-cur-error px-2 py-1 rounded-[6px] hover:bg-cur-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                                            >
+                                                                삭제
+                                                            </button>
+                                                            <ChevronRight className="text-cur-muted-soft w-4 h-4" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )
+                            )}
+
+                            {/* 출력·분석 — 하루든 기간이든 같은 자리에서 같은 버튼으로 */}
                             {selfMode ? (
-                                <>
-                                    <Button onClick={batchDownloadAll} disabled={minutesInRange === 0 && logsInRange === 0} className="w-full bg-cur-primary text-white hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                        문서 PDF 저장 (회의록·교육일지)
+                                <div className="space-y-2">
+                                    <Button
+                                        onClick={batchDownloadAll}
+                                        disabled={minutesInRange === 0 && logsInRange === 0}
+                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Printer className="mr-2 w-4 h-4" /> 문서 PDF 저장 (회의록·교육일지)
                                     </Button>
                                     {/* member는 분석 대상이 아니다(/risk-assessment가 홈으로 돌려보냄) — 막다른 버튼을 아예 감춘다 */}
                                     {ctx && ctx.kind !== "member" && (
@@ -520,108 +489,35 @@ export default function DashboardPage() {
                                                 type="button"
                                                 onClick={goAnalysisReport}
                                                 disabled={minutesInRange === 0}
-                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                                             >
-                                                분석보고서 생성
+                                                <Sparkles className="mr-2 w-4 h-4" /> 분석보고서 생성
                                             </button>
                                             {minutesInRange === 0 && (
-                                                <p className="text-[12px] text-cur-muted-soft text-center">회의록이 있는 기간을 선택하면 분석보고서를 만들 수 있어요</p>
+                                                <p className="text-[12px] text-cur-muted-soft text-center">회의록이 있는 날짜·기간을 고르면 분석보고서를 만들 수 있어요</p>
                                             )}
                                         </>
                                     )}
-                                </>
+                                    {dayDocs.length === 0 && singleDay && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => router.push('/')}
+                                            className="w-full h-10 border-cur-hairline text-cur-ink text-[13px] font-semibold rounded-[8px]"
+                                        >
+                                            <Plus className="mr-2 w-4 h-4" /> 이 날짜에 작성하기
+                                        </Button>
+                                    )}
+                                </div>
                             ) : (
-                                /* 다현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
+                                /* 다른 현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
                                 <p className="text-[12px] text-cur-muted-soft text-center">
-                                    일괄 PDF 저장은 내 현장만 선택했을 때 제공돼요.
+                                    PDF 저장·분석보고서는 내 현장을 볼 때 제공돼요.
                                 </p>
                             )}
                         </div>
                     )}
-
-                    {!isRangeMode && (
-                        <Button onClick={() => router.push('/')} className="w-full bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary h-12 text-[15px] font-medium rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.04)] mt-2 transition-all">
-                            <Plus className="mr-2 w-5 h-5" /> 오늘 일지 작성하기
-                        </Button>
-                    )}
                 </div>
             </div>
-
-            <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-                <DrawerContent className="bg-cur-card border-t border-cur-hairline">
-                    <DrawerHeader className="border-b border-cur-hairline pb-4">
-                        <DrawerTitle className="text-center text-[18px] font-semibold flex items-center justify-center gap-2 text-cur-ink">
-                            {selectedDate && format(selectedDate, "yyyy년 MM월 dd일")}
-                            <Badge variant="outline" className="ml-1 border-cur-hairline text-cur-muted-soft px-2 py-0.5 text-[11px] font-semibold tracking-wide rounded-[4px]">{drawerLoading ? '…' : `${selectedLogs.length}건`}</Badge>
-                        </DrawerTitle>
-                    </DrawerHeader>
-
-                    <div className="p-6 space-y-4 bg-cur-canvas-soft min-h-[300px] max-h-[60vh] overflow-y-auto">
-                        {drawerLoading ? (
-                            <div className="h-full flex items-center justify-center py-10">
-                                <Loader2 className="animate-spin w-6 h-6 text-cur-muted" />
-                            </div>
-                        ) : selectedLogs.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-cur-muted py-10">
-                                <FileText className="w-12 h-12 mb-3 opacity-20" />
-                                <p className="text-[14px]">작성된 일지가 없습니다.</p>
-                            </div>
-                        ) : (
-                            selectedLogs.map((log) => {
-                                // 본인 문서만 열람·삭제 가능 — 다른 현장 문서는 정보 카드로만 (서버 문서 뷰 미지원)
-                                const mine = selfMode || log.siteId === selfId
-                                return (
-                                <Card key={log.id} onClick={() => { if (mine) router.push(log.type === 'minute' ? `/report/minutes/${log.id}` : `/report/${log.id}`) }} className={cn("transition-all border border-cur-hairline shadow-[0_4px_12px_rgba(0,0,0,0.02)] rounded-[12px] overflow-hidden bg-cur-card", mine && "cursor-pointer active:scale-[0.98] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)]")}>
-                                    <div className={cn("h-1 w-full", log.type === 'minute' ? "bg-[#8145b5]" : "bg-cur-primary")} />
-                                    <CardContent className="p-5 flex items-center justify-between">
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                <Badge className={cn("text-cur-on-primary font-medium text-[11px] px-2 py-0.5 rounded-[4px] border-none shadow-none hover:opacity-90", log.type === 'minute' ? "bg-[#8145b5]" : "bg-cur-primary")}>{log.type === 'minute' ? 'TBM 회의록' : '안전보건교육일지'}</Badge>
-                                                {!selfMode && log.siteName && (
-                                                    <span className="text-[11px] font-semibold text-cur-ink bg-cur-elevated border border-cur-hairline px-2 py-0.5 rounded-[4px]">{log.siteName}</span>
-                                                )}
-                                                {log.type !== 'minute' && log.education_type && (
-                                                    <span className="text-[11px] text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[4px]">{log.education_type}</span>
-                                                )}
-                                                <span className="text-[12px] text-cur-muted font-mono bg-cur-elevated px-2 py-0.5 rounded-[4px]">
-                                                    {log.start_time?.slice(0, 5)} ~ {log.end_time?.slice(0, 5)}
-                                                </span>
-                                            </div>
-                                            <div className="font-semibold text-cur-ink text-[16px] mb-1">{log.location}</div>
-                                            {log.instructor_name && log.instructor_name !== 'TBM (자율)' && (
-                                                <div className="text-[13px] text-cur-muted-soft flex items-center gap-1.5">
-                                                    <CheckCircle2 className="w-3.5 h-3.5" /> {log.type === 'minute' ? '작성자' : '강사'}: {log.instructor_name}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {mine && (
-                                            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                <button
-                                                    onClick={() => handleDelete(log)}
-                                                    className="text-[12px] text-cur-muted hover:text-cur-error px-2 py-1 rounded-[6px] hover:bg-cur-error/10"
-                                                >
-                                                    삭제
-                                                </button>
-                                                <ChevronRight className="text-cur-muted w-5 h-5" />
-                                            </div>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                                )
-                            })
-                        )}
-                    </div>
-
-                    <DrawerFooter className="bg-cur-card border-t border-cur-hairline pt-4 pb-8">
-                        <Button onClick={() => router.push('/')} className="w-full h-12 text-[14px] font-medium bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[8px]">
-                            <Plus className="mr-2 w-4 h-4" /> 이 날짜에 추가 작성
-                        </Button>
-                        <DrawerClose asChild>
-                            <Button variant="outline" className="h-12 border-cur-hairline text-cur-ink font-medium rounded-[8px]">닫기</Button>
-                        </DrawerClose>
-                    </DrawerFooter>
-                </DrawerContent>
-            </Drawer>
         </div>
     )
 }

@@ -14,6 +14,7 @@ import { ReportSettingsPanel, ReportPreviewCard } from "@/components/ReportSetti
 import { CompanyDocFormatCard } from "@/components/CompanyDocFormatCard"
 import { ReportScheduleCard } from "@/components/ReportScheduleCard"
 import { fetchSubscription, isProActive } from "@/lib/useSubscription"
+import { countRecipients, EMPTY_COUNTS, type RecipientCounts } from "@/lib/reportRecipients"
 
 export default function OrgReportsPage() {
     const router = useRouter()
@@ -22,9 +23,11 @@ export default function OrgReportsPage() {
     const [pro, setPro] = useState(false)
     const [tab, setTab] = useState<"format" | "delivery">("format")
 
-    // 위저드 판정 재료 — 문서 형식(회사 공통)과 수신자 수
+    // 위저드 판정 재료 — 문서 형식(회사 공통)과 수신자 승인 집계.
+    // 개수가 아니라 '승인됨' 개수로 판정한다: 크론이 approved만 발송하므로
+    // pending을 완료로 세면 화면은 완료, 실발송은 0통이 된다.
     const [docFormat, setDocFormat] = useState<string>("")
-    const [recipientCount, setRecipientCount] = useState(0)
+    const [counts, setCounts] = useState<RecipientCounts>(EMPTY_COUNTS)
     const [wizStep, setWizStep] = useState<1 | 2>(1)
     // 화면 모드는 진입 시점에 고정 — 위저드 도중 조건이 충족돼도(수신자 추가 순간)
     // '설정 완료'를 누르기 전에 화면이 멋대로 탭으로 바뀌면 안 된다
@@ -47,17 +50,17 @@ export default function OrgReportsPage() {
                 const recipientsRes = await fetch("/api/reports/recipients", { headers: { Authorization: `Bearer ${sess?.session?.access_token}` } })
                     .then((r) => (r.ok ? r.json() : { recipients: [] }))
                     .catch(() => ({ recipients: [] }))
-                const count = ((recipientsRes.recipients ?? []) as unknown[]).length
-                setRecipientCount(count)
-                // 완료 기준: 형식 설정 + (Pro면) 수신자 1명 이상 — 비Pro는 수신자를 등록할 수 없으니 형식만
-                setMode(fmt && (!isProActive(sub) || count > 0) ? "tabs" : "wizard")
+                const c = countRecipients(recipientsRes.recipients)
+                setCounts(c)
+                // 완료 기준: 형식 설정 + (Pro면) 승인된 수신자 1명 이상 — 비Pro는 수신자를 등록할 수 없으니 형식만
+                setMode(fmt && (!isProActive(sub) || c.approved > 0) ? "tabs" : "wizard")
             } finally {
                 setLoading(false)
             }
         })()
     }, [ctx, ctxLoading, router])
 
-    const setupDone = !!docFormat && (!pro || recipientCount > 0)
+    const setupDone = !!docFormat && (!pro || counts.approved > 0)
 
     const stepChip = (n: 1 | 2, label: string) => {
         const active = wizStep === n
@@ -73,7 +76,7 @@ export default function OrgReportsPage() {
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
             <div className="max-w-lg mx-auto px-4 pt-4">
-                <TBMHeader title="보고서 설정" backHref="/" />
+                <TBMHeader title="출력/발송 설정" backHref="/" />
             </div>
             <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
                 {loading || ctxLoading ? (
@@ -103,7 +106,7 @@ export default function OrgReportsPage() {
                             </>
                         ) : (
                             <>
-                                <ReportSettingsPanel pro={pro} onRecipientsChange={setRecipientCount} />
+                                <ReportSettingsPanel pro={pro} onRecipientsChange={setCounts} />
                                 <ReportScheduleCard pro={pro} />
                                 <div className="flex gap-2">
                                     <button
@@ -113,20 +116,27 @@ export default function OrgReportsPage() {
                                         이전
                                     </button>
                                     <button
-                                        disabled={pro && recipientCount === 0}
+                                        disabled={pro && counts.approved === 0}
                                         onClick={() => setMode("tabs")}
                                         className="flex-[2] h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         설정 완료
                                     </button>
                                 </div>
-                                {pro && recipientCount === 0 && (
-                                    <button
-                                        onClick={() => setMode("tabs")}
-                                        className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink transition-colors"
-                                    >
-                                        나중에 등록할게요 (AI 분석 보고서는 설정 완료 후 열려요)
-                                    </button>
+                                {pro && counts.approved === 0 && (
+                                    <>
+                                        <p className="text-[12px] text-cur-muted text-center leading-relaxed">
+                                            {counts.pending > 0
+                                                ? `승인 대기 ${counts.pending}명 — 받는 사람이 확인 메일의 승인 링크를 눌러야 완료돼요.`
+                                                : "받는 사람을 1명 이상 등록하고 승인까지 받아야 완료돼요."}
+                                        </p>
+                                        <button
+                                            onClick={() => setMode("tabs")}
+                                            className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink transition-colors"
+                                        >
+                                            나중에 할게요 (AI 분석 보고서는 설정 완료 후 열려요)
+                                        </button>
+                                    </>
                                 )}
                             </>
                         )}
@@ -152,7 +162,7 @@ export default function OrgReportsPage() {
                             <ReportPreviewCard />
                         </div>
                         <div className={tab === "delivery" ? "space-y-4" : "hidden"}>
-                            <ReportSettingsPanel pro={pro} onRecipientsChange={setRecipientCount} />
+                            <ReportSettingsPanel pro={pro} onRecipientsChange={setCounts} />
                             <ReportScheduleCard pro={pro} />
                         </div>
                     </>

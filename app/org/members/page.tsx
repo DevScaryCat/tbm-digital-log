@@ -45,7 +45,7 @@ export default function OrgMembersPage() {
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
     // 일괄 발급 폼 — 시드 + 개수 + 공용 초기 비밀번호. 현장명·새 비밀번호는
-    // 담당자가 첫 로그인 온보딩에서 직접 정한다.
+    // 현장담당자가 첫 로그인 온보딩에서 직접 정한다.
     // 추가 마법사: count(몇 개) → method(방식 선택) → direct(직접 발급) | link(초대 링크)
     const [addStep, setAddStep] = useState<null | "count" | "method" | "direct" | "link">(null)
     const [stem, setStem] = useState("")
@@ -166,7 +166,7 @@ export default function OrgMembersPage() {
             "카카오 버튼이 아니라, 아래 아이디 칸에 위 아이디와 비밀번호를 입력하세요.",
             "로그인하면 첫 화면에서 새 비밀번호와 현장명을 정하시면 됩니다.",
         ].join("\n")
-        try { await navigator.clipboard.writeText(text); setAddMsg({ type: "ok", text: "계정 목록을 복사했어요. 담당자들에게 전달하세요." }) } catch { /* 무시 */ }
+        try { await navigator.clipboard.writeText(text); setAddMsg({ type: "ok", text: "계정 목록을 복사했어요. 현장담당자들에게 전달하세요." }) } catch { /* 무시 */ }
     }
 
     const createInviteLink = async () => {
@@ -232,7 +232,7 @@ export default function OrgMembersPage() {
         }
     }
 
-    // ── 비밀번호 재설정 모달 — 담당자 교체 시 감독자가 새 비밀번호를 만들어 전달한다
+    // ── 비밀번호 재설정 모달 — 현장담당자 교체 시 감독자가 새 비밀번호를 만들어 전달한다
     const openPw = (m: MemberRow) => {
         setModalErr(null)
         setPwValue("")
@@ -322,7 +322,7 @@ export default function OrgMembersPage() {
                                     </div>
                                     {m.status === "active" && (
                                         <>
-                                            <button onClick={() => openEdit(m)} aria-label="현장명·담당자 수정" className={`${iconBtnCls} text-cur-muted hover:text-cur-ink hover:bg-cur-elevated`}>
+                                            <button onClick={() => openEdit(m)} aria-label="현장명·현장담당자 수정" className={`${iconBtnCls} text-cur-muted hover:text-cur-ink hover:bg-cur-elevated`}>
                                                 <Pencil className="w-4 h-4" />
                                             </button>
                                             <button onClick={() => openPw(m)} aria-label="비밀번호 재설정" className={`${iconBtnCls} text-cur-muted hover:text-cur-ink hover:bg-cur-elevated`}>
@@ -372,7 +372,7 @@ export default function OrgMembersPage() {
                         </div>
                     )}
 
-                    {/* ① 일괄 발급 (메인) — 시드+개수+초기 비밀번호. 현장명·새 비밀번호는 담당자 첫 로그인 때 */}
+                    {/* ① 일괄 발급 (메인) — 시드+개수+초기 비밀번호. 현장명·새 비밀번호는 현장담당자 첫 로그인 때 */}
                     {createdIds ? (
                         <div className="rounded-xl border border-cur-success/30 bg-cur-success/5 p-4 space-y-3">
                             <p className="flex items-center gap-1.5 text-[14px] font-bold text-cur-success">
@@ -385,7 +385,7 @@ export default function OrgMembersPage() {
                             </div>
                             <p className="text-[12px] text-cur-muted leading-relaxed">
                                 초기 비밀번호는 전부 <b className="text-cur-ink font-mono break-all">{initPw}</b> 예요.
-                                담당자가 처음 로그인하면 새 비밀번호와 현장명을 직접 설정합니다.
+                                현장담당자가 처음 로그인하면 새 비밀번호와 현장명을 직접 설정합니다.
                             </p>
                             <div className="flex gap-2">
                                 <Button onClick={copyCreated} className="flex-1 h-11 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
@@ -424,8 +424,8 @@ export default function OrgMembersPage() {
                             >
                                 <span className="w-10 h-10 shrink-0 rounded-[8px] bg-cur-primary/10 text-cur-primary flex items-center justify-center"><KeyRound className="w-5 h-5" /></span>
                                 <span className="flex-1 min-w-0">
-                                    <span className="block text-[14px] font-bold text-cur-ink">내가 만들어서 전달할래요</span>
-                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">아이디·초기 비밀번호를 한 번에 만들어 담당자에게 알려줘요</span>
+                                    <span className="block text-[14px] font-bold text-cur-ink">내가 만들어서 현장담당자에게 줄래요</span>
+                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">아이디·초기 비밀번호를 한 번에 만들어 드려요</span>
                                 </span>
                                 <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                             </button>
@@ -438,8 +438,8 @@ export default function OrgMembersPage() {
                                     {busy === "link" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link2 className="w-5 h-5" />}
                                 </span>
                                 <span className="flex-1 min-w-0">
-                                    <span className="block text-[14px] font-bold text-cur-ink">담당자가 직접 만들게 할래요</span>
-                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">초대 링크를 보내면 담당자가 스스로 가입해요</span>
+                                    <span className="block text-[14px] font-bold text-cur-ink">현장담당자가 직접 만들게 할래요</span>
+                                    <span className="block text-[12px] text-cur-body mt-0.5 leading-snug">초대 링크를 보내면 현장담당자가 스스로 가입해요</span>
                                 </span>
                                 <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                             </button>
@@ -453,7 +453,7 @@ export default function OrgMembersPage() {
                                 <div className="flex items-center gap-2 rounded-lg bg-cur-elevated p-2.5">
                                     <span className="text-[12px] text-cur-body truncate flex-1 min-w-0">{inviteUrl}</span>
                                     <button
-                                        onClick={() => { navigator.clipboard?.writeText(inviteUrl); setAddMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장 담당자에게 보내세요." }) }}
+                                        onClick={() => { navigator.clipboard?.writeText(inviteUrl); setAddMsg({ type: "ok", text: "초대 링크를 복사했어요. 현장담당자에게 보내세요." }) }}
                                         className="shrink-0 h-8 px-2.5 rounded-md bg-cur-card border border-cur-hairline text-[12px] font-semibold text-cur-ink flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
                                     >
                                         <Copy className="w-3.5 h-3.5" /> 복사
@@ -461,7 +461,7 @@ export default function OrgMembersPage() {
                                 </div>
                             )}
                             <p className="text-[12px] text-cur-muted leading-relaxed">
-                                링크 하나로 여러 담당자가 가입할 수 있어요 (14일 유효).
+                                링크 하나로 여러 현장담당자가 가입할 수 있어요 (14일 유효).
                                 가입이 끝나면 현장 목록에 자동으로 나타납니다.
                             </p>
                             {/* 편입은 드문 일이라(기존 안톡 계정 데려오기) 상시 노출하지 않고 여기서만 */}
@@ -501,7 +501,7 @@ export default function OrgMembersPage() {
                             <div className="space-y-1">
                                 <Label className="text-[12px]">공용 초기 비밀번호</Label>
                                 <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />
-                                <p className="text-[11px] text-cur-muted-soft">담당자가 처음 로그인하면 반드시 새 비밀번호로 바꾸게 돼요.</p>
+                                <p className="text-[11px] text-cur-muted-soft">현장담당자가 처음 로그인하면 반드시 새 비밀번호로 바꾸게 돼요.</p>
                             </div>
                             {formErr && (
                                 <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
@@ -517,7 +517,7 @@ export default function OrgMembersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* ── 정보 수정 모달 — 현장명·담당자 */}
+            {/* ── 정보 수정 모달 — 현장명·현장담당자 */}
             <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) { if (busy) return; setEditTarget(null); setModalErr(null) } }}>
                 <DialogContent aria-describedby={undefined} className={dialogCls}>
                     <DialogHeader className="text-left">
@@ -531,8 +531,8 @@ export default function OrgMembersPage() {
                         <Input value={editSite} onChange={(e) => setEditSite(e.target.value)} placeholder="예: 신도림 물류센터" className={inputCls} />
                     </div>
                     <div className="space-y-1.5">
-                        <Label className="text-[12px]">담당자 이름</Label>
-                        <Input value={editManager} onChange={(e) => setEditManager(e.target.value)} placeholder="담당자 이름" className={inputCls} />
+                        <Label className="text-[12px]">현장담당자 이름</Label>
+                        <Input value={editManager} onChange={(e) => setEditManager(e.target.value)} placeholder="현장담당자 이름" className={inputCls} />
                         <p className="text-[11px] text-cur-muted-soft">비우면 현장명으로 표시돼요.</p>
                     </div>
                     {modalErr && (
@@ -553,7 +553,7 @@ export default function OrgMembersPage() {
                     <DialogHeader className="text-left">
                         <DialogTitle className={dialogTitleCls}>비밀번호 재설정</DialogTitle>
                         <DialogDescription className="text-[12px] text-cur-muted">
-                            [{pwTarget?.siteName || "현장명 미설정"}]{pwTarget?.loginId ? <> · 아이디 <span className="font-mono text-cur-ink">{pwTarget.loginId}</span></> : null} — 담당자가 바뀌었을 때 사용하세요.
+                            [{pwTarget?.siteName || "현장명 미설정"}]{pwTarget?.loginId ? <> · 아이디 <span className="font-mono text-cur-ink">{pwTarget.loginId}</span></> : null} — 현장담당자가 바뀌었을 때 사용하세요.
                         </DialogDescription>
                     </DialogHeader>
                     {pwDone ? (
@@ -563,7 +563,7 @@ export default function OrgMembersPage() {
                                     <CheckCircle2 className="w-4 h-4" /> 비밀번호를 변경했어요
                                 </p>
                                 <p className="text-[13px] text-cur-ink">새 비밀번호 <b className="font-mono break-all">{pwValue}</b></p>
-                                <p className="text-[12px] text-cur-muted leading-relaxed">새 비밀번호를 담당자에게 전달하세요. 담당자는 다음 로그인부터 이 비밀번호로 접속합니다.</p>
+                                <p className="text-[12px] text-cur-muted leading-relaxed">새 비밀번호를 현장담당자에게 전달하세요. 현장담당자는 다음 로그인부터 이 비밀번호로 접속합니다.</p>
                             </div>
                             <Button onClick={() => setPwTarget(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                         </>

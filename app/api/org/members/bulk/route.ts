@@ -1,6 +1,6 @@
 // app/api/org/members/bulk/route.ts — 현장 계정 일괄 발급
 // 아이디 시드 + 개수 + 공용 초기 비밀번호로 site01, site02… 를 한 번에 만든다.
-// 현장명·담당자·새 비밀번호는 담당자 본인이 첫 로그인 온보딩에서 입력한다(must_set_password).
+// 현장명·현장담당자·새 비밀번호는 현장담당자 본인이 첫 로그인 온보딩에서 입력한다(must_set_password).
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isProPlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
           password,
           email_confirm: true,
           user_metadata: {
-            // 현장명은 담당자가 첫 로그인 때 정한다 — 그때까지 아이디를 임시 표시명으로
+            // 현장명은 현장담당자가 첫 로그인 때 정한다 — 그때까지 아이디를 임시 표시명으로
             full_name: loginId,
             company_name: loginId,
             role: "site_supervisor",

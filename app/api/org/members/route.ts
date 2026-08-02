@@ -1,7 +1,7 @@
 // app/api/org/members/route.ts — 하위 현장 계정 관리 (안전관리자 전용)
-// GET   : 하위 목록 (현장명·담당자·상태)
+// GET   : 하위 목록 (현장명·현장담당자·상태)
 // POST  : 직접 발급 (아이디/비번을 상위가 만들어 반장에게 전달 — 메인 경로)
-// PATCH : 비밀번호 리셋 (담당자 교체 대응)
+// PATCH : 비밀번호 리셋 (현장담당자 교체 대응)
 // DELETE: detach (좌석 해제 — 미러 구독 즉시 강등, 계정·데이터는 보존)
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isProPlan } from "@/lib/portone";
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
   }
 }
 
-// PATCH: 하위 계정 수정 — 비밀번호 리셋(newPassword) 또는 현장명·담당자 수정(siteName/managerName).
+// PATCH: 하위 계정 수정 — 비밀번호 리셋(newPassword) 또는 현장명·현장담당자 수정(siteName/managerName).
 // 계정 발급자는 감독자이므로 표시 정보의 수정 권한도 감독자에게 있다 (Chris).
 export async function PATCH(request: Request) {
   const r = await requireOwner(request);
@@ -216,7 +216,7 @@ export async function PATCH(request: Request) {
       if (site) meta.company_name = site;
       if (managerName !== undefined) {
         const manager = String(managerName).trim().slice(0, 30);
-        // 담당자를 비우면 현장명을 표시명으로 (계정 생성 규칙과 동일)
+        // 현장담당자를 비우면 현장명을 표시명으로 (계정 생성 규칙과 동일)
         meta.full_name = manager || String(meta.company_name ?? "");
       }
       const { error } = await r.admin.auth.admin.updateUserById(String(userId), { user_metadata: meta });

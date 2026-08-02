@@ -9,12 +9,13 @@
 // 전체·현장 선택은 같은 UI를 쓴다(Chris): 셀렉트는 데이터 범위만 바꾸고 화면 구조는 그대로.
 // 셀렉트에 '내 현장'은 없다 — 본인 기록은 홈이 이미 보여주므로, 여기 목록은 소속 현장만.
 // '전체' 합산에는 감독자 본인 현장도 포함한다(월간 보고서·청구 계정 수와 같은 기준).
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrgContext } from "@/lib/useOrgContext"
+import { secondsToHours, formatHoursProgress } from "@/lib/educationHours"
 import { Loader2, Building2 } from "lucide-react"
 
 interface DailyPoint { date: string; minutes: number; logs: number }
@@ -25,6 +26,8 @@ interface RiskAgg { levels: { high: number; mid: number; low: number }; keywords
 interface SiteRow {
     userId: string
     siteName: string
+    /** 법정 정기교육 의무시간 분기 키 — 구형 캐시 응답엔 없을 수 있어 optional */
+    workerType?: string
     status: "active" | "detached"
     isSelf: boolean
     todayDone: boolean
@@ -46,11 +49,18 @@ interface Overview {
     risk?: RiskAgg
 }
 
+// 현장별 법정 정기교육 진행도 — 반기 구간 조회라 overview와 분리해 늦게 불러온다
+interface EduData { half: string; seconds: Record<string, number> }
+
+// 한 번에 보여줄 현장 수. 넘치면 '더 보기'가 화면에 들어오는 순간 자동으로 다음 묶음을 편다.
+const SITES_PAGE = 8
+
 // 재진입 시 풀 로딩(수 초)을 없애는 SWR 캐시 — 캐시로 즉시 그리고 뒤에서 조용히 갱신
 let statsCache: { userId: string; data: Overview } | null = null
+let eduCache: { userId: string; data: EduData } | null = null
 if (typeof window !== "undefined") {
     supabase.auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_OUT" || event === "SIGNED_IN") statsCache = null
+        if (event === "SIGNED_OUT" || event === "SIGNED_IN") { statsCache = null; eduCache = null }
     })
 }
 
@@ -63,6 +73,10 @@ export default function OrgStatsPage() {
     const [sel, setSel] = useState<string>("all")
     // 펼쳐진 위험 키워드 (김대리 제안: 키워드 → 날짜·근거 → 회의록 딥링크) — 한 번에 하나만
     const [openKw, setOpenKw] = useState<string | null>(null)
+    // 교육 진행도 — 화면 아래 카드라 첫 렌더를 막지 않고 따로 불러온다
+    const [edu, setEdu] = useState<EduData | null>(eduCache?.data ?? null)
+    const [eduLoading, setEduLoading] = useState(!eduCache)
+    const [visibleSites, setVisibleSites] = useState(SITES_PAGE)
 
     // 실패 판정은 '로딩 끝났는데 data 없음' — 캐시가 있으면 조용한 갱신 실패는 화면을 건드리지 않는다
     const load = useCallback(async () => {
@@ -87,6 +101,28 @@ export default function OrgStatsPage() {
 
     // 데이터 로드는 역할 판정과 병렬로 시작 — 직렬 대기(ctx → fetch)가 첫 진입을 느리게 했다
     useEffect(() => { load() }, [load])
+
+    // 교육 진행도 — 실패해도 위쪽 통계는 그대로 살아있어야 하므로 이 카드 안에서만 상태를 말한다
+    useEffect(() => {
+        let cancelled = false
+        ;(async () => {
+            try {
+                const { data: s } = await supabase.auth.getSession()
+                const uid = s?.session?.user?.id
+                if (!uid) return
+                if (eduCache && eduCache.userId !== uid) { eduCache = null; setEdu(null) }
+                const res = await fetch("/api/org/education", { headers: { Authorization: `Bearer ${s?.session?.access_token}` } })
+                if (!res.ok) return
+                const j = (await res.json()) as EduData
+                if (cancelled) return
+                setEdu(j)
+                eduCache = { userId: uid, data: j }
+            } catch { /* 카드가 '불러오지 못했어요'를 대신 말한다 */ } finally {
+                if (!cancelled) setEduLoading(false)
+            }
+        })()
+        return () => { cancelled = true }
+    }, [])
 
     // 회의록에서 뒤로 돌아온 경우 직전 범위·펼친 키워드 복원 (1회용 — dash_restore와 같은 규약).
     // 근거 여러 건을 하나씩 확인하는 루프에서 매번 현장 재선택+키워드 재펼침을 반복하지 않게.
@@ -133,13 +169,31 @@ export default function OrgStatsPage() {
     const hasWeekData = daily.some((d) => d.minutes + d.logs > 0)
     const maxDay = Math.max(1, ...daily.map((d) => d.minutes + d.logs))
 
-    const goRiskAssessment = () => {
-        // 현장을 보고 있으면 그 현장을 대상으로 — 현장 상세 페이지와 같은 규약(ra_target)
-        if (selected) {
-            try { sessionStorage.setItem("ra_target", JSON.stringify({ userId: selected.userId, siteName: selected.siteName })) } catch { /* 무시 */ }
-        }
-        router.push("/risk-assessment")
-    }
+    // ── 법정 의무 교육 진행도 ── 홈·교육 진행도 화면과 같은 규칙(lib/educationHours)으로 계산한다
+    const requiredHoursOf = (wt?: string) => (wt === "사무직 / 판매직" ? 6 : 12)
+    const eduRows = scopeSites.map((s) => {
+        const sec = edu?.seconds?.[s.userId] ?? 0
+        const req = requiredHoursOf(s.workerType)
+        const pct = req > 0 ? (secondsToHours(sec) / req) * 100 : 0
+        return { userId: s.userId, siteName: s.siteName, isSelf: s.isSelf, workerType: s.workerType, sec, req, pct, done: pct >= 100 }
+    })
+    // 덜 채운 현장이 위로 — 목록을 잘라 보여주므로 순서가 곧 우선순위다.
+    // 감독자가 이 목록을 여는 이유는 "누가 아직 안 했나"이지 알파벳 순서가 아니다.
+    const eduSorted = [...eduRows].sort((a, b) => a.pct - b.pct)
+    const eduDone = eduRows.filter((r) => r.done).length
+
+    // '더 보기'가 화면에 들어오면 자동으로 다음 묶음을 편다(무한 스크롤) — 버튼은 그대로 눌러도 된다
+    const moreRef = useRef<HTMLButtonElement | null>(null)
+    useEffect(() => {
+        const el = moreRef.current
+        if (!el) return
+        const io = new IntersectionObserver(
+            (entries) => { if (entries.some((e) => e.isIntersecting)) setVisibleSites((v) => v + SITES_PAGE) },
+            { rootMargin: "80px" },
+        )
+        io.observe(el)
+        return () => io.disconnect()
+    }, [visibleSites, eduLoading, sel, data])
 
     return (
         <div className="min-h-screen bg-cur-canvas font-sans">
@@ -164,7 +218,7 @@ export default function OrgStatsPage() {
                     <>
                         {/* 현장 선택 — 데이터 범위만 바꾼다. 전체와 현장 목록은 구분선+라벨로 구획.
                             범위가 바뀌면 키워드 펼침도 접는다 — 다른 범위의 근거가 남아 보이면 오해를 산다 */}
-                        <Select value={sel} onValueChange={(v) => { setSel(v); setOpenKw(null) }}>
+                        <Select value={sel} onValueChange={(v) => { setSel(v); setOpenKw(null); setVisibleSites(SITES_PAGE) }}>
                             <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                                 <span className="flex items-center gap-2.5 min-w-0">
                                     <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
@@ -365,12 +419,73 @@ export default function OrgStatsPage() {
                                     )}
                                 </>
                             )}
-                            <button
-                                onClick={goRiskAssessment}
-                                className="w-full h-10 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                            >
-                                {selected ? "이 현장 AI 분석 보고서 만들기" : "현장별 AI 분석 보고서 만들기"}
-                            </button>
+                        </section>
+
+                        {/* 법정 의무 교육 진행도 — 위험요인 바로 아래(Chris).
+                            현장을 고르면 그 현장 한 줄, 전체면 현장 목록 전부를 막대로. */}
+                        <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h2 className="text-[14px] font-bold text-cur-ink">법정 의무 교육 진행도</h2>
+                                <span className="text-[12px] text-cur-muted-soft shrink-0">{edu?.half ? `${edu.half} 기준` : "이번 반기"}</span>
+                            </div>
+
+                            {eduLoading ? (
+                                <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-cur-muted-soft" /></div>
+                            ) : !edu ? (
+                                <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
+                                    교육 진행도를 불러오지 못했어요.
+                                </p>
+                            ) : (
+                                <>
+                                    {/* 전체일 때만 요약 한 줄 — 현장 하나를 보고 있으면 아래 막대가 이미 전부다 */}
+                                    {!selected && (
+                                        <p className="text-[12px] text-cur-muted">
+                                            {eduRows.length}곳 중 <b className="text-cur-ink">{eduDone}곳</b> 이수 완료 · 덜 채운 현장이 위에 옵니다
+                                        </p>
+                                    )}
+                                    <div className="space-y-3.5">
+                                        {eduSorted.slice(0, selected ? 1 : visibleSites).map((r) => (
+                                            <div key={r.userId} className="space-y-1.5">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="flex items-center gap-2 min-w-0">
+                                                        <span className="text-[13px] font-semibold text-cur-ink truncate">{r.isSelf ? "내 현장" : r.siteName}</span>
+                                                        {selected && (
+                                                            <span className="shrink-0 bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold">
+                                                                {r.workerType || "현장 근로자 (비사무직)"}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="text-[12px] font-mono whitespace-nowrap shrink-0">
+                                                        <span className={r.done ? "text-cur-success font-bold" : "text-cur-body font-bold"}>{formatHoursProgress(r.sec)}</span>
+                                                        <span className="text-cur-muted-soft"> / {r.req}시간</span>
+                                                        <span className={`ml-1.5 font-bold ${r.done ? "text-cur-success" : "text-cur-primary"}`}>{Math.floor(r.pct)}%</span>
+                                                    </span>
+                                                </div>
+                                                <div className="w-full h-2 bg-cur-elevated rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-[width] duration-700 ease-out ${r.done ? "bg-cur-success" : "bg-cur-primary"}`}
+                                                        style={{ width: `${Math.min(100, r.pct)}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {!selected && visibleSites < eduSorted.length && (
+                                        <button
+                                            ref={moreRef}
+                                            type="button"
+                                            onClick={() => setVisibleSites((v) => v + SITES_PAGE)}
+                                            className="w-full h-9 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[12px] font-semibold text-cur-ink hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                        >
+                                            남은 {eduSorted.length - visibleSites}곳 더 보기
+                                        </button>
+                                    )}
+                                </>
+                            )}
+
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                반기별 12시간 이상(사무직·판매직 6시간) · 정기교육은 <span className="font-semibold text-cur-body">TBM으로 대체 가능</span>합니다(고용노동부 지침).
+                            </p>
                         </section>
                     </>
                 )}
