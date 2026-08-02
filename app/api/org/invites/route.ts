@@ -68,10 +68,14 @@ export async function POST(request: Request) {
     const kind = String(body.kind ?? "link");
 
     if (kind === "link") {
+      // 감독자가 미리 정한 현장명 목록(Chris) — 가입자는 이 중에서 고르기만 한다
+      const siteNames = Array.isArray(body.siteNames)
+        ? body.siteNames.map((n: unknown) => String(n ?? "").trim()).filter((n: string) => n.length > 0).slice(0, 20)
+        : [];
       // 좌석 상한 없음 — 과금이 "실제 계정 수 × 단가"라 초대 수를 미리 제한할 이유가 없다
       const { data, error } = await admin
         .from("org_invites")
-        .insert({ org_id: ctx.org.id, kind: "link" })
+        .insert({ org_id: ctx.org.id, kind: "link", ...(siteNames.length ? { site_names: siteNames } : {}) })
         .select("token, expires_at")
         .single();
       if (error || !data) {

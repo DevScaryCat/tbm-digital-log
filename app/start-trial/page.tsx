@@ -297,7 +297,7 @@ export default function StartTrialPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-[13px] font-medium text-cur-body">업종</Label>
+                        <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
                         <Select
                             value={industry}
                             onValueChange={(v) => {
@@ -320,7 +320,7 @@ export default function StartTrialPage() {
 
                     {industry && (
                         <div className="space-y-1.5">
-                            <Label className="text-[13px] font-medium text-cur-body">공종</Label>
+                            <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory}>
                                 <SelectTrigger className={selectCls}>
                                     <SelectValue placeholder="주력 공종을 선택해주세요" />
@@ -341,8 +341,8 @@ export default function StartTrialPage() {
                                 <SelectValue placeholder="근로자 구분을 선택해주세요" />
                             </SelectTrigger>
                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                <SelectItem value="현장 근로자 (비사무직)" className="text-[15px] py-2.5">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                                <SelectItem value="사무직 / 판매직" className="text-[15px] py-2.5">사무직 / 판매직 (반기 6시간)</SelectItem>
+                                <SelectItem value="현장 근로자 (비사무직)" className="text-[15px] py-2.5">비사무직 (반기 12시간)</SelectItem>
+                                <SelectItem value="사무직 / 판매직" className="text-[15px] py-2.5">사무직 (반기 6시간)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

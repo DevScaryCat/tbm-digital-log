@@ -47,7 +47,9 @@ export default function OrgMembersPage() {
     // 일괄 발급 폼 — 시드 + 개수 + 공용 초기 비밀번호. 현장명·새 비밀번호는
     // 현장담당자가 첫 로그인 온보딩에서 직접 정한다.
     // 추가 마법사: count(몇 개) → method(방식 선택) → direct(직접 발급) | link(초대 링크)
-    const [addStep, setAddStep] = useState<null | "count" | "method" | "direct" | "link">(null)
+    const [addStep, setAddStep] = useState<null | "count" | "names" | "method" | "direct" | "link">(null)
+    // 현장명은 감독자가 발급 단계에서 정한다(Chris) — 개수만큼 입력받아 직접 발급·링크 양쪽에 싣는다
+    const [siteNames, setSiteNames] = useState<string[]>([""])
     const [stem, setStem] = useState("")
     const [count, setCount] = useState(1)
     const [initPw, setInitPw] = useState("")
@@ -143,7 +145,7 @@ export default function OrgMembersPage() {
             const res = await fetch("/api/org/members/bulk", {
                 method: "POST",
                 headers: await authHeaders(),
-                body: JSON.stringify({ stem: effStem, count, password: initPw }),
+                body: JSON.stringify({ stem: effStem, count, password: initPw, siteNames: siteNames.map((n) => n.trim()) }),
             })
             const j = await res.json()
             if (!res.ok) { setFormErr(j.error || "발급 실패") ; return }
@@ -158,13 +160,13 @@ export default function OrgMembersPage() {
         if (!createdIds) return
         const text = [
             "[안톡] 현장 계정 안내",
-            ...createdIds.map((id) => `아이디: ${id}`),
+            ...createdIds.map((id, i) => `아이디: ${id}${siteNames[i]?.trim() ? ` (${siteNames[i].trim()})` : ""}`),
             `초기 비밀번호: ${initPw}`,
             "",
             // 랜딩의 [시작하기]는 카카오로 빠진다 — 아이디 폼이 먼저 뜨는 딥링크를 그대로 준다
             "접속 주소: https://www.safetalk.kr/login?m=id",
             "카카오 버튼이 아니라, 아래 아이디 칸에 위 아이디와 비밀번호를 입력하세요.",
-            "로그인하면 첫 화면에서 새 비밀번호와 현장명을 정하시면 됩니다.",
+            "로그인하면 첫 화면에서 새 비밀번호만 정하면 바로 시작됩니다.",
         ].join("\n")
         try { await navigator.clipboard.writeText(text); setAddMsg({ type: "ok", text: "계정 목록을 복사했어요. 현장담당자들에게 전달하세요." }) } catch { /* 무시 */ }
     }
@@ -176,7 +178,7 @@ export default function OrgMembersPage() {
             const res = await fetch("/api/org/invites", {
                 method: "POST",
                 headers: await authHeaders(),
-                body: JSON.stringify({ kind: "link" }),
+                body: JSON.stringify({ kind: "link", siteNames: siteNames.map((n) => n.trim()).filter(Boolean) }),
             })
             const j = await res.json()
             if (!res.ok) { setAddMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
@@ -411,7 +413,42 @@ export default function OrgMembersPage() {
                             </p>
                             <div className="flex gap-2">
                                 <Button onClick={closeAdd} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={() => setAddStep("method")} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
+                                <Button onClick={() => { setSiteNames((prev) => Array.from({ length: count }, (_, i) => prev[i] ?? "")); setAddStep("names") }} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
+                            </div>
+                        </div>
+                    ) : addStep === "names" ? (
+                        /* 1.5단계 — 현장명을 감독자가 미리 정한다. 담당자마다 제각각 적어
+                           현장 목록이 지저분해지는 것을 발급 시점에 차단 */
+                        <div className="space-y-4">
+                            <div>
+                                <p className="text-[14px] font-semibold text-cur-ink">현장 이름을 정해주세요</p>
+                                <p className="text-[12px] text-cur-muted mt-1">계정마다 이 이름이 현장명이 돼요. 현장담당자는 이름을 정하지 않고 바로 시작합니다.</p>
+                            </div>
+                            <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-0.5">
+                                {siteNames.map((n, i) => (
+                                    <Input
+                                        key={i}
+                                        value={n}
+                                        onChange={(e) => setSiteNames((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                                        placeholder={`현장 ${i + 1} — 예: OO물류센터`}
+                                        className={inputCls}
+                                    />
+                                ))}
+                            </div>
+                            {formErr && (
+                                <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
+                            )}
+                            <div className="flex gap-2">
+                                <Button onClick={() => { setAddStep("count"); setFormErr(null) }} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
+                                <Button
+                                    onClick={() => {
+                                        if (siteNames.some((n) => !n.trim())) { setFormErr("현장 이름을 모두 입력해주세요."); return }
+                                        setFormErr(null); setAddStep("method")
+                                    }}
+                                    className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold"
+                                >
+                                    다음
+                                </Button>
                             </div>
                         </div>
                     ) : addStep === "method" ? (

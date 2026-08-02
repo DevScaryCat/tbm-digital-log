@@ -507,7 +507,7 @@ export default function OrgStatsPage() {
                                                         <span className="text-[13px] font-semibold text-cur-ink truncate">{r.isSelf ? "내 현장" : r.siteName}</span>
                                                         {selected && (
                                                             <span className="shrink-0 bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold">
-                                                                {r.workerType || "현장 근로자 (비사무직)"}
+                                                                {r.workerType === "사무직 / 판매직" ? "사무직" : "비사무직"}
                                                             </span>
                                                         )}
                                                     </span>

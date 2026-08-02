@@ -59,6 +59,11 @@ export async function POST(request: Request) {
     const stem = String(body.stem ?? "").trim().toLowerCase();
     const count = Math.floor(Number(body.count));
     const password = String(body.password ?? "");
+    // 현장명은 감독자가 발급 시점에 정한다(Chris) — 순서대로 계정에 배정.
+    // 비면 종전대로 아이디를 임시 표시명으로 두고 담당자 첫 로그인에서 받는다.
+    const siteNames: string[] = Array.isArray(body.siteNames)
+      ? body.siteNames.map((n: unknown) => String(n ?? "").trim()).filter((n: string) => n.length > 0)
+      : [];
     if (!/^[a-z0-9][a-z0-9_]{1,11}$/.test(stem)) {
       return NextResponse.json({ error: "아이디 시작 문자는 영문·숫자 2~12자로 입력해주세요." }, { status: 400 });
     }
@@ -101,9 +106,9 @@ export async function POST(request: Request) {
           password,
           email_confirm: true,
           user_metadata: {
-            // 현장명은 현장담당자가 첫 로그인 때 정한다 — 그때까지 아이디를 임시 표시명으로
-            full_name: loginId,
-            company_name: loginId,
+            // 감독자가 정한 현장명이 있으면 그걸로 확정 — 없으면 아이디를 임시 표시명으로
+            full_name: siteNames[created.length] || loginId,
+            company_name: siteNames[created.length] || loginId,
             role: "site_supervisor",
             must_set_password: true,
             // 문서 출력 형식은 회사 공통 양식 — 감독자 값 복사 (첫 로그인 형식 선택 생략)

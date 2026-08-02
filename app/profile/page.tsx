@@ -260,13 +260,13 @@ export default function ProfilePage() {
                                 <SelectValue placeholder="직군 선택" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="현장 근로자 (비사무직)">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                                <SelectItem value="사무직 / 판매직">사무직 / 판매직 (반기 6시간)</SelectItem>
+                                <SelectItem value="현장 근로자 (비사무직)">비사무직 (반기 12시간)</SelectItem>
+                                <SelectItem value="사무직 / 판매직">사무직 (반기 6시간)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-cur-body">업종</Label>
+                        <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
                         <Select
                             value={industry}
                             onValueChange={(v) => {
@@ -294,7 +294,7 @@ export default function ProfilePage() {
                     </div>
                     {industry && (
                         <div className="space-y-2">
-                            <Label className="text-[13px] font-medium text-cur-body">공종</Label>
+                            <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory} disabled={!companyEditable}>
                                 <SelectTrigger className="w-full h-11 text-[14px]">
                                     <SelectValue placeholder="공종 선택" />

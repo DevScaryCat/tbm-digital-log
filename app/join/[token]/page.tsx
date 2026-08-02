@@ -19,7 +19,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
     const { token } = usePromise(params)
     const router = useRouter()
 
-    const [info, setInfo] = useState<{ valid: boolean; orgName?: string; seatsLeft?: number; error?: string } | null>(null)
+    const [info, setInfo] = useState<{ valid: boolean; orgName?: string; seatsLeft?: number; siteNames?: string[]; error?: string } | null>(null)
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
     const [hasSession, setHasSession] = useState<boolean | null>(null)
 
@@ -116,7 +116,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
         setError(null)
         if (idChecked !== true) { setError("아이디 중복확인을 해주세요."); return }
         if (password.length < 8) { setError("비밀번호는 8자 이상 입력해주세요."); return }
-        if (!siteName.trim()) { setError("현장명을 입력해주세요."); return }
+        if (!siteName.trim()) { setError((info?.siteNames?.length ?? 0) > 0 ? "내 현장을 선택해주세요." : "현장명을 입력해주세요."); return }
         if (!realEmail.trim()) { setError("보고서를 받을 이메일을 입력해주세요."); return }
         if (phoneEnabled && !verificationId) { setError("휴대폰 인증을 완료해주세요."); return }
         if (!agreed) { setError("개인정보처리방침 및 서비스 이용약관에 동의해주세요."); return }
@@ -207,7 +207,30 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">현장명</Label>
-                        <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="예: OO물류센터 신축현장" className={inputCls} />
+                        {(info.siteNames?.length ?? 0) > 0 ? (
+                            /* 안전관리자가 현장명을 미리 정해둔 링크(Chris) — 목록에서 내 현장을 고르기만 한다 */
+                            <>
+                                <div className="rounded-[10px] border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
+                                    {info.siteNames!.map((n) => (
+                                        <button
+                                            key={n}
+                                            type="button"
+                                            onClick={() => setSiteName(n)}
+                                            aria-pressed={siteName === n}
+                                            className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset ${
+                                                siteName === n ? "bg-cur-primary/5 text-cur-primary" : "text-cur-ink hover:bg-cur-elevated/50"
+                                            }`}
+                                        >
+                                            {siteName === n ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <span className="w-4 h-4 shrink-0 rounded-full border border-cur-hairline-strong" />}
+                                            <span className="text-[14px] font-semibold truncate">{n}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-[12px] text-cur-muted-soft">안전관리자가 정해둔 현장 중 내 현장을 선택하세요.</p>
+                            </>
+                        ) : (
+                            <Input value={siteName} onChange={(e) => setSiteName(e.target.value)} placeholder="예: OO물류센터 신축현장" className={inputCls} />
+                        )}
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">현장담당자 이름</Label>

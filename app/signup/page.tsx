@@ -40,8 +40,7 @@ export default function SignupPage() {
     const [siteName, setSiteName] = useState("")
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
-    // 근로자 구분 — 교육시간 산정용(기본값 프리셋, 별도 검증 불필요)
-    const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
+    // 근로자 구분은 여기서 받지 않는다 — 첫 로그인 온보딩 모달이 받는다(서버 기본값 비사무직)
     // 출력 형식·이메일은 가입에서 받지 않는다(Chris) — 첫 로그인 온보딩 모달(OnboardingModal)이 받는다.
     // 휴대폰 인증 상태
     const [phone, setPhone] = useState("")
@@ -189,7 +188,6 @@ export default function SignupPage() {
                     id, password, siteName,
                     industry,
                     workCategory,
-                    workerType,
                     // 동의 증빙은 서버가 남긴다 — 브라우저 localStorage는 증거가 되지 못한다
                     agreedToTerms: agreed,
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
@@ -365,7 +363,7 @@ export default function SignupPage() {
                                     <Input id="siteName" type="text" placeholder="소속 현장명 (또는 업체명)" value={siteName} onChange={(e) => setSiteName(e.target.value)} className={inputCls} />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label className="text-[13px] font-medium text-cur-body">업종</Label>
+                                    <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
                                     <Select value={industry} onValueChange={(v) => {
                                         setIndustry(v)
                                         // 중분류가 하나뿐인 업종(전기·가스, 부동산 등)은 공종을 자동 선택
@@ -382,7 +380,7 @@ export default function SignupPage() {
                                 </div>
                                 {industry && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
-                                        <Label className="text-[13px] font-medium text-cur-body">공종</Label>
+                                        <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
                                         <Select value={workCategory} onValueChange={setWorkCategory}>
                                             <SelectTrigger className={selectCls}>
                                                 <SelectValue placeholder="주력 공종을 선택해주세요" />
@@ -393,18 +391,6 @@ export default function SignupPage() {
                                         </Select>
                                     </div>
                                 )}
-                                <div className="space-y-2.5">
-                                    <Label className="text-[13px] font-medium text-cur-body">근로자 구분 (교육시간 산정용)</Label>
-                                    <Select value={workerType} onValueChange={setWorkerType}>
-                                        <SelectTrigger className={selectCls}>
-                                            <SelectValue placeholder="근로자 구분을 선택해주세요" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                            <SelectItem value="현장 근로자 (비사무직)" className="text-[15px] py-2.5">현장 근로자 (비사무직) (반기 12시간)</SelectItem>
-                                            <SelectItem value="사무직 / 판매직" className="text-[15px] py-2.5">사무직 / 판매직 (반기 6시간)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
                             </>
                         )}
 
@@ -449,9 +435,8 @@ export default function SignupPage() {
                                 {[
                                     ["아이디", id],
                                     ["현장명", siteName],
-                                    ["업종", industry],
-                                    ["공종", workCategory],
-                                    ["근로자 구분", workerType],
+                                    ["업종 (대분류)", industry],
+                                    ["공종 (중분류)", workCategory],
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">

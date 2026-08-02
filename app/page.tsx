@@ -140,6 +140,10 @@ export default function MainPage() {
 
         // 일괄 발급 계정의 첫 로그인 — 비밀번호·현장명 설정이 최우선 (다른 온보딩은 그 다음)
         if (currentUser.user_metadata?.must_set_password) {
+          // 감독자가 발급 때 현장명을 정했으면(company_name ≠ 아이디 임시 표시명) 여기서 다시 묻지 않는다
+          const presetSite = String(currentUser.user_metadata?.company_name ?? "").trim()
+          const loginLocal = String(currentUser.email ?? "").split("@")[0]
+          if (presetSite && presetSite !== loginLocal) setSetupSite(presetSite)
           setMustSetup(true)
           setIsLoading(false)
           return
@@ -283,6 +287,13 @@ export default function MainPage() {
     router.push("/login")
   }
 
+  // 감독자가 발급 때 현장명을 정해뒀는지 — 정했으면 첫 로그인 화면에서 다시 묻지 않는다
+  const setupSitePreset = (() => {
+    const preset = String(user?.user_metadata?.company_name ?? "").trim()
+    const loginLocal = String(user?.email ?? "").split("@")[0]
+    return !!preset && preset !== loginLocal
+  })()
+
   // 온보딩 2단계: 사용 형태 선택 — 계정은 이미 같고, 여는 탭과 다음 안내만 달라진다
   // 일괄 발급 시 회사 공통 업종·공종을 이미 상속받았다면 첫 로그인 화면에서 다시 묻지 않는다 —
   // 여기서 강제로 다시 고르게 하면 상속값을 사용자 선택이 덮어써 회사 값과 어긋난다
@@ -322,6 +333,8 @@ export default function MainPage() {
     }
   }
 
+  // 저장 값은 길다 — 화면 배지는 사무직/비사무직 두 단어면 충분하다(Chris)
+  const workerTypeLabel = (v?: string | null) => (v === "사무직 / 판매직" ? "사무직" : "비사무직")
   const rawPercent = (secondsToHours(totalEducationSeconds) / requiredHours) * 100
   // 현재 반기 라벨 (반기별로 0에서 새로 누적 — 상반기 1~6월 / 하반기 7~12월)
   const halfLabel = (() => { const d = new Date(); return `${d.getFullYear()} ${d.getMonth() < 6 ? '상반기' : '하반기'}` })()
@@ -417,13 +430,21 @@ export default function MainPage() {
             </div>
             <div className="space-y-1">
               <label className="text-[13px] font-medium text-cur-body">현장명</label>
-              <input value={setupSite} onChange={(e) => setSetupSite(e.target.value)} placeholder="예: OO물류센터 신축현장"
-                className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+              {setupSitePreset ? (
+                /* 감독자가 발급 때 정한 이름 — 여기서 바꾸면 회사 현장 목록과 어긋나므로 표시만 */
+                <div className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink flex items-center justify-between">
+                  <span className="truncate">{setupSite}</span>
+                  <span className="text-[11px] text-cur-muted bg-cur-card border border-cur-hairline rounded-[6px] px-1.5 py-0.5 shrink-0 ml-2">안전관리자 지정</span>
+                </div>
+              ) : (
+                <input value={setupSite} onChange={(e) => setSetupSite(e.target.value)} placeholder="예: OO물류센터 신축현장"
+                  className="w-full h-11 px-3 rounded-[8px] bg-cur-elevated border border-cur-hairline text-[15px] text-cur-ink placeholder:text-cur-muted-soft focus:outline-none focus:ring-1 focus:ring-cur-primary" />
+              )}
             </div>
             {/* 업종·공종은 발급 시 회사 공통 값을 상속받았으면 묻지 않는다 (레거시 계정만 수집) */}
             {!setupInheritedProfile && (
               <div className="space-y-1">
-                <label className="text-[13px] font-medium text-cur-body">업종</label>
+                <label className="text-[13px] font-medium text-cur-body">업종 (대분류)</label>
                 <Select value={setupIndustry} onValueChange={(v) => {
                   setSetupIndustry(v)
                   // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
@@ -441,7 +462,7 @@ export default function MainPage() {
             )}
             {!setupInheritedProfile && setupIndustry && (
               <div className="space-y-1 animate-in slide-in-from-top-2">
-                <label className="text-[13px] font-medium text-cur-body">공종</label>
+                <label className="text-[13px] font-medium text-cur-body">공종 (중분류)</label>
                 <Select value={setupWorkCategory} onValueChange={setSetupWorkCategory}>
                   <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
                     <SelectValue placeholder="주력 공종을 선택해주세요" />
@@ -465,6 +486,14 @@ export default function MainPage() {
             className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold disabled:opacity-40">
             {setupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "설정하고 시작하기"}
           </Button>
+          {/* 받은 계정이 내 것이 아닐 수 있다 — 설정을 끝내기 전에도 나갈 길을 준다 */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[6px]"
+          >
+            로그아웃하고 다른 계정으로 들어갈래요
+          </button>
         </div>
       </div>
     )
@@ -721,7 +750,7 @@ export default function MainPage() {
               <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 flex-wrap tracking-[-0.11px] min-w-0">
                 내 법정의무 교육 진행도
                 <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold shrink-0">
-                  {user?.user_metadata?.worker_type || '현장 근로자 (비사무직)'}
+                  {workerTypeLabel(user?.user_metadata?.worker_type)}
                 </span>
               </h3>
               <span className="flex items-center gap-1 whitespace-nowrap shrink-0">

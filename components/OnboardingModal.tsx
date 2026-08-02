@@ -18,10 +18,17 @@ import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { type ExportFormat } from "@/lib/exportFormats"
 import { Loader2, User, Building2, ChevronRight } from "lucide-react"
 
+// 저장 값은 교육시간 분기 키(웹·앱·DB 트리거 공유)라 그대로 두고, 화면 라벨만 사무직/비사무직으로 줄인다
+const WORKER_OPTIONS = [
+    { value: "현장 근로자 (비사무직)", label: "비사무직", desc: "현장 근로자 — 정기교육 반기 12시간" },
+    { value: "사무직 / 판매직", label: "사무직", desc: "사무·판매 — 정기교육 반기 6시간" },
+] as const
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => void }) {
-    const [step, setStep] = useState<1 | 2 | 3>(1)
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+    const [workerType, setWorkerType] = useState<string | null>(null)
     const [usage, setUsage] = useState<"solo" | "multi" | null>(null)
     const [email, setEmail] = useState("")
     const [format, setFormat] = useState<ExportFormat | null>(null)
@@ -45,7 +52,7 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
             setEmail("")
         }
         setErr(null)
-        setStep(3)
+        setStep(4)
     }
 
     const save = async () => {
@@ -57,7 +64,7 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
             const res = await fetch("/api/onboarding", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${s?.session?.access_token}` },
-                body: JSON.stringify({ usage, email: email.trim() || undefined, exportFormat: format }),
+                body: JSON.stringify({ usage, workerType, email: email.trim() || undefined, exportFormat: format }),
             })
             const j = await res.json().catch(() => ({}))
             if (!res.ok) { setErr(j.error || "저장에 실패했어요. 다시 시도해주세요."); return }
@@ -78,7 +85,7 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
     return (
         <div role="dialog" aria-modal="true" aria-label="시작 설정" className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-cur-ink/40">
             <div className="w-full max-w-md bg-cur-card rounded-[16px] border border-cur-hairline shadow-[0_12px_40px_rgba(0,0,0,0.16)] p-6 space-y-5">
-                <div className="flex items-center gap-1.5">{[1, 2, 3].map(stepDot)}</div>
+                <div className="flex items-center gap-1.5">{[1, 2, 3, 4].map(stepDot)}</div>
 
                 {step === 1 && (
                     <div className="space-y-4">
@@ -118,6 +125,42 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                 {step === 2 && (
                     <div className="space-y-4">
                         <div>
+                            <h2 className="text-[18px] font-bold text-cur-ink">내 근로자 구분을 알려주세요</h2>
+                            <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
+                                {usage === "multi"
+                                    ? <>연결된 현장 전체 설정이 아니에요 — 감독자인 나도 TBM·교육일지를 쓰니, <b className="text-cur-ink">내 기록의 법정 교육시간 기준</b>이 되는 구분이에요.</>
+                                    : <><b className="text-cur-ink">내 법정 교육시간의 기준</b>이 되는 구분이에요. 내 정보 수정에서 언제든 바꿀 수 있어요.</>}
+                            </p>
+                        </div>
+                        <div className="space-y-2.5">
+                            {WORKER_OPTIONS.map((o) => (
+                                <button
+                                    key={o.value}
+                                    type="button"
+                                    onClick={() => { setWorkerType(o.value); setStep(3) }}
+                                    className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:border-cur-primary/40 hover:bg-cur-elevated/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                >
+                                    <span className="flex-1 min-w-0">
+                                        <span className="block text-[15px] font-bold text-cur-ink">{o.label}</span>
+                                        <span className="block text-[12px] text-cur-body mt-0.5">{o.desc}</span>
+                                    </span>
+                                    <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setStep(1)}
+                            className="w-full h-9 text-[13px] font-medium text-cur-muted hover:text-cur-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[6px]"
+                        >
+                            이전
+                        </button>
+                    </div>
+                )}
+
+                {step === 3 && (
+                    <div className="space-y-4">
+                        <div>
                             <h2 className="text-[18px] font-bold text-cur-ink">보고서 받을 이메일을 적어주세요</h2>
                             <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
                                 주간·월간 안전 보고서가 <b className="text-cur-ink">이 주소로 바로 발송</b>돼요.
@@ -150,7 +193,7 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                     </div>
                 )}
 
-                {step === 3 && (
+                {step === 4 && (
                     <div className="space-y-4">
                         <div>
                             <h2 className="text-[18px] font-bold text-cur-ink">
@@ -165,7 +208,7 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                         <ExportFormatPicker value={format} onChange={setFormat} />
                         {err && <p className="text-[12px] text-cur-error">{err}</p>}
                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => { setErr(null); setStep(2) }} className="flex-1 h-12 rounded-[10px] border-cur-hairline text-cur-ink font-semibold hover:bg-cur-elevated">
+                            <Button variant="outline" onClick={() => { setErr(null); setStep(3) }} className="flex-1 h-12 rounded-[10px] border-cur-hairline text-cur-ink font-semibold hover:bg-cur-elevated">
                                 이전
                             </Button>
                             <Button onClick={save} disabled={saving || !format} className="flex-[2] h-12 rounded-[10px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold disabled:opacity-40">

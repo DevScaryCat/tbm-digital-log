@@ -20,6 +20,9 @@ export async function POST(request: Request) {
   const usage = body.usage === "multi" ? "multi" : "solo";
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const exportFormat = EXPORT_FORMATS.some((f) => f.value === body.exportFormat) ? String(body.exportFormat) : "";
+  // 저장 값은 교육시간 분기 키 — 화이트리스트 밖이면 버린다
+  const WORKER_TYPES = ["현장 근로자 (비사무직)", "사무직 / 판매직"];
+  const workerType = WORKER_TYPES.includes(body.workerType) ? String(body.workerType) : "";
 
   if (!exportFormat) {
     return NextResponse.json({ error: "출력 형식을 선택해주세요." }, { status: 400 });
@@ -38,6 +41,7 @@ export async function POST(request: Request) {
       user_metadata: {
         ...meta,
         preferred_export_format: exportFormat,
+        ...(workerType ? { worker_type: workerType } : {}),
         usage_type: usage,
         onboarded_at: now,
         // 이메일을 적었으면 즉시 '인증된 내 이메일'로 — 위 파일 머리말의 결정 사항
