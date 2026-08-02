@@ -1,5 +1,6 @@
 // app/tutorial/page.tsx — 가입 직후 1분 튜토리얼
-// 두 경로, 같은 도착지: ① 30초 대본 낭독(실제 STT→AI 파이프라인) ② 예시로 바로 보기(사전 계산, 비용 0)
+// 클릭 투어 하나만 남겼다(사전 계산 샘플, 비용 0) — 30초 낭독 경로는 가입 직후 마찰이 과해 제거(Chris).
+// 녹음 뷰 코드는 남아 있으나 진입점이 없다(재도입 시 버튼만 살리면 된다).
 // 어느 쪽이든 "완성된 회의록"을 1분 안에 목격시키는 것이 목표. 건너뛰기는 항상 노출.
 // 로그인 없이도 열람 가능(기본 건설업 샘플) — tutorial_seen_at 저장만 세션 필요.
 "use client"
@@ -313,37 +314,15 @@ export default function TutorialPage() {
                             </p>
                         </div>
 
-                        <div className="space-y-3">
-                            <button
-                                type="button"
-                                onClick={() => { setErrorMsg(null); setView("record") }}
-                                className="w-full flex items-center gap-4 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:bg-cur-elevated active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                            >
-                                <span className="w-12 h-12 shrink-0 rounded-[12px] bg-cur-primary/10 flex items-center justify-center">
-                                    <Mic className="w-6 h-6 text-cur-primary" />
-                                </span>
-                                <span className="flex-1 min-w-0">
-                                    <span className="block text-[16px] font-semibold text-cur-ink">30초만 말해보기</span>
-                                    <span className="block text-[13px] text-cur-body mt-0.5 leading-snug">화면의 대본을 따라 읽으면 AI가 바로 회의록을 만들어드려요</span>
-                                </span>
-                                <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted-soft" />
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={startTour}
-                                className="w-full flex items-center gap-4 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:bg-cur-elevated active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                            >
-                                <span className="w-12 h-12 shrink-0 rounded-[12px] bg-cur-elevated flex items-center justify-center">
-                                    <Hand className="w-6 h-6 text-cur-ink" />
-                                </span>
-                                <span className="flex-1 min-w-0">
-                                    <span className="block text-[16px] font-semibold text-cur-ink">눌러보며 구경하기</span>
-                                    <span className="block text-[13px] text-cur-body mt-0.5 leading-snug">실제 화면을 본떠서, 어떤 버튼을 누르는지 하나씩 보여드려요</span>
-                                </span>
-                                <ChevronRight className="w-5 h-5 shrink-0 text-cur-muted-soft" />
-                            </button>
-                        </div>
+                        {/* 30초 낭독 경로는 뺐다(Chris) — 가입 직후에 마이크 권한·낭독까지 시키는 건
+                            과했다. 투어 하나와 건너뛰기, 선택지는 둘이면 된다. */}
+                        <Button
+                            type="button"
+                            onClick={startTour}
+                            className="w-full h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] font-bold transition-transform active:scale-[0.98]"
+                        >
+                            <Hand className="w-5 h-5 mr-2" /> 따라가며 보기
+                        </Button>
 
                         <div className="text-center space-y-1.5">
                             <button
@@ -806,15 +785,6 @@ export default function TutorialPage() {
                                 >
                                     <FileText className="w-5 h-5 mr-1" /> 시작하기
                                 </Button>
-                                {source === "sample" && (
-                                    <button
-                                        type="button"
-                                        onClick={() => { setErrorMsg(null); setView("record") }}
-                                        className="w-full text-center text-[13px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
-                                    >
-                                        내 목소리로도 해볼래요 (30초)
-                                    </button>
-                                )}
                             </div>
                         </div>
                     </div>

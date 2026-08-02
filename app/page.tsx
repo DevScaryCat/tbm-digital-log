@@ -18,6 +18,7 @@ import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
+import { OnboardingModal } from "@/components/OnboardingModal"
 import { showAlert } from "@/lib/uiDialog"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
@@ -346,11 +347,15 @@ export default function MainPage() {
   const shownLogs = logDates.length
   const shownSuggestions = suggestionDates.length
 
-  // 신규 유저 빈 상태 — 기록 0건이면 0짜리 통계와 0% 진행도(숙제 고지서처럼 읽힌다) 대신
-  // 첫 행동(작성)을 맨 위에 안내한다. 첫 기록이 저장되는 순간부터 평소 홈으로 전환.
-  // 자식 현장을 거느린 감독자는 본인 기록이 없어도 신규가 아니다(관제 목적 사용) — 제외.
-  const ownerWithSites = orgCtx?.kind === "owner" && (orgCtx.memberIds?.length ?? 0) > 0
-  const isEmptyStart = !statsLoading && shownMinutes === 0 && shownLogs === 0 && !ownerWithSites
+  // 첫 로그인 온보딩 — 가입 위저드에서 뺀 설정(사용 형태·이메일·출력 형식)을 여기서 받는다.
+  // 트리거 = 출력 형식 부재: 카카오는 /start-trial이, 기존 계정은 과거 수집이 채웠으므로
+  // 사실상 아이디 신규 가입에게만 뜬다. member는 회사 공통 설정이라 묻지 않는다.
+  const needsOnboarding = !!user
+    && !mustSetup
+    && !checking
+    && orgCtx !== null
+    && orgCtx.kind !== "member"
+    && !user.user_metadata?.preferred_export_format
 
   // 작성 카드 2종 — 평소 홈(하단)과 빈 상태(최상단) 두 자리에서 같은 마크업을 쓴다
   const writeCards = (
@@ -603,6 +608,9 @@ export default function MainPage() {
             </div>
           )}
 
+          {/* 첫 로그인 온보딩 — 저장이 끝나면 서버 기준 user로 교체돼 조건이 풀린다 */}
+          {needsOnboarding && <OnboardingModal onDone={(u) => { if (u) commitUser(u); setHintAddSite((() => { try { return window.localStorage.getItem("antok_hint_add_site") === "1" } catch { return false } })()) }} />}
+
           {/* 튜토리얼 미이수 배너 — 완료·건너뛰기·X 모두 tutorial_seen_at 기록으로 사라진다 */}
           {user && !user.user_metadata?.tutorial_seen_at && (
             <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-primary/5 border border-cur-primary/20">
@@ -612,8 +620,8 @@ export default function MainPage() {
                 onClick={() => router.push('/tutorial')}
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
-                <span className="block text-[14px] font-semibold text-cur-ink">1분 사용법 보기</span>
-                <span className="block text-[12px] text-cur-body mt-0.5">말한 내용이 회의록이 되는 과정을 보여드려요</span>
+                <span className="block text-[14px] font-semibold text-cur-ink">가이드 안내 — 1분이면 충분해요</span>
+                <span className="block text-[12px] text-cur-body mt-0.5">어떤 버튼을 누르는지 화면 그대로 따라가며 보여드려요</span>
               </button>
               <button
                 type="button"
@@ -695,36 +703,6 @@ export default function MainPage() {
             </button>
           )}
 
-          {/* 빈 상태(기록 0건) — 첫 방문의 질문은 "내 기록이 몇 개지?"가 아니라 "뭘 하는 앱이지?"다.
-              0·0·0·0% 대신 첫 행동을 맨 위에 놓고, 첫 기록이 생기면 아래 평소 홈으로 전환된다 */}
-          {isEmptyStart && (
-            <div className="space-y-5">
-              <div className="pt-1">
-                <h2 className="text-[20px] font-bold text-cur-ink tracking-[-0.02em] leading-snug">오늘 TBM, 편하게 녹음해보세요</h2>
-                <p className="text-[13px] text-cur-muted mt-1.5 leading-relaxed">
-                  녹음만 하면 회의록·교육일지 출력물을 AI가 자동으로 만들어드려요. 첫 기록이 생기면 이 자리에 활동 현황과 교육 진행도가 채워집니다.
-                </p>
-              </div>
-              {writeCards}
-              <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-4">
-                <ol className="flex items-start gap-2">
-                  {[
-                    ["말하기", "조회 내용을 녹음"],
-                    ["AI 정리", "회의록·일지 자동 완성"],
-                    ["서명·보관", "법정 서류로 저장"],
-                  ].map(([t, d], i) => (
-                    <li key={t} className="flex-1 min-w-0 text-center">
-                      <span className="mx-auto w-6 h-6 rounded-full bg-cur-elevated text-cur-ink text-[12px] font-bold flex items-center justify-center font-mono">{i + 1}</span>
-                      <p className="text-[13px] font-semibold text-cur-ink mt-1.5">{t}</p>
-                      <p className="text-[11px] text-cur-muted mt-0.5 leading-snug">{d}</p>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          )}
-
-          {!isEmptyStart && (<>
           {/* 활동 현황 — 개인 그리드. 감독자는 탭(내 활동 | 모든 현장 통계↗) 구성 */}
           <HomeActivity
             isOwner={orgCtx?.kind === "owner"}
@@ -807,15 +785,12 @@ export default function MainPage() {
               <span className="font-semibold text-cur-body">{halfLabel}</span> · TBM으로 채울 수 있어요
             </p>
           </div>
-          </>)}
         </div>
 
-        {/* 작성 카드 2종 — 병렬 배치 (Chris): 홈의 두 핵심 행동이라 나란히. 빈 상태에선 위에서 이미 보여줬다 */}
-        {!isEmptyStart && (
-          <div className="flex-1 p-6">
-            {writeCards}
-          </div>
-        )}
+        {/* 작성 카드 2종 — 병렬 배치 (Chris): 홈의 두 핵심 행동 */}
+        <div className="flex-1 p-6">
+          {writeCards}
+        </div>
       </div>
     </div>
   )

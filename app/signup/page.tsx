@@ -18,15 +18,9 @@ import Link from "next/link"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ExportFormatPicker } from "@/components/ExportFormatPicker"
-import { EXPORT_FORMATS, type ExportFormat } from "@/lib/exportFormats"
 
 type StepKey = "account" | "site" | "phone" | "confirm"
 const STEP_LABEL: Record<StepKey, string> = { account: "계정", site: "현장 정보", phone: "휴대폰 인증", confirm: "확인" }
-
-// 서버 isValidEmail(lib/emailVerification)과 동일 규칙 — 그 모듈은 mailer(nodemailer)를
-// 끌고 와 클라이언트에서 import할 수 없어 정규식만 복제한다. 최종 판정은 /api/signup이 한다.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function SignupPage() {
     const router = useRouter()
@@ -48,14 +42,7 @@ export default function SignupPage() {
     const [workCategory, setWorkCategory] = useState("")
     // 근로자 구분 — 교육시간 산정용(기본값 프리셋, 별도 검증 불필요)
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
-    // 출력 형식 — 아이디 가입자는 /start-trial을 거치지 않아 여기서 안 물으면 전원 PDF로 굳는다.
-    // 기본값을 두지 않는 이유: 미선택을 그대로 통과시키면 "안 물어본 것"과 결과가 같아진다.
-    const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
-    // 보고서 수신용 실이메일 — 계정 이메일이 가상({id}@tbm.com)이라 여기서 안 받으면
-    // 시스템이 사용자에게 연락할 방법이 없다. 선택 입력(스킵 가능).
-    const [realEmail, setRealEmail] = useState("")
-    // 인증 메일이 실제로 나갔을 때만 완료 화면에 안내를 띄운다 — 발송 실패인데 "보냈어요"는 거짓말
-    const [verifyMailSent, setVerifyMailSent] = useState(false)
+    // 출력 형식·이메일은 가입에서 받지 않는다(Chris) — 첫 로그인 온보딩 모달(OnboardingModal)이 받는다.
     // 휴대폰 인증 상태
     const [phone, setPhone] = useState("")
     const [code, setCode] = useState("")
@@ -93,7 +80,7 @@ export default function SignupPage() {
     // 단계별 필수 입력이 모두 채워졌는지 — 비어 있으면 "다음" 비활성화 (형식 검증은 클릭 시 메시지로)
     const stepFilled =
         stepKey === "account" ? !!(id.trim() && password && passwordConfirm)
-        : stepKey === "site" ? !!(siteName.trim() && industry && workCategory && exportFormat)
+        : stepKey === "site" ? !!(siteName.trim() && industry && workCategory)
         : stepKey === "phone" ? !!verificationId
         : true
 
@@ -159,9 +146,6 @@ export default function SignupPage() {
             if (!siteName.trim()) return "현장명(회사명)을 입력해주세요."
             if (!industry) return "업종을 선택해주세요."
             if (!workCategory) return "공종을 선택해주세요."
-            if (!exportFormat) return "문서 출력 형식을 선택해주세요."
-            // 이메일은 선택이지만, 적었다면 형식이 맞아야 다음으로 — 오타를 심으면 인증 메일이 허공으로 간다
-            if (realEmail.trim() && !EMAIL_RE.test(realEmail.trim())) return "이메일 형식이 올바르지 않습니다."
         }
         if (key === "phone") {
             if (!verificationId) return "휴대폰 인증을 완료해주세요."
@@ -206,18 +190,14 @@ export default function SignupPage() {
                     industry,
                     workCategory,
                     workerType,
-                    exportFormat,
                     // 동의 증빙은 서버가 남긴다 — 브라우저 localStorage는 증거가 되지 못한다
                     agreedToTerms: agreed,
-                    // 빈 값은 아예 싣지 않는다 — 서버가 "미입력"과 "빈 문자열"을 구분할 필요가 없게
-                    ...(realEmail.trim() ? { realEmail: realEmail.trim() } : {}),
                     ...(phoneEnabled ? { phone: phone.replace(/\D/g, ""), verificationId } : {}),
                 })
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "회원가입에 실패했습니다.")
             setTrialStarted(!!data.trialStarted)
-            setVerifyMailSent(!!data.emailVerificationSent)
             // 가입 직후 자동 로그인 — 실패해도 가입 자체는 완료이므로 기존 흐름(로그인 페이지)으로 폴백
             const { error: loginError } = await supabase.auth.signInWithPassword({
                 email: `${id}@tbm.com`,
@@ -226,7 +206,7 @@ export default function SignupPage() {
             if (!loginError) {
                 setAutoLoggedIn(true)
                 setSuccess(true)
-                setTimeout(() => { router.push("/tutorial") }, 1800)
+                setTimeout(() => { router.push("/") }, 1800) // 홈 온보딩 모달이 이어받는다
             } else {
                 setSuccess(true)
                 setTimeout(() => { router.push("/login") }, 4000)
@@ -250,7 +230,7 @@ export default function SignupPage() {
                             <p className="text-[15px] text-cur-muted font-medium">
                                 <b className="text-cur-primary">1개월 무료체험</b>이 시작되었습니다. 🎉<br />
                                 모든 기능을 자유롭게 써보세요.<br />
-                                {autoLoggedIn ? "잠시 후 1분 사용법 안내로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
+                                {autoLoggedIn ? "잠시 후 홈으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
                         ) : (
                             <p className="text-[15px] text-cur-muted font-medium">
@@ -258,13 +238,7 @@ export default function SignupPage() {
                                 {autoLoggedIn ? "잠시 후 1분 사용법 안내로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
                         )}
-                        {verifyMailSent && (
-                            <p className="w-full text-left text-[13px] text-cur-body bg-cur-elevated rounded-[8px] p-3.5 leading-5">
-                                <b className="font-semibold text-cur-ink">{realEmail.trim()}</b>로 인증 메일을 보냈어요.
-                                메일함에서 링크를 눌러야 보고서를 받을 수 있어요.
-                            </p>
-                        )}
-                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push(autoLoggedIn ? "/tutorial" : "/login")}>
+                        <Button variant="outline" className="mt-4 border-cur-hairline text-cur-ink hover:bg-cur-elevated rounded-[8px] h-12 px-6 font-medium" onClick={() => router.push(autoLoggedIn ? "/" : "/login")}>
                             {autoLoggedIn ? "바로 시작하기" : "로그인 바로가기"}
                         </Button>
                     </CardContent>
@@ -431,22 +405,6 @@ export default function SignupPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[13px] font-medium text-cur-body">문서 출력 형식</Label>
-                                    <ExportFormatPicker value={exportFormat} onChange={setExportFormat} />
-                                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
-                                        회의록·교육일지를 내려받을 때 쓰는 기본 형식이에요. PDF는 편집할 수 없어요.
-                                    </p>
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label htmlFor="realEmail" className="text-[13px] font-medium text-cur-body">
-                                        이메일 (보고서 수신용) <span className="font-normal text-cur-muted-soft">— 선택</span>
-                                    </Label>
-                                    <Input id="realEmail" type="email" inputMode="email" autoComplete="email" placeholder="예: name@company.com" value={realEmail} onChange={(e) => setRealEmail(e.target.value)} className={inputCls} />
-                                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
-                                        비워두면 주간·월간 보고서와 분석 보고서를 이메일로 받을 수 없어요.
-                                    </p>
-                                </div>
                             </>
                         )}
 
@@ -494,8 +452,6 @@ export default function SignupPage() {
                                     ["업종", industry],
                                     ["공종", workCategory],
                                     ["근로자 구분", workerType],
-                                    ["출력 형식", EXPORT_FORMATS.find((f) => f.value === exportFormat)?.label ?? ""],
-                                    ["이메일", realEmail.trim() || "미입력 — 나중에 등록할 수 있어요"],
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">
