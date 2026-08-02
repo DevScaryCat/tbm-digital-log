@@ -266,28 +266,36 @@ export default function AccountPage() {
                                     )}
                                 </div>
                             )}
+
+                            {/* 재구독·체험종료 유도는 별도 카드가 아니라 상태 카드의 한 구획 —
+                                "해지됨"과 "다시 구독"은 같은 이야기라 한 묶음으로 읽혀야 한다(Chris).
+                                구분은 카드 사이 여백 대신 얇은 보더 하나로. */}
+                            {!isGrandfather && cardlessTrialExpired && (
+                                <div className="mt-5 pt-5 border-t border-cur-hairline space-y-4">
+                                    <p className="text-[14px] text-cur-body leading-relaxed">
+                                        무료체험이 종료되었습니다. 결제수단을 등록하면 즉시 결제되어 바로 이어서 사용할 수 있어요.
+                                    </p>
+                                    <SubscribeButtons
+                                        onSuccess={load}
+                                        ctaSuffix="로 이어서 이용"
+                                        successText="결제가 완료되어 이어서 이용하실 수 있습니다."
+                                    />
+                                </div>
+                            )}
+                            {!isGrandfather && !cardlessTrial && !(active && sub?.status !== "canceled") && (
+                                <div className="mt-5 pt-5 border-t border-cur-hairline space-y-4">
+                                    <p className="text-[14px] text-cur-muted text-center">
+                                        {sub?.status === "canceled"
+                                            ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
+                                            : "구독하고 모든 기능을 이용하세요."}
+                                    </p>
+                                    <SubscribeButtons onSuccess={load} />
+                                </div>
+                            )}
                         </div>
 
-                        {/* 체험 중에는 결제 유도 카드를 두지 않는다 — 아직 청구가 시작되지 않았는데
-                            청구서를 먼저 보여주면 체험이 유예가 아니라 압박으로 읽힌다.
-                            체험이 끝난 뒤(아래 분기)에 등록을 안내한다 */}
-                        {!isGrandfather && cardlessTrialExpired && (
-                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
-                                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-4">
-                                    <p className="text-[14px] text-cur-ink leading-relaxed">
-                                        무료체험이 종료되었습니다. 계속 이용하시려면 결제수단을 등록해 주세요. 등록 즉시 결제되어 바로 이어서 사용할 수 있습니다.
-                                    </p>
-                                </div>
-                                <SubscribeButtons
-                                    onSuccess={load}
-                                    ctaSuffix="로 이어서 이용"
-                                    successText="결제가 완료되어 이어서 이용하실 수 있습니다."
-                                />
-                            </div>
-                        )}
-
-                        {!isGrandfather && !cardlessTrial && (
-                            active && sub?.status !== "canceled" ? (
+                        {!isGrandfather && !cardlessTrial && active && sub?.status !== "canceled" && (
+                            (
                                 changingMethod ? (
                                     // 결제수단 변경 진행 — 패딩 카드로 인라인 폼 표시
                                     <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
@@ -337,16 +345,6 @@ export default function AccountPage() {
                                         </button>
                                     </div>
                                 )
-                            ) : (
-                                // 미구독 / 해지(기간만료) / 결제실패 → 재구독
-                                <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-4">
-                                    <p className="text-[14px] text-cur-muted text-center">
-                                        {sub?.status === "canceled"
-                                            ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."
-                                            : "구독하고 모든 기능을 이용하세요."}
-                                    </p>
-                                    <SubscribeButtons onSuccess={load} />
-                                </div>
                             )
                         )}
 
