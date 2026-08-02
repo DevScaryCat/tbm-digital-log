@@ -69,7 +69,7 @@ export function DialogHost() {
                         <Button
                             variant="outline"
                             onClick={() => close(false)}
-                            className="flex-1 h-11 rounded-[8px] border-cur-hairline text-cur-ink text-[14px] font-semibold hover:bg-cur-elevated"
+                            className="flex-1 h-12 rounded-[8px] border-cur-hairline text-cur-ink text-[14px] font-semibold hover:bg-cur-elevated"
                         >
                             취소
                         </Button>
@@ -77,7 +77,7 @@ export function DialogHost() {
                     <Button
                         ref={setNode}
                         onClick={() => close(true)}
-                        className={`flex-[2] h-11 rounded-[8px] text-cur-on-primary text-[14px] font-bold focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                        className={`flex-[2] h-12 rounded-[8px] text-cur-on-primary text-[14px] font-bold focus-visible:ring-2 focus-visible:ring-offset-2 ${
                             current.danger
                                 ? "bg-cur-error hover:bg-cur-error/90 focus-visible:ring-cur-error"
                                 : "bg-cur-primary hover:bg-cur-primary-active focus-visible:ring-cur-primary"

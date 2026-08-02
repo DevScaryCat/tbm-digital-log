@@ -453,7 +453,7 @@ export default function DashboardPage() {
                                     <div className="space-y-2">
                                         <Button
                                             onClick={batchDownloadAll}
-                                            className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px]"
+                                            className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-12 text-[14px] font-bold rounded-[8px]"
                                         >
                                             <Printer className="mr-2 w-4 h-4" /> PDF로 저장
                                         </Button>
@@ -472,7 +472,7 @@ export default function DashboardPage() {
                                 ) : (
                                     <Button
                                         onClick={() => router.push('/')}
-                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-11 text-[14px] font-bold rounded-[8px]"
+                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-12 text-[14px] font-bold rounded-[8px]"
                                     >
                                         <Plus className="mr-2 w-4 h-4" /> 이 날짜에 작성하기
                                     </Button>

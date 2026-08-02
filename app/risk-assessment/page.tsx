@@ -516,7 +516,7 @@ export default function RiskAssessmentPage() {
                         </p>
                         <Button
                             onClick={() => router.push("/org/reports")}
-                            className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
+                            className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
                         >
                             {setupPendingOnly ? "승인 상태 확인·재발송" : "출력/발송 설정 하러 가기"}
                         </Button>
@@ -568,7 +568,7 @@ export default function RiskAssessmentPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Button onClick={() => setStep(1)} className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary">
+                                <Button onClick={() => setStep(1)} className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary">
                                     체험해보기
                                 </Button>
                                 <p className="text-[12px] text-cur-muted-soft text-center">월 3,900원 · 첫 달 무료 · 분석 보고서 + 월간 보고서</p>

@@ -365,7 +365,7 @@ export default function AccountPage() {
                                 </p>
                                 <Button
                                     onClick={() => router.push("/pricing")}
-                                    className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                                    className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
                                 >
                                     요금제 보기
                                 </Button>

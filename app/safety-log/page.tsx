@@ -919,7 +919,7 @@ export default function TBMPage() {
                                         {instructorSignature ? (
                                             <div onClick={() => openSignModal({ type: 'instructor' })} className="h-16 border border-cur-success bg-cur-success/5 rounded-[8px] flex items-center justify-center cursor-pointer relative overflow-hidden"><img src={instructorSignature} alt="서명" className="h-full object-contain mix-blend-multiply" /><div className="absolute right-2 bottom-1.5 text-[10px] text-cur-success font-bold bg-cur-card/90 px-1.5 py-0.5 rounded-[4px]">서명 완료</div></div>
                                         ) : (
-                                            <Button variant="outline" className="w-full h-14 border-dashed border-2 border-cur-hairline text-cur-muted font-medium text-[15px] hover:bg-cur-canvas rounded-[8px]" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 교육실시자 서명하기</Button>
+                                            <Button variant="outline" className="w-full h-12 border-dashed border-2 border-cur-hairline text-cur-muted font-medium text-[15px] hover:bg-cur-canvas rounded-[8px]" onClick={() => openSignModal({ type: 'instructor' })}><PenTool className="mr-2 h-5 w-5" /> 교육실시자 서명하기</Button>
                                         )}
                                     </>
                                 )}
@@ -1116,7 +1116,7 @@ export default function TBMPage() {
                                                 reader.readAsDataURL(e.target.files[0])
                                             }
                                         }} />
-                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
+                                    <Button className="w-full h-12 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
                                         <Camera className="w-5 h-5 mr-2" /> 바로 촬영
                                     </Button>
                                 </div>
@@ -1134,7 +1134,7 @@ export default function TBMPage() {
                                                 reader.readAsDataURL(e.target.files[0])
                                             }
                                         }} />
-                                    <Button variant="outline" className="w-full h-14 border border-cur-hairline bg-cur-card hover:bg-cur-canvas text-cur-ink text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
+                                    <Button variant="outline" className="w-full h-12 border border-cur-hairline bg-cur-card hover:bg-cur-canvas text-cur-ink text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
                                         <Upload className="w-5 h-5 mr-2" /> 앨범 업로드
                                     </Button>
                                 </div>

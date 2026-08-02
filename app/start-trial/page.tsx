@@ -221,7 +221,7 @@ export default function StartTrialPage() {
                     <Button
                         onClick={signOut}
                         variant="outline"
-                        className="w-full h-11 rounded-[8px] border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:ring-2 focus-visible:ring-cur-primary"
+                        className="w-full h-12 rounded-[8px] border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:ring-2 focus-visible:ring-cur-primary"
                     >
                         다른 계정으로 로그인
                     </Button>

@@ -17,7 +17,7 @@ import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@
 import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
 
 const inputCls =
-    "h-11 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
+    "h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
 
 // 모달 공통 스타일 — 페이지 Dialog 관례 (bg-cur-card·hairline·12px 라운드)
 // 앱 공통 Dialog 관례(회의록·교육일지 페이지와 동일): 20px 라운드 + 부양 그림자
@@ -388,10 +388,10 @@ export default function OrgMembersPage() {
                                 현장담당자가 처음 로그인하면 새 비밀번호와 현장명을 직접 설정합니다.
                             </p>
                             <div className="flex gap-2">
-                                <Button onClick={copyCreated} className="flex-1 h-11 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
+                                <Button onClick={copyCreated} className="flex-1 h-12 rounded-lg bg-cur-ink text-white text-[13px] font-bold">
                                     <Copy className="w-4 h-4 mr-1.5" /> 계정 목록 복사
                                 </Button>
-                                <Button onClick={closeAdd} variant="outline" className="h-11 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                                <Button onClick={closeAdd} variant="outline" className="h-12 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                             </div>
                         </div>
                     ) : addStep === "count" ? (
@@ -400,18 +400,18 @@ export default function OrgMembersPage() {
                             <p className="text-[14px] font-semibold text-cur-ink">몇 개 현장을 추가할까요?</p>
                             <div className="flex items-center justify-center gap-5">
                                 <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
-                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Minus className="w-4 h-4" /></button>
+                                    className="w-11 h-12 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Minus className="w-4 h-4" /></button>
                                 <span className="w-12 text-center text-[28px] font-bold tabular-nums">{count}</span>
                                 <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
-                                    className="w-11 h-11 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Plus className="w-4 h-4" /></button>
+                                    className="w-11 h-12 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Plus className="w-4 h-4" /></button>
                             </div>
                             {/* 요금 계산기 카드가 사라진 자리 — 청구 규칙 한 줄만 남긴다 */}
                             <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
                                 계정 1개당 월 3,900원 · {sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}
                             </p>
                             <div className="flex gap-2">
-                                <Button onClick={closeAdd} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={() => setAddStep("method")} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
+                                <Button onClick={closeAdd} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={() => setAddStep("method")} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
                             </div>
                         </div>
                     ) : addStep === "method" ? (
@@ -471,13 +471,13 @@ export default function OrgMembersPage() {
                                 </summary>
                                 <div className="flex gap-2 mt-2">
                                     <Input value={attachId} onChange={(e) => setAttachId(e.target.value)} placeholder="기존 계정 아이디" className={inputCls + " flex-1"} />
-                                    <Button onClick={requestAttach} disabled={busy === "attach" || !attachId.trim()} className="h-11 px-4 rounded-lg bg-cur-ink text-white text-[13px] font-bold shrink-0">
+                                    <Button onClick={requestAttach} disabled={busy === "attach" || !attachId.trim()} className="h-12 px-4 rounded-lg bg-cur-ink text-white text-[13px] font-bold shrink-0">
                                         {busy === "attach" ? <Loader2 className="w-4 h-4 animate-spin" /> : "편입 초대"}
                                     </Button>
                                 </div>
                                 <p className="text-[11px] text-cur-muted-soft mt-1.5">그 계정이 다음 로그인 때 수락하면 편입돼요. 기존 기록은 그대로 유지됩니다.</p>
                             </details>
-                            <Button onClick={closeAdd} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
+                            <Button onClick={closeAdd} variant="outline" className="w-full h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
                         </div>
                     ) : addStep === "direct" ? (
                         /* 직접 발급 — 아이디 규칙 설명을 눈앞에서 예시로 */
@@ -507,8 +507,8 @@ export default function OrgMembersPage() {
                                 <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
                             )}
                             <div className="flex gap-2">
-                                <Button onClick={() => { setAddStep("method"); setFormErr(null) }} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
-                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                <Button onClick={() => { setAddStep("method"); setFormErr(null) }} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
+                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">
                                     {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : `${count}개 만들기`}
                                 </Button>
                             </div>
@@ -539,8 +539,8 @@ export default function OrgMembersPage() {
                         <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
                     )}
                     <div className="flex gap-2">
-                        <Button onClick={() => setEditTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                        <Button onClick={submitEdit} disabled={busy === "edit" || !editSite.trim()} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
+                        <Button onClick={() => setEditTarget(null)} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                        <Button onClick={submitEdit} disabled={busy === "edit" || !editSite.trim()} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">
                             {busy === "edit" ? <Loader2 className="w-4 h-4 animate-spin" /> : "저장"}
                         </Button>
                     </div>
@@ -565,7 +565,7 @@ export default function OrgMembersPage() {
                                 <p className="text-[13px] text-cur-ink">새 비밀번호 <b className="font-mono break-all">{pwValue}</b></p>
                                 <p className="text-[12px] text-cur-muted leading-relaxed">새 비밀번호를 현장담당자에게 전달하세요. 현장담당자는 다음 로그인부터 이 비밀번호로 접속합니다.</p>
                             </div>
-                            <Button onClick={() => setPwTarget(null)} variant="outline" className="w-full h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
+                            <Button onClick={() => setPwTarget(null)} variant="outline" className="w-full h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                         </>
                     ) : (
                         <>
@@ -582,8 +582,8 @@ export default function OrgMembersPage() {
                                 <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
                             )}
                             <div className="flex gap-2">
-                                <Button onClick={() => setPwTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                                <Button onClick={submitPw} disabled={busy === "pw" || pwValue.length < 8 || !pwConfirm} className="flex-[2] h-11 rounded-lg bg-cur-primary text-white font-bold">
+                                <Button onClick={() => setPwTarget(null)} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                                <Button onClick={submitPw} disabled={busy === "pw" || pwValue.length < 8 || !pwConfirm} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">
                                     {busy === "pw" ? <Loader2 className="w-4 h-4 animate-spin" /> : "변경하기"}
                                 </Button>
                             </div>
@@ -608,8 +608,8 @@ export default function OrgMembersPage() {
                         <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>
                     )}
                     <div className="flex gap-2">
-                        <Button onClick={() => setDetachTarget(null)} variant="outline" className="flex-1 h-11 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
-                        <Button onClick={submitDetach} disabled={busy === "detach"} className="flex-[2] h-11 rounded-lg bg-cur-error text-white font-bold hover:bg-cur-error/90">
+                        <Button onClick={() => setDetachTarget(null)} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
+                        <Button onClick={submitDetach} disabled={busy === "detach"} className="flex-[2] h-12 rounded-lg bg-cur-error text-white font-bold hover:bg-cur-error/90">
                             {busy === "detach" ? <Loader2 className="w-4 h-4 animate-spin" /> : "해제하기"}
                         </Button>
                     </div>

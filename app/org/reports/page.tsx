@@ -99,7 +99,7 @@ export default function OrgReportsPage() {
                                 <button
                                     disabled={!docFormat}
                                     onClick={() => setWizStep(2)}
-                                    className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     다음 — 받는 사람 설정
                                 </button>
@@ -111,14 +111,14 @@ export default function OrgReportsPage() {
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setWizStep(1)}
-                                        className="flex-1 h-11 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-muted hover:text-cur-ink transition-colors"
+                                        className="flex-1 h-12 rounded-[8px] border border-cur-hairline bg-cur-card text-[13px] font-semibold text-cur-muted hover:text-cur-ink transition-colors"
                                     >
                                         이전
                                     </button>
                                     <button
                                         disabled={pro && counts.approved === 0}
                                         onClick={() => setMode("tabs")}
-                                        className="flex-[2] h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="flex-[2] h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         설정 완료
                                     </button>
