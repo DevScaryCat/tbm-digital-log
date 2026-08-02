@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
+import { resolveMyReportEmail } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
@@ -82,7 +83,7 @@ export default function MainPage() {
   const [hintAddSite, setHintAddSite] = useState(false)
   // 보고서를 받을 사람이 아직 없음(=주간·월간 보고서가 아무 데도 안 나감).
   // 설정 입구가 헤더 드롭다운과 분석 보고서 게이트뿐이라 대부분 기능 존재 자체를 모른다.
-  const [recipientGap, setRecipientGap] = useState<{ pending: number } | null>(null)
+  const [recipientGap, setRecipientGap] = useState<{ pending: number; noEmail: boolean } | null>(null)
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
     const q = new URLSearchParams(window.location.search)
@@ -202,7 +203,9 @@ export default function MainPage() {
         const { data } = await supabase.auth.getSession()
         const r = await fetchRecipients(data?.session?.access_token)
         if (cancelled || !r || !r.isPro) return
-        setRecipientGap(r.counts.approved === 0 ? { pending: r.counts.pending } : null)
+        // 온보딩에서 이메일 입력을 건너뛴 계정은 받을 주소 자체가 없다 — 수신처 0명보다 앞선 문제다
+        const noEmail = !resolveMyReportEmail(data?.session?.user as never)
+        setRecipientGap(noEmail || r.counts.approved === 0 ? { pending: r.counts.pending, noEmail } : null)
       })()
     return () => { cancelled = true }
   }, [user, orgCtx])
@@ -629,20 +632,30 @@ export default function MainPage() {
           {/* 보고서 수신처 공백 — 승인된 사람이 0명이면 주간·월간 보고서가 아무 데도 안 간다.
               등록만 하고 승인 전인 경우와 아예 없는 경우는 할 일이 달라서 문구를 나눈다. */}
           {recipientGap && (
-            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-card border border-cur-hairline-strong">
-              <MailPlus className="w-5 h-5 shrink-0 text-cur-ink" />
+            /* 눈에 띄어야 하지만 번쩍이지는 않게(Chris) — 카드는 조용한 경고색, 점 하나만 천천히 숨쉰다 */
+            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-error/[0.04] border border-cur-error/30">
+              <span className="relative shrink-0">
+                <MailPlus className="w-5 h-5 text-cur-error" />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-cur-error animate-pulse motion-reduce:animate-none" />
+              </span>
               <button
                 type="button"
-                onClick={() => router.push('/org/reports')}
+                onClick={() => router.push(recipientGap.noEmail ? '/profile' : '/org/reports')}
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
                 <span className="block text-[14px] font-semibold text-cur-ink">
-                  {recipientGap.pending > 0 ? `보고서 수신 승인 대기 ${recipientGap.pending}명` : "보고서 받을 사람이 아직 없어요"}
+                  {recipientGap.noEmail
+                    ? "보고서 받을 이메일이 없어요"
+                    : recipientGap.pending > 0
+                      ? `보고서 수신 승인 대기 ${recipientGap.pending}명`
+                      : "보고서 받을 사람이 아직 없어요"}
                 </span>
                 <span className="block text-[12px] text-cur-body mt-0.5">
-                  {recipientGap.pending > 0
-                    ? "승인 링크를 눌러야 주간·월간 보고서가 발송돼요"
-                    : "등록하면 주간·월간 보고서가 이메일로 자동 발송돼요"}
+                  {recipientGap.noEmail
+                    ? "내 정보 수정에서 이메일을 등록해주세요"
+                    : recipientGap.pending > 0
+                      ? "승인 링크를 눌러야 주간·월간 보고서가 발송돼요"
+                      : "등록하면 주간·월간 보고서가 이메일로 자동 발송돼요"}
                 </span>
               </button>
               <button
@@ -782,17 +795,16 @@ export default function MainPage() {
                 style={
                   fillWidth > 90
                     ? { right: '0%' }
-                    : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
+                    : fillWidth < 6
+                      ? { left: '0%' } // 0% 부근에서 가운데 정렬하면 라벨 절반이 카드 밖으로 나간다
+                      : { left: `${fillWidth}%`, transform: 'translateX(-50%)' }
                 }
               >
                 {Math.floor(rawPercent)}%
               </div>
             </div>
             <p className="text-[12px] text-cur-muted mt-3 leading-relaxed">
-              <span className="font-semibold text-cur-body">{halfLabel}</span> 기준 ·{' '}
-              {user?.user_metadata?.worker_type === '사무직 / 판매직'
-                ? '반기별 6시간 이상 (정기교육 TBM 대체 가능)'
-                : '반기별 12시간 이상 (정기교육 TBM 대체 가능)'}
+              <span className="font-semibold text-cur-body">{halfLabel}</span> · TBM으로 채울 수 있어요
             </p>
           </div>
           </>)}

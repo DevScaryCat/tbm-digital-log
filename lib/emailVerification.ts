@@ -94,9 +94,14 @@ export async function verifyRealEmailToken(
 
   const now = new Date().toISOString();
   await admin.from("email_verifications").update({ verified_at: now }).eq("id", row.id);
+  let prevEmail: string | null = null;
   try {
     const { data: u } = await admin.auth.admin.getUserById(row.user_id);
     const meta = (u?.user?.user_metadata ?? {}) as Record<string, unknown>;
+    // 직전에 '인증까지 끝나 있던' 주소만 이관 대상 — 미인증 주소는 수신처였던 적이 없다
+    if (meta.real_email_verified_at && typeof meta.real_email === "string") {
+      prevEmail = meta.real_email.trim() || null;
+    }
     await admin.auth.admin.updateUserById(row.user_id, {
       user_metadata: { ...meta, real_email: row.email, real_email_verified_at: now },
     });
@@ -104,5 +109,42 @@ export async function verifyRealEmailToken(
     console.error("real_email verify metadata update 실패:", e);
     return { ok: false, error: "인증 처리 중 오류가 발생했습니다." };
   }
+
+  // 내 이메일을 바꿨으면 수신처도 따라간다 — 안 옮기면 보고서가 계속 옛 주소로 나가고
+  // 새 주소는 승인 요청부터 다시 받아야 한다. 승인 상태를 유지하는 근거: 방금 그 사람이
+  // 새 주소의 인증 링크를 눌러 수신 의사를 직접 증명했다(수신 동의의 실질과 같다).
+  await migrateOwnConsent(admin, row.user_id, prevEmail, row.email);
+
   return { ok: true, email: row.email };
+}
+
+async function migrateOwnConsent(
+  admin: SupabaseClient,
+  userId: string,
+  prevEmail: string | null,
+  nextEmail: string
+): Promise<void> {
+  if (!prevEmail || prevEmail.toLowerCase() === nextEmail.toLowerCase()) return;
+  try {
+    const { data: rows } = await admin
+      .from("report_recipient_consents")
+      .select("id, recipient_email")
+      .eq("account_user_id", userId);
+    const list = (rows ?? []) as { id: string; recipient_email: string }[];
+    const old = list.find((r) => r.recipient_email.toLowerCase() === prevEmail.toLowerCase());
+    if (!old) return;
+    const dup = list.find((r) => r.recipient_email.toLowerCase() === nextEmail.toLowerCase());
+    if (dup) {
+      // 새 주소가 이미 수신처면 옛 행은 지운다 (같은 사람에게 두 통 가는 것 방지)
+      await admin.from("report_recipient_consents").delete().eq("id", old.id);
+      return;
+    }
+    await admin
+      .from("report_recipient_consents")
+      .update({ recipient_email: nextEmail, status: "approved", responded_at: new Date().toISOString() })
+      .eq("id", old.id);
+  } catch (e) {
+    // 이관 실패가 인증 자체를 되돌릴 이유는 없다 — 화면에서 수동으로 다시 등록하면 된다
+    console.error("수신처 이메일 이관 실패:", e);
+  }
 }

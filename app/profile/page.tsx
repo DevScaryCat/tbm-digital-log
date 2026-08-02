@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2 } from "lucide-react"
+import { Loader2, Mail, CheckCircle2 } from "lucide-react"
+import { showAlert } from "@/lib/uiDialog"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
@@ -18,6 +19,46 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 보고서 수신 이메일 — 값 자체는 인증 링크를 눌러야 바뀐다(가입 때와 같은 경로).
+    // 인증이 끝나면 출력/발송 설정의 '내 이메일' 수신처도 자동으로 새 주소로 옮겨간다.
+    const [reportEmail, setReportEmail] = useState<string | null>(null)
+    const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+    const [emailInput, setEmailInput] = useState("")
+    const [emailBusy, setEmailBusy] = useState(false)
+    const [emailMsg, setEmailMsg] = useState<string | null>(null)
+
+    const authHeaders = async () => {
+        const { data } = await supabase.auth.getSession()
+        return { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token}` }
+    }
+    const loadEmail = useCallback(async () => {
+        try {
+            const res = await fetch("/api/auth/email", { headers: await authHeaders() })
+            if (!res.ok) return
+            const j = await res.json()
+            setReportEmail(j.email ?? null)
+            setPendingEmail(j.pending ?? null)
+            setEmailInput(j.email ?? j.pending ?? "")
+        } catch { /* 이 카드만 비어 보인다 */ }
+    }, [])
+    useEffect(() => { loadEmail() }, [loadEmail])
+
+    const sendEmailVerify = async () => {
+        const v = emailInput.trim()
+        if (!v) return
+        setEmailBusy(true); setEmailMsg(null)
+        try {
+            const res = await fetch("/api/auth/email", { method: "POST", headers: await authHeaders(), body: JSON.stringify({ email: v }) })
+            const j = await res.json().catch(() => ({}))
+            if (!res.ok) { setEmailMsg(j.error || "인증 메일을 보내지 못했어요."); return }
+            setPendingEmail(v)
+            showAlert(`${v} 로 인증 메일을 보냈어요.\n메일함에서 링크를 눌러야 변경이 확정됩니다.`, { title: "인증 메일을 보냈어요" })
+        } catch {
+            setEmailMsg("네트워크 오류로 보내지 못했어요.")
+        } finally {
+            setEmailBusy(false)
+        }
+    }
     // 역할 판정 — member는 업종·공종만 보기 전용, owner는 저장 시 그 둘을 현장 계정에 전파.
     // 훅 대신 직접 호출: 판정 실패(null)를 화면에 드러내고 재시도할 수 있어야 한다.
     const [ctx, setCtx] = useState<ClientOrgContext | null>(null)
@@ -279,6 +320,44 @@ export default function ProfilePage() {
                         </p>
                     )}
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
+                </div>
+
+                {/* 보고서 수신 이메일 — 여기가 '내 이메일'의 단일 창구 */}
+                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-cur-muted shrink-0" />
+                        <Label className="text-[13px] font-medium text-cur-body">보고서 받을 내 이메일</Label>
+                        {reportEmail && (
+                            <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-cur-success shrink-0">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> 인증됨
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex gap-2">
+                        <Input
+                            type="email"
+                            value={emailInput}
+                            onChange={(e) => setEmailInput(e.target.value)}
+                            placeholder="name@company.com"
+                            className="h-11"
+                        />
+                        <Button
+                            onClick={sendEmailVerify}
+                            disabled={emailBusy || !emailInput.trim() || emailInput.trim() === reportEmail}
+                            className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0 disabled:opacity-40"
+                        >
+                            {emailBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "인증 메일"}
+                        </Button>
+                    </div>
+                    {pendingEmail && pendingEmail !== reportEmail && (
+                        <p className="text-[12px] text-cur-primary leading-relaxed">
+                            <b>{pendingEmail}</b> 인증 대기 중 — 메일함의 링크를 눌러야 바뀝니다.
+                        </p>
+                    )}
+                    <p className="text-[12px] text-cur-muted-soft leading-relaxed">
+                        주소를 바꾸면 출력/발송 설정의 받는 사람도 새 주소로 함께 옮겨져요.
+                    </p>
+                    {emailMsg && <p className="text-[12px] text-cur-error">{emailMsg}</p>}
                 </div>
 
                 <Button

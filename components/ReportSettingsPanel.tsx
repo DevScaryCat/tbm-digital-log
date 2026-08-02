@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ExternalLink, Loader2, Sparkles, MailWarning } from "lucide-react"
 import { countRecipients, type ConsentStatus, type Recipient, type RecipientCounts } from "@/lib/reportRecipients"
+import { resolveMyReportEmail } from "@/lib/myEmail"
 
 const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
     pending: { label: "승인 대기", cls: "text-cur-muted bg-cur-elevated" },
@@ -23,6 +24,12 @@ const STATUS_BADGE: Record<ConsentStatus, { label: string; cls: string }> = {
 export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?: boolean; onRecipientsChange?: (counts: RecipientCounts) => void }) {
     const router = useRouter()
     const [recipients, setRecipients] = useState<Recipient[]>([])
+    // 목록에 내 주소가 섞여 있으면 어느 게 '나'인지 알 수 없다 — 표시로 구분한다(Chris).
+    // 판정은 분석 보고서 발송과 같은 lib/myEmail 규칙이라 두 화면이 갈리지 않는다.
+    const [myEmail, setMyEmail] = useState<string | null>(null)
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data }) => setMyEmail(resolveMyReportEmail(data?.user as any)))
+    }, [])
     const [newEmail, setNewEmail] = useState("")
     const [saving, setSaving] = useState(false)
     const [loaded, setLoaded] = useState(false)
@@ -149,7 +156,12 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                         <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
                             {recipients.map((r) => (
                                 <div key={r.email} className="flex items-center gap-2 px-3 py-2.5">
-                                    <span className="text-[14px] text-cur-ink truncate flex-1 min-w-0">{r.email}</span>
+                                    <span className="flex-1 min-w-0">
+                                        <span className="block text-[14px] text-cur-ink truncate">{r.email}</span>
+                                        {myEmail && r.email.toLowerCase() === myEmail.toLowerCase() && (
+                                            <span className="block text-[11px] font-semibold text-cur-primary mt-0.5">내 이메일 · 내 정보 수정에서 바꿀 수 있어요</span>
+                                        )}
+                                    </span>
                                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[r.status].cls}`}>
                                         {STATUS_BADGE[r.status].label}
                                     </span>

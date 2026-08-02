@@ -5,7 +5,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2 } from "lucide-react"
+import { Loader2, BellOff } from "lucide-react"
+import { showConfirm } from "@/lib/uiDialog"
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"]
 
@@ -53,12 +54,20 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
         return () => { cancelled = true }
     }, [])
 
-    // 낙관 반영 + 실패 시 복구. 최소 하나는 켜져 있어야 한다(둘 다 끄면 보고서가 아예 안 나감).
+    // 낙관 반영 + 실패 시 복구.
+    // 둘 다 끄는 것도 허용한다(Chris) — 메일을 받고 싶지 않을 수 있고, 막아두면 수신처를
+    // 지우는 우회로밖에 안 남아 설정이 실제와 어긋난다. 대신 끄기 직전에 결과를 분명히 말한다.
     const save = async (patch: { monthly?: boolean; weekly?: boolean; weekday?: number }) => {
         if (!pro) { setMsg("구독하면 발송 주기를 설정할 수 있어요."); return }
         const prev = { monthly, weekly, weekday }
         const next = { ...prev, ...patch }
-        if (!next.monthly && !next.weekly) { setMsg("월간·주간 중 최소 하나는 켜두세요."); return }
+        if (!next.monthly && !next.weekly) {
+            const ok = await showConfirm(
+                "월간·주간 보고서가 모두 꺼집니다. 지금부터는 등록된 받는 사람에게 보고서 메일이 한 통도 가지 않아요.\n\n필요할 때 여기서 다시 켤 수 있고, 문서 출력은 그대로 됩니다.",
+                { title: "이제 보고서를 받지 못합니다", confirmText: "모두 끄기", danger: true }
+            )
+            if (!ok) return
+        }
         setMonthly(next.monthly); setWeekly(next.weekly); setWeekday(next.weekday)
         setBusy(true); setMsg(null)
         try {
@@ -80,7 +89,7 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
         <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
             <div>
                 <p className="text-[13px] font-semibold text-cur-ink">발송 주기</p>
-                <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">월간·주간을 함께 켜면 둘 다 받아볼 수 있어요.</p>
+                <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">월간·주간을 함께 켜면 둘 다 받아볼 수 있어요. 둘 다 끄면 메일이 나가지 않습니다.</p>
             </div>
             {!loaded ? (
                 <div className="py-3 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-cur-muted-soft" /></div>
@@ -110,6 +119,16 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
                         )}
                         <Toggle on={weekly} disabled={busy} onClick={() => save({ weekly: !weekly })} />
                     </div>
+                </div>
+            )}
+            {/* 다 꺼진 상태는 화면이 계속 말해줘야 한다 — 안 그러면 '왜 메일이 안 오지'가 된다 */}
+            {loaded && !monthly && !weekly && (
+                <div className="flex gap-2.5 rounded-xl bg-cur-elevated border border-cur-hairline-strong p-3">
+                    <BellOff className="w-4 h-4 text-cur-ink shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-cur-body leading-relaxed">
+                        <b className="text-cur-ink">보고서 메일이 나가지 않는 상태예요.</b> 위 토글을 켜면 다시 발송됩니다.
+                        (문서 출력·AI 분석 보고서는 영향 없어요)
+                    </p>
                 </div>
             )}
             {msg && <p className="text-[12px] text-cur-error">{msg}</p>}

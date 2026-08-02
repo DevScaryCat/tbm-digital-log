@@ -45,8 +45,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "변경할 항목이 없습니다." }, { status: 400 });
   }
 
-  // 현재 값과 부분 패치를 합친 결과가 '월간·주간 둘 다 off'면 거부 — 그러면 보고서가 아예 안 나간다.
-  // (클라이언트 가드만으론 직접 POST로 뚫린다)
+  // 둘 다 끄는 것을 허용한다(Chris) — 메일을 받고 싶지 않은 계정이 있는데, 막아두면
+  // 수신처를 지우는 우회로 밖에 없어 오히려 설정이 실제와 어긋난다.
+  // 대신 응답에 allOff를 실어 화면이 "이제 보고서를 받지 못합니다"를 분명히 말하게 한다.
   const { data: cur } = await admin
     .from("subscriptions")
     .select("report_send_monthly, report_send_weekly")
@@ -57,14 +58,11 @@ export async function POST(request: Request) {
   }
   const nextMonthly = "report_send_monthly" in patch ? (patch.report_send_monthly as boolean) : (cur.report_send_monthly ?? true);
   const nextWeekly = "report_send_weekly" in patch ? (patch.report_send_weekly as boolean) : (cur.report_send_weekly ?? false);
-  if (!nextMonthly && !nextWeekly) {
-    return NextResponse.json({ error: "월간·주간 중 최소 하나는 켜두세요." }, { status: 400 });
-  }
 
   const { error } = await admin.from("subscriptions").update(patch).eq("user_id", user.id);
   if (error) {
     console.error("report schedule update error:", error);
     return NextResponse.json({ error: "저장에 실패했습니다." }, { status: 500 });
   }
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, monthly: nextMonthly, weekly: nextWeekly, allOff: !nextMonthly && !nextWeekly });
 }

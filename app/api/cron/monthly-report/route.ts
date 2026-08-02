@@ -86,7 +86,7 @@ async function run(request: Request) {
         // 감독자 구독 유효성 — plan 문자열이 아니라 "유료 자격이 살아있는가"로 판정한다.
         const { data: ownerSub } = await admin
           .from("subscriptions")
-          .select("status, current_period_end, billing_key, plan")
+          .select("status, current_period_end, billing_key, plan, report_send_monthly")
           .eq("user_id", org.owner_user_id)
           .maybeSingle();
 
@@ -102,6 +102,9 @@ async function run(request: Request) {
         orgLinked.add(org.owner_user_id);
         for (const id of memberIds) orgLinked.add(id);
         if (!ownerSub || !subscriptionAllows(ownerSub) || !isProPlan(ownerSub.plan)) continue;
+        // 발송 설정에서 월간을 끈 계정은 건너뛴다. 여태 이 플래그를 아무도 안 읽어서
+        // 화면에서 꺼도 메일이 계속 나갔다(죽은 토글).
+        if ((ownerSub as any).report_send_monthly === false) continue;
         orgResults.orgs++;
 
         // 현장명·실이메일 메타데이터.
@@ -341,7 +344,7 @@ async function run(request: Request) {
     const accountIds = [...new Set(rows.map((r) => r.account_user_id))];
     const { data: subs } = await admin
       .from("subscriptions")
-      .select("user_id, plan, status, current_period_end")
+      .select("user_id, plan, status, current_period_end, report_send_monthly")
       .in("user_id", accountIds);
     const nowMs = now.getTime();
     const validPro = new Set<string>();
@@ -351,6 +354,8 @@ async function run(request: Request) {
       if (orgLinked.has(s.user_id)) continue;
       // 구 베이직·영구무료는 월간 보고서 대상이 아니다(DB 트리거의 80/10/0 집합과 동일 기준).
       if (!isProPlan(s.plan)) continue;
+      // 월간 발송을 끈 계정은 대상에서 뺀다 (화면 토글이 실제로 동작하도록)
+      if ((s as any).report_send_monthly === false) continue;
       const ok = ["active", "trialing", "past_due"].includes(s.status) ||
         (s.status === "canceled" && s.current_period_end && new Date(s.current_period_end).getTime() > nowMs);
       if (ok) validPro.add(s.user_id);

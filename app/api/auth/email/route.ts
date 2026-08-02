@@ -2,8 +2,22 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
+import { resolveMyReportEmail } from "@/lib/myEmail";
 
 export const runtime = "nodejs";
+
+/** 지금 내 보고서 수신 이메일 상태 — 내 정보 수정 화면이 읽는다 */
+export async function GET(request: Request) {
+  const user = await getUserFromRequest(request);
+  if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  return NextResponse.json({
+    // 인증까지 끝나 실제로 보고서를 받을 수 있는 주소
+    email: resolveMyReportEmail(user as never),
+    // 입력은 했지만 아직 링크를 안 누른 주소 — 화면이 '인증 대기'를 말할 수 있게
+    pending: meta.real_email && !meta.real_email_verified_at ? String(meta.real_email) : null,
+  });
+}
 
 export async function POST(request: Request) {
   const user = await getUserFromRequest(request);
@@ -13,6 +27,10 @@ export async function POST(request: Request) {
   const target = String(email ?? "").trim();
   if (!isValidEmail(target)) {
     return NextResponse.json({ error: "이메일 형식이 올바르지 않습니다." }, { status: 400 });
+  }
+  // 발급 계정의 가짜 도메인 — 여기로는 어떤 메일도 도착하지 않는다
+  if (target.toLowerCase().endsWith("@tbm.com")) {
+    return NextResponse.json({ error: "실제로 받아볼 수 있는 이메일 주소를 입력해주세요." }, { status: 400 });
   }
 
   const proto = request.headers.get("x-forwarded-proto") || "https";
@@ -45,5 +63,5 @@ export async function POST(request: Request) {
   }
   const r = await sendRealEmailVerification(admin, user.id, target, baseUrl);
   if (!r.ok) return NextResponse.json({ error: r.error || "인증 메일 발송 실패" }, { status: 500 });
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, pending: target });
 }
