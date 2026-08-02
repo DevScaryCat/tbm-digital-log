@@ -4,16 +4,22 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
-import { Loader2, MessageSquareText, Trash2 } from "lucide-react"
+import { Loader2, MessageSquareText, Trash2, FileText, ChevronRight } from "lucide-react"
 
-type Suggestion = { id: string; content: string; author_name: string | null; is_read: boolean; created_at: string }
+type Suggestion = {
+    id: string; content: string; author_name: string | null; is_read: boolean; created_at: string
+    /** 이 제안이 들어온 서명 세션에서 만들어진 문서 (20260802000000 마이그레이션) */
+    doc_type: "minute" | "log" | null; doc_id: string | null
+}
 
 export default function SuggestionsPage() {
     useRequireSubscription()
+    const router = useRouter()
     const [loading, setLoading] = useState(true)
     const [items, setItems] = useState<Suggestion[]>([])
     // 방금 읽음 처리된 항목도 이번 방문 동안은 NEW 배지를 유지해 알아볼 수 있게 한다
@@ -24,7 +30,7 @@ export default function SuggestionsPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) return
             const rows = await fetchAllRows<Suggestion>((f, t) =>
-                supabase.from("worker_suggestions").select("id, content, author_name, is_read, created_at").order("id").range(f, t)
+                supabase.from("worker_suggestions").select("id, content, author_name, is_read, created_at, doc_type, doc_id").order("id").range(f, t)
             )
             rows.sort((a, b) => b.created_at.localeCompare(a.created_at))
             setItems(rows)
@@ -90,6 +96,23 @@ export default function SuggestionsPage() {
                                     </button>
                                 </div>
                                 <p className="text-[15px] leading-6 text-cur-ink whitespace-pre-wrap break-words">{item.content}</p>
+
+                                {/* 이 제안이 나온 문서로 — 의견을 받아 무엇을 조치했는지 되짚는 경로 */}
+                                {item.doc_id && item.doc_type ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push(item.doc_type === "minute" ? `/report/minutes/${item.doc_id}` : `/report/${item.doc_id}`)}
+                                        className="w-full mt-1 flex items-center gap-2 px-3 py-2.5 rounded-[8px] border border-cur-hairline bg-cur-elevated text-left hover:border-cur-primary/40 active:bg-cur-elevated/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                    >
+                                        <FileText className="w-4 h-4 text-cur-muted shrink-0" />
+                                        <span className="flex-1 min-w-0 text-[13px] font-semibold text-cur-ink truncate">
+                                            이 의견이 나온 {item.doc_type === "minute" ? "TBM 회의록" : "안전보건교육일지"} 열기
+                                        </span>
+                                        <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
+                                    </button>
+                                ) : (
+                                    <p className="text-[12px] text-cur-muted-soft">연결된 문서를 찾지 못했어요 (문서가 저장되기 전에 들어온 의견)</p>
+                                )}
                             </div>
                         ))
                     )}

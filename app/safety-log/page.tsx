@@ -564,6 +564,14 @@ export default function TBMPage() {
             }
 
             if (sessionId) {
+                // 이 세션에서 들어온 근로자 제안을 방금 만든 교육일지에 연결한다 —
+                // pending 행을 지우고 나면 되짚을 근거가 사라지므로 삭제 '전에' 박아둔다.
+                // 실패해도 저장은 성공이다(제안함에서 링크만 안 보인다).
+                await supabase.from('worker_suggestions')
+                    .update({ doc_type: 'log', doc_id: logData.id })
+                    .eq('session_id', sessionId)
+                    .is('doc_id', null)
+
                 // 저장 완료 → pending 정리. OPEN 마커가 사라지면 서명 페이지는 자동으로 만료 처리되므로
                 // 별도 CLOSED 마커 삽입은 불필요(삭제 후엔 소유권 근거가 없어 RLS상 삽입도 거부됨).
                 await supabase.from('tbm_pending_signatures')
