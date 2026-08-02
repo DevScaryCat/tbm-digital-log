@@ -25,7 +25,7 @@ const CHANNELS: Record<string, string | undefined> = {
 // 카카오 말풍선 마크. 버튼이 흰 바탕이 되면서 브랜드색을 마크 쪽으로 옮겼다
 // (노란 판 위 검정 버블 = 노란 판이 있을 때의 표기법이라, 판이 없어지면 마크가 색을 가져야 식별된다)
 const KakaoIcon = () => (
-    <svg viewBox="0 0 256 256" fill="#FEE500" className="w-[18px] h-[18px]" aria-hidden="true">
+    <svg viewBox="0 0 256 256" fill="#FEE500" className="w-[20px] h-[20px]" aria-hidden="true">
         <path d="M128 36C70.562 36 24 72.713 24 118c0 29.279 19.466 54.97 48.748 69.477-1.593 5.494-10.237 35.344-10.581 37.689 0 0-.207 1.762.934 2.434s2.483.15 2.483.15c3.272-.457 37.943-24.811 43.944-29.04 5.995.849 12.168 1.29 18.472 1.29 57.438 0 104-36.712 104-82 0-45.287-46.562-82-104-82z" />
     </svg>
 )
@@ -33,7 +33,7 @@ const KakaoIcon = () => (
 // 토스 공식 심볼 (static.toss.im 제공 자산) — 파란 버튼 위 흰색 표기가 브랜드 가이드 표준
 const TossIcon = () => (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/brand/toss-symbol.png" alt="" className="w-[18px] h-[18px] object-contain" />
+    <img src="/brand/toss-symbol.png" alt="" className="w-[20px] h-[20px] object-contain" />
 )
 
 type Method = {
@@ -47,10 +47,10 @@ type Method = {
 // 결제수단 버튼은 전부 같은 판(흰 바탕 + 옅은 보더)을 쓴다(Chris).
 // 브랜드 원색 판 3개가 나란히 서면 화면에서 그 줄만 튀고, 어느 것을 골라야 하는지도 아니라
 // 그냥 시끄럽기만 하다. 식별은 아이콘의 브랜드색이 맡는다.
-const METHOD_STYLE = "bg-cur-card text-cur-ink border border-cur-hairline hover:border-cur-primary/40 hover:bg-cur-elevated/50"
+const METHOD_STYLE = "bg-cur-card text-cur-ink hover:bg-cur-elevated/60"
 
 const ALL_METHODS: Method[] = [
-    { key: "card", label: "카드", billingKeyMethod: "CARD", style: METHOD_STYLE, icon: <CreditCard className="w-[18px] h-[18px] text-cur-muted" /> },
+    { key: "card", label: "카드", billingKeyMethod: "CARD", style: METHOD_STYLE, icon: <CreditCard className="w-[20px] h-[20px] text-cur-muted" /> },
     { key: "kakaopay", label: "카카오페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <KakaoIcon /> },
     { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <span className="text-[15px] font-black leading-none text-[#03C75A]">N</span> },
     { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <TossIcon /> },
@@ -231,6 +231,9 @@ export function SubscribeButtons({
                 </div>
             )}
             <p className="text-[13px] text-cur-muted text-center">결제수단을 선택하세요</p>
+            {/* 버튼 3개가 각자 보더를 갖고 떨어져 있으면 '서로 다른 것 3개'로 보인다.
+                한 카드 안에 구분선으로 이어붙여 '하나에서 고르는 목록'으로 만든다(Chris). */}
+            <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden bg-cur-card">
             {METHODS.map((m) => {
                 // update 모드에서 이미 사용 중인 수단은 '현재 사용 중'으로 표시하고 선택 불가 처리
                 const isCurrent = mode === "update" && m.key === currentMethod
@@ -240,27 +243,28 @@ export function SubscribeButtons({
                         onClick={() => handleIssue(m)}
                         disabled={!!processing || isCurrent}
                         aria-disabled={isCurrent}
-                        className={`w-full font-bold h-12 rounded-xl transition-all justify-start px-4 ${
+                        className={`w-full font-bold h-14 rounded-none border-0 shadow-none transition-colors justify-center px-4 ${
                             isCurrent
-                                ? "bg-cur-elevated text-cur-muted border border-cur-hairline hover:opacity-100 disabled:opacity-100 cursor-default"
+                                ? "bg-cur-elevated text-cur-muted hover:opacity-100 disabled:opacity-100 cursor-default"
                                 : m.style
                         }`}
                     >
                         {processing === m.key ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                            // 아이콘을 고정폭 박스에 넣어 버튼끼리 아이콘 라인을 맞추고 왼쪽정렬
-                            <span className="flex items-center gap-2.5 w-full">
-                                <span className="flex w-[18px] h-[18px] items-center justify-center shrink-0">{m.icon}</span>
-                                <span>{isCurrent ? m.label : `${m.label}${ctaSuffix}`}</span>
+                            // 아이콘 + 라벨을 가운데로 — 소셜 로그인 버튼과 같은 읽는 방식
+                            <span className="flex items-center justify-center gap-2.5 w-full relative">
+                                <span className="flex w-[20px] h-[20px] items-center justify-center shrink-0">{m.icon}</span>
+                                <span className="text-[15px]">{isCurrent ? m.label : `${m.label}${ctaSuffix}`}</span>
                                 {isCurrent && (
-                                    <span className="ml-auto text-[11px] font-semibold text-cur-muted">현재 사용 중</span>
+                                    <span className="absolute right-0 text-[11px] font-semibold text-cur-muted">현재 사용 중</span>
                                 )}
                             </span>
                         )}
                     </Button>
                 )
             })}
+            </div>
             {METHODS.length === 0 && (
                 <p className="text-[13px] text-cur-error text-center">결제수단이 설정되지 않았습니다. (환경변수 확인)</p>
             )}
