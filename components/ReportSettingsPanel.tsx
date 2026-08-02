@@ -28,7 +28,7 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
     // 판정은 분석 보고서 발송과 같은 lib/myEmail 규칙이라 두 화면이 갈리지 않는다.
     const [myEmail, setMyEmail] = useState<string | null>(null)
     useEffect(() => {
-        supabase.auth.getUser().then(({ data }) => setMyEmail(resolveMyReportEmail(data?.user as any)))
+        supabase.auth.getUser().then(({ data }) => setMyEmail(resolveMyReportEmail(data?.user as never)))
     }, [])
     const [newEmail, setNewEmail] = useState("")
     const [saving, setSaving] = useState(false)
