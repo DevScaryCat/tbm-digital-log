@@ -37,6 +37,7 @@ interface TbmMinute {
     safety_phrase: string | null;
     instructions: string | null;
     hazards: Hazard[];
+    photo_url: string | null;
     raw_transcript: string | null;
 }
 
@@ -157,6 +158,7 @@ export default function MinutesReportPage() {
                 // 서명: 저장된 public URL → signed URL (버킷 private 대응)
                 const sig = await resolveSignedMap([
                     minutesData.leader_signature,
+                    minutesData.photo_url,
                     ...parts.map((p) => p.signature),
                 ])
 
@@ -164,6 +166,7 @@ export default function MinutesReportPage() {
                     ...minutesData,
                     hazards: parseHazards(minutesData.hazards),
                     leader_signature: signed(sig, minutesData.leader_signature),
+                    photo_url: signed(sig, minutesData.photo_url),
                 }
                 setMinutes(finalData)
                 setParticipants(parts.map((p) => ({ ...p, signature: signed(sig, p.signature) })))
@@ -394,6 +397,18 @@ export default function MinutesReportPage() {
                         })()}
                     </tbody>
                 </table>
+            </div>
+
+            {/* 현장 사진 — 출력물 별도 장 (교육일지 '교 육 사 진'과 같은 규격) */}
+            <div className="max-w-[210mm] mx-auto bg-cur-card print:shadow-none print:w-full print:break-before-page min-h-[297mm] box-border p-[15mm] mt-8 print:mt-0 flex flex-col">
+                <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>현 장 사 진</h1>
+                <div className="w-full h-[200mm] border border-black flex items-center justify-center p-2">
+                    {minutes.photo_url ? (
+                        <img src={minutes.photo_url} className="max-w-full max-h-full object-contain" alt="회의 현장" />
+                    ) : (
+                        <span className="text-gray-400">등록된 사진 없음</span>
+                    )}
+                </div>
             </div>
 
             {/* 원문은 법정 서식이 아니므로 참석자 확인 뒤 별도 장에서 시작한다 */}

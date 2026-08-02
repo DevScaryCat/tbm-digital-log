@@ -82,7 +82,7 @@ export default function BatchReportPage() {
                     if (Array.isArray(mids) && mids.length > 0) {
                         const { data: minutesData } = await supabase
                             .from("tbm_minutes")
-                            .select("id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, created_at")
+                            .select("id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, photo_url, created_at")
                             .in("id", mids)
                             .order("date", { ascending: true })
                         if (minutesData) {
@@ -91,13 +91,14 @@ export default function BatchReportPage() {
                             for (const mnt of minutesData) mp[mnt.id] = []
                             for (const pp of (mParts || [])) (mp[pp.minutes_id] ||= []).push(pp)
                             const urls: (string | null | undefined)[] = []
-                            for (const mnt of minutesData) urls.push(mnt.leader_signature)
+                            for (const mnt of minutesData) urls.push(mnt.leader_signature, mnt.photo_url)
                             for (const arr of Object.values(mp)) for (const pp of arr) urls.push(pp.signature)
                             const sigm = await resolveSignedMap(urls)
                             setMinutes(minutesData.map((mnt: any) => ({
                                 ...mnt,
                                 hazards: Array.isArray(mnt.hazards) ? mnt.hazards : (() => { try { return JSON.parse(mnt.hazards ?? "[]") } catch { return [] } })(),
                                 leader_signature: signed(sigm, mnt.leader_signature),
+                                photo_url: signed(sigm, mnt.photo_url),
                             })))
                             const smp: Record<string, any[]> = {}
                             for (const [k, arr] of Object.entries(mp)) smp[k] = arr.map((pp: any) => ({ ...pp, signature: signed(sigm, pp.signature) }))

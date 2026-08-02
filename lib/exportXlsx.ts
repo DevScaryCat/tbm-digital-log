@@ -265,8 +265,9 @@ async function fillMinutesSheet(
     const m = item.minutes ?? {}
     const parts = item.participants ?? []
 
-    const [leaderSig, ...partSigs] = await Promise.all([
+    const [leaderSig, photo, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
+        loadImage(m.photo_url, stats, { photo: true }),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -384,6 +385,19 @@ async function fillMinutesSheet(
         if (s2) placeImage(wb, ws, s2, r, 4, 110, 30, 0.3)
         r++
     }
+
+    // --- 현장 사진 (교육일지 시트와 같은 규격) ---
+    ws.getRow(r++).height = 14 // 섹션 사이 여백 행
+    mergeBox(ws, r, 1, r, 4, "현 장 사 진", { bold: true, size: 16, align: "center", noBorder: true })
+    ws.getRow(r).height = 28
+    r++
+    const M_PHOTO_ROWS = 12
+    mergeBox(ws, r, 1, r + M_PHOTO_ROWS - 1, 4,
+        photo ? "" : "등록된 현장 사진이 없습니다.",
+        photo ? { align: "center" } : { bold: true, color: C.gray500, align: "center" })
+    for (let i = 0; i < M_PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
+    if (photo) placeImage(wb, ws, photo, r, 1, 600, 460, 0.25)
+    r += M_PHOTO_ROWS
 
     appendTranscript(ws, r, 4, m.raw_transcript)
 }

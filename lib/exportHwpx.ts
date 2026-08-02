@@ -648,8 +648,9 @@ async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadSt
     const m = item.minutes
     const parts = item.participants || []
 
-    const [leaderSig, ...partSigs] = await Promise.all([
+    const [leaderSig, photo, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
+        loadImage(m.photo_url, stats, { photo: true }),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -760,6 +761,14 @@ async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadSt
 
     // 여러 건은 표 앞 쪽 나눔으로 구분
     doc.paras.push(tablePara(doc, grid([15, 35, 15, 35]), rows, !first))
+
+    // --- 다음 쪽: 현장 사진 (교육일지와 같은 규격) ---
+    doc.paras.push(para(doc, { align: "CENTER", breakBefore: true, char: { bold: true, size: 44 }, text: "현 장 사 진" }))
+    doc.paras.push(
+        photo
+            ? para(doc, { align: "CENTER", runsXml: picRunXml(doc, photo, 680, 780) })
+            : para(doc, { align: "CENTER", char: { bold: true, color: C.gray500 }, text: "등록된 현장 사진이 없습니다." })
+    )
 
     // 원문은 이 건의 맨 뒤 — 다음 건도 쪽 나눔으로 시작하므로 건끼리 섞이지 않는다
     doc.paras.push(...transcriptParas(doc, m.raw_transcript))

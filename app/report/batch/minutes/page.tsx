@@ -80,7 +80,7 @@ export default function BatchMinutesReportPage() {
             // raw_transcript(최대 20분 분량 STT 원문) 제외 — 일괄 인쇄는 수백 건 × 수십 KB가 될 수 있음
             const { data: minutesData } = await supabase
                 .from('tbm_minutes')
-                .select('id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, created_at')
+                .select('id, user_id, date, start_time, end_time, location, process_name, work_name, work_content, leader_title, leader_name, leader_signature, health_check, ppe_check, safety_phrase, instructions, hazards, photo_url, created_at')
                 .in('id', ids)
                 .order('date', { ascending: true })
 
@@ -93,7 +93,7 @@ export default function BatchMinutesReportPage() {
 
                 // 서명: 저장된 public URL → signed URL (버킷 private 대응)
                 const allUrls: (string | null | undefined)[] = []
-                for (const m of minutesData) allUrls.push(m.leader_signature)
+                for (const m of minutesData) allUrls.push(m.leader_signature, m.photo_url)
                 for (const arr of Object.values(pMap)) for (const p of arr) allUrls.push(p.signature)
                 const sig = await resolveSignedMap(allUrls)
 
@@ -101,6 +101,7 @@ export default function BatchMinutesReportPage() {
                     ...m,
                     hazards: typeof m.hazards === 'string' ? safeParse(m.hazards) : (Array.isArray(m.hazards) ? m.hazards : []),
                     leader_signature: signed(sig, m.leader_signature),
+                    photo_url: signed(sig, m.photo_url),
                 })))
                 const signedMap: Record<string, any[]> = {}
                 for (const [k, arr] of Object.entries(pMap)) signedMap[k] = arr.map((p: any) => ({ ...p, signature: signed(sig, p.signature) }))

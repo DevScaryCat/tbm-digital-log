@@ -67,6 +67,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // 서명 이미지는 서버에서 signed URL까지 만들어 내려준다 — 클라이언트 재서명 불필요
   const sig = await resolveSignedMapAdmin(admin, [
     minute.leader_signature,
+    minute.photo_url,
     ...participants.map((p) => p.signature),
   ]);
   const signedUrl = <T extends string | null | undefined>(u: T): T => (u ? ((sig[u] ?? u) as T) : u);
@@ -81,7 +82,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   } catch { /* 무시 */ }
 
   return NextResponse.json({
-    minutes: { ...minute, leader_signature: signedUrl(minute.leader_signature) },
+    minutes: { ...minute, leader_signature: signedUrl(minute.leader_signature), photo_url: signedUrl(minute.photo_url) },
     participants: participants.map((p) => ({ ...p, signature: signedUrl(p.signature) })),
     siteName,
   });

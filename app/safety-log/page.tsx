@@ -98,12 +98,17 @@ interface TBMData {
     participants: Participant[]
 }
 
+// 작성 순서(Chris): 기본정보 → 사진 → 녹음 → 명단 → 검토 → 완료.
+// 숫자로 직접 비교하면 순서를 바꿀 때마다 화면·검증·되돌아가기가 제각각 어긋난다 —
+// 이름으로만 비교하고, 순서 변경은 이 숫자만 고친다.
+const S_BASIC = 1, S_PHOTO = 2, S_RECORD = 3, S_ROSTER = 4, S_REVIEW = 5, S_DONE = 6
+
 export default function TBMPage() {
     const router = useRouter()
     useRequireSubscription()
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
-    const [step, setStep] = useState(1)
+    const [step, setStep] = useState(S_BASIC)
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
@@ -347,7 +352,7 @@ export default function TBMPage() {
             try { recognitionRef.current?.stop(); } catch {}
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
-            if (currentSession && currentStep !== 6) {
+            if (currentSession && currentStep !== S_DONE) {
                 console.log("Abandoning session (unmount): ", currentSession);
                 const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/tbm_pending_signatures`;
                 const headers = {
@@ -380,7 +385,7 @@ export default function TBMPage() {
     }, []);
 
     useEffect(() => {
-        if (step === 3) {
+        if (step === S_ROSTER) {
             let currentSessionId = sessionId;
             if (!currentSessionId) {
                 currentSessionId = uuidv4();
@@ -441,7 +446,7 @@ export default function TBMPage() {
     }, [step, sessionId]);
 
     const validateStep = (currentStep: number) => {
-        if (currentStep === 1) {
+        if (currentStep === S_BASIC) {
             if (!formData.date) return "교육 일자를 선택해주세요.";
             if (!formData.location) return "교육 장소를 입력해주세요.";
             if (formData.educationType !== "TBM") {
@@ -449,7 +454,7 @@ export default function TBMPage() {
                 if (!instructorSignature) return "교육실시자 서명을 완료해주세요.";
             }
         }
-        if (currentStep === 3) {
+        if (currentStep === S_ROSTER) {
             const validParticipants = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
 
             if (validParticipants.length === 0) return "최소 1명 이상의 참석자 서명이 필요합니다.";
@@ -459,10 +464,10 @@ export default function TBMPage() {
 
             if (validParticipants.some(p => !p.name.trim())) return "참석자 이름을 모두 입력해주세요.";
         }
-        if (currentStep === 4) {
+        if (currentStep === S_PHOTO) {
             if (!formData.photo) return "현장 사진 촬영은 필수입니다.";
         }
-        if (currentStep === 5) {
+        if (currentStep === S_REVIEW) {
             if (!formData.educationContent || formData.educationContent.length < 5) return "교육 내용을 입력하거나 AI 요약을 진행해주세요.";
         }
         return null;
@@ -471,7 +476,7 @@ export default function TBMPage() {
     const handleNext = () => {
         const errorMsg = validateStep(step);
         if (errorMsg) { alert(errorMsg); return; }
-        setStep(prev => Math.min(6, prev + 1));
+        setStep(prev => Math.min(S_DONE, prev + 1));
     }
 
     const uploadBase64ToStorage = async (base64Data: string, bucket: string, pathPrefix: string): Promise<string> => {
@@ -580,7 +585,7 @@ export default function TBMPage() {
             }
 
             setSavedLogId(logData.id)
-            setStep(6)
+            setStep(S_DONE)
 
         } catch (e: unknown) {
             const errorMessage =
@@ -733,7 +738,7 @@ export default function TBMPage() {
         if (!accumulatedTranscript.trim()) { alert("인식된 음성이 없습니다."); return; }
         
         setIsProcessingSTT(true)
-        setStep(3)
+        setStep(S_ROSTER)
         
         setTimeout(() => {
             setIsProcessingSTT(false)
@@ -755,7 +760,7 @@ export default function TBMPage() {
         }
 
         setIsProcessingSTT(true)
-        setStep(3)
+        setStep(S_ROSTER)
         
         try {
             const formData = new FormData()
@@ -868,7 +873,7 @@ export default function TBMPage() {
 
                 <div className="p-6 space-y-8 flex-1 pb-12 bg-cur-canvas-soft">
 
-                    {step === 1 && (
+                    {step === S_BASIC && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">1</span> 기본 정보
@@ -876,19 +881,16 @@ export default function TBMPage() {
                             <div className="space-y-4 bg-cur-card p-4 rounded-[12px] border border-cur-hairline shadow-none">
                                 <div className="space-y-2">
                                     <Label className={LABEL_CLS}>교육 일자</Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="ghost" className={cn(FIELD_CLS, "justify-start text-left hover:bg-cur-elevated")}>
-                                                <CalendarIcon className="mr-2 h-5 w-5 text-cur-muted" />
-                                                <span className={cn(formData.date ? "text-cur-ink" : "text-cur-muted")}>
-                                                    {formData.date ? format(formData.date, "yyyy년 MM월 dd일 (EEE)", { locale: ko }) : "날짜 선택"}
-                                                </span>
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0 rounded-[12px] border-cur-hairline shadow-[0_4px_24px_rgba(0,0,0,0.08)]" align="center">
-                                            <Calendar mode="single" locale={ko} selected={formData.date} onSelect={(date) => setFormData(prev => ({ ...prev, date }))} initialFocus className="p-3" />
-                                        </PopoverContent>
-                                    </Popover>
+                                    {/* 고를 수 없다(Chris) — 오늘로 자동 기입.
+                                        교육일지는 '그날 실시한 교육'의 기록이라 날짜를 손으로 고를 수 있으면
+                                        나중에 몰아 쓰면서 아무 날짜나 박는 문이 열린다(법정 증빙의 신뢰도 문제). */}
+                                    <div className={cn(FIELD_CLS, "flex items-center gap-2 cursor-default")}>
+                                        <CalendarIcon className="h-5 w-5 text-cur-muted shrink-0" />
+                                        <span className="text-cur-ink">
+                                            {formData.date ? format(formData.date, "yyyy년 MM월 dd일 (EEE)", { locale: ko }) : "-"}
+                                        </span>
+                                        <span className="ml-auto text-[11px] text-cur-muted bg-cur-elevated rounded-[6px] px-1.5 py-0.5 shrink-0">오늘 자동</span>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -941,10 +943,10 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {step === 2 && (
+                    {step === S_RECORD && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 교육 진행 및 녹음
+                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">3</span> 교육 진행 및 녹음
                             </h2>
 
                             <div className="bg-cur-card border border-cur-hairline rounded-[12px] p-6 min-h-[360px] flex flex-col items-center justify-center text-center">
@@ -1026,7 +1028,7 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {step === 5 && (
+                    {step === S_REVIEW && (
                         <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">5</span> 내용 확인 및 수정
@@ -1084,10 +1086,10 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {step === 4 && (
+                    {step === S_PHOTO && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 현장 사진
+                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 현장 사진
                             </h2>
 
                             <div className="aspect-video bg-cur-canvas rounded-[12px] border border-cur-hairline flex items-center justify-center relative overflow-hidden">
@@ -1139,11 +1141,11 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {step === 3 && (
+                    {step === S_ROSTER && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex justify-between items-center">
                                 <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                    <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">3</span> 명단 <span className="text-[14px] font-medium text-cur-muted bg-cur-card px-2 py-0.5 rounded-[6px] border border-cur-hairline ml-1">{formData.participants.length}명</span>
+                                    <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 명단 <span className="text-[14px] font-medium text-cur-muted bg-cur-card px-2 py-0.5 rounded-[6px] border border-cur-hairline ml-1">{formData.participants.length}명</span>
                                 </h2>
                                 <Button size="sm" onClick={() => setFormData(prev => ({ ...prev, participants: [...prev.participants, { id: Date.now(), name: "", gender: "M", status: "present", signature: null }] }))} className="bg-cur-card border border-cur-hairline text-cur-ink hover:bg-cur-canvas h-8 px-3 rounded-[6px] text-[12px] font-semibold shadow-sm"><Plus className="w-3.5 h-3.5 mr-1" /> 추가</Button>
                             </div>
@@ -1202,7 +1204,7 @@ export default function TBMPage() {
                         </div>
                     )}
 
-                    {step === 6 && (
+                    {step === S_DONE && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
                                 <CheckCircle2 className="w-10 h-10 text-cur-success" />
@@ -1223,24 +1225,24 @@ export default function TBMPage() {
 
                 </div>
 
-                {step < 6 && (
+                {step < S_DONE && (
                     <div className="bg-cur-card border-t border-cur-hairline p-4 flex gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.02)] sticky bottom-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-b-[24px]">
-                        {step > 1 && (
-                            <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
+                        {step > S_BASIC && (
+                            <Button variant="outline" onClick={() => setStep(prev => Math.max(S_BASIC, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
-                        {step < 5 ? (
+                        {step < S_REVIEW ? (
                             <Button
-                                onClick={step === 2 ? submitRecording : handleNext}
-                                disabled={step === 2 && (isRecording || recordingCount === 0)}
+                                onClick={step === S_RECORD ? submitRecording : handleNext}
+                                disabled={step === S_RECORD && (isRecording || recordingCount === 0)}
                                 className={cn(
                                     "flex-[2] h-14 text-[16px] font-bold text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
                                     // step 2 일시정지 상태에서만 'AI 요약'을 주황으로 승격 — 커밋 행동=주황 패턴(step 5 '완료 및 저장'과 정합)
-                                    step === 2 && recordingCount > 0 && !isRecording
+                                    step === S_RECORD && recordingCount > 0 && !isRecording
                                         ? "bg-cur-primary hover:bg-cur-primary-active"
                                         : "bg-cur-ink hover:bg-cur-ink/90"
                                 )}
                             >
-                                {step === 2 ? "AI 요약" : "다음 단계"}
+                                {step === S_RECORD ? "AI 요약" : "다음 단계"}
                             </Button>
                         ) : (
                             <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving || isProcessingSTT || isProcessingAI} className="flex-[2] h-14 text-[16px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] shadow-sm transition-transform active:scale-[0.98]">

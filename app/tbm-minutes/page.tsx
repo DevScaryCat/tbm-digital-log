@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload, FileText, Sparkles, BookOpen, ChevronDown } from "lucide-react"
+import { Mic, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, CalendarIcon, Clock, RefreshCw, Send, Pause, Play, QrCode, Copy, Upload, FileText, Sparkles, BookOpen, ChevronDown, Camera } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 
@@ -85,6 +85,8 @@ interface TBMMinutesData {
     instructions: string
     hazards: Hazard[]
     participants: Participant[]
+    /** 현장 사진(base64) — 저장 시 photos 버킷으로 올리고 photo_url로 바뀐다 */
+    photo: string | null
 }
 
 // ─── step 4 공용 스타일 상수 (quiet-filled 편집 필드) ───
@@ -104,12 +106,17 @@ const LEVEL_STYLES: Record<string, { border: string; badge: string; seg: string 
 }
 const levelStyle = (level: string) => LEVEL_STYLES[level] ?? LEVEL_STYLES["상중하"]
 
+// 작성 순서(Chris): 기본정보 → 사진 → 녹음 → 명단 → 검토 → 완료.
+// 숫자로 직접 비교하면 순서를 바꿀 때마다 화면·검증·되돌아가기가 제각각 어긋난다 —
+// 이름으로만 비교하고, 순서 변경은 이 숫자만 고친다.
+const S_BASIC = 1, S_PHOTO = 2, S_RECORD = 3, S_ROSTER = 4, S_REVIEW = 5, S_DONE = 6
+
 export default function TBMMinutesPage() {
     const router = useRouter()
     useRequireSubscription()
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
-    const [step, setStep] = useState(1)
+    const [step, setStep] = useState(S_BASIC)
     const [savedLogId, setSavedLogId] = useState<string | null>(null)
     const [sessionId, setSessionId] = useState<string | null>(null)
 
@@ -290,6 +297,7 @@ export default function TBMMinutesPage() {
         instructions: "",
         hazards: [],
         participants: [{ id: 1, name: "", gender: "M", signature: null }],
+        photo: null,
     })
     // 근로자 의견 합류(step 4): 이미 반영한 의견 id — '이전'으로 갔다 와도 중복 추가 방지
     const processedSuggestionIds = useRef(new Set<string>())
@@ -353,7 +361,7 @@ export default function TBMMinutesPage() {
             try { recognitionRef.current?.stop(); } catch {}
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
-            if (currentSession && currentStep !== 5) {
+            if (currentSession && currentStep !== S_DONE) {
                 try {
                     supabase.from('tbm_pending_signatures').insert({
                         session_id: currentSession,
@@ -367,7 +375,7 @@ export default function TBMMinutesPage() {
     }, []);
 
     useEffect(() => {
-        if (step === 3) {
+        if (step === S_ROSTER) {
             let currentSessionId = sessionId;
             if (!currentSessionId) {
                 currentSessionId = uuidv4();
@@ -415,7 +423,7 @@ export default function TBMMinutesPage() {
     // 진입 시 1회 + 12초 주기 폴링 — 소장이 검토 화면을 보는 동안 뒤늦게 도착하는 의견도
     // 저장 전에 잡아야 한다(진입 시 1회만 조회하면 검토 중 도착분이 문서에서 빠짐 — 실사고 있었음).
     useEffect(() => {
-        if (step !== 4 || isProcessingSTT || isProcessingAI || !sessionId) return;
+        if (step !== S_REVIEW || isProcessingSTT || isProcessingAI || !sessionId) return;
         const mergeWorkerSuggestions = async () => {
             if (isMergingRef.current) return;
             isMergingRef.current = true;
@@ -461,18 +469,21 @@ export default function TBMMinutesPage() {
     }, [step, isProcessingSTT, isProcessingAI, sessionId]);
 
     const validateStep = (currentStep: number) => {
-        if (currentStep === 1) {
+        if (currentStep === S_BASIC) {
             if (!formData.date) return "TBM 일시를 선택해주세요.";
             if (!formData.location) return "TBM 장소를 입력해주세요.";
         }
-        if (currentStep === 3) {
+        if (currentStep === S_PHOTO) {
+            if (!formData.photo) return "현장 사진 촬영은 필수입니다.";
+        }
+        if (currentStep === S_ROSTER) {
             const validParticipants = formData.participants.filter(p => p.name.trim() !== "" || p.signature);
             if (validParticipants.length === 0) return "최소 1명 이상의 참석자 서명이 필요합니다.";
             const missingSign = validParticipants.find(p => !p.signature);
             if (missingSign) return `${missingSign.name || '참석자'} 님의 서명이 누락되었습니다.`;
             if (validParticipants.some(p => !p.name.trim())) return "참석자 이름을 모두 입력해주세요.";
         }
-        if (currentStep === 4) {
+        if (currentStep === S_REVIEW) {
             if (!formData.processName.trim()) return "공정(종)명을 입력해주세요.";
             if (!formData.workName.trim()) return "작업명을 입력해주세요.";
             if (!formData.workContent.trim()) return "금일 작업 내용을 입력해주세요.";
@@ -483,7 +494,7 @@ export default function TBMMinutesPage() {
     const handleNext = () => {
         const errorMsg = validateStep(step);
         if (errorMsg) { alert(errorMsg); return; }
-        setStep(prev => Math.min(5, prev + 1));
+        setStep(prev => Math.min(S_DONE, prev + 1));
     }
 
     const uploadBase64ToStorage = async (base64Data: string, bucket: string, pathPrefix: string): Promise<string> => {
@@ -512,7 +523,7 @@ export default function TBMMinutesPage() {
     }
 
     const saveToDatabase = async (confirmationSigBase64: string) => {
-        const errorMsg = validateStep(3) || validateStep(4);
+        const errorMsg = validateStep(S_PHOTO) || validateStep(S_ROSTER) || validateStep(S_REVIEW);
         if (errorMsg) { alert(errorMsg); return; }
 
         setIsSaving(true)
@@ -520,10 +531,11 @@ export default function TBMMinutesPage() {
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) throw new Error("로그인 필요")
 
-            let leaderSignatureUrl = null;
-            if (confirmationSigBase64) {
-                leaderSignatureUrl = await uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'leader');
-            }
+            // 서명·사진 업로드는 서로 독립이라 병렬로 (직렬이면 저장 체감이 그만큼 길어진다)
+            const [leaderSignatureUrl, photoUrl] = await Promise.all([
+                confirmationSigBase64 ? uploadBase64ToStorage(confirmationSigBase64, 'signatures', 'leader') : Promise.resolve(null),
+                formData.photo ? uploadBase64ToStorage(formData.photo, 'photos', 'photo') : Promise.resolve(null),
+            ]);
 
             const { data: logData, error: logError } = await supabase
                 .from('tbm_minutes')
@@ -539,6 +551,7 @@ export default function TBMMinutesPage() {
                     leader_title: formData.leaderTitle,
                     leader_name: formData.leaderName,
                     leader_signature: leaderSignatureUrl,
+                    photo_url: photoUrl,
                     health_check: formData.healthCheck,
                     ppe_check: formData.ppeCheck,
                     safety_phrase: formData.safetyPhrase,
@@ -587,7 +600,7 @@ export default function TBMMinutesPage() {
             }
 
             setSavedLogId(logData.id)
-            setStep(5)
+            setStep(S_DONE)
 
         } catch (e: unknown) {
             const errorMessage =
@@ -729,7 +742,7 @@ export default function TBMMinutesPage() {
         if (!accumulatedTranscript.trim()) { alert("인식된 음성이 없습니다."); return; }
         
         setIsProcessingSTT(true)
-        setStep(3)
+        setStep(S_ROSTER)
         
         setTimeout(() => {
             setIsProcessingSTT(false)
@@ -751,7 +764,7 @@ export default function TBMMinutesPage() {
         }
 
         setIsProcessingSTT(true)
-        setStep(3)
+        setStep(S_ROSTER)
         
         try {
             const formData = new FormData()
@@ -902,7 +915,7 @@ export default function TBMMinutesPage() {
 
                 <div className="p-6 space-y-8 flex-1 pb-12 bg-cur-canvas-soft">
                     
-                    {step === 1 && (
+                    {step === S_BASIC && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
                                 <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">1</span> 날짜와 장소
@@ -910,19 +923,16 @@ export default function TBMMinutesPage() {
                             <div className="space-y-4 bg-cur-card p-4 rounded-[12px] border border-cur-hairline shadow-none">
                                 <div className="space-y-2">
                                     <Label className={LABEL_CLS}>날짜</Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="ghost" className={cn(FIELD_CLS, "justify-start text-left hover:bg-cur-elevated")}>
-                                                <CalendarIcon className="mr-2 h-5 w-5 text-cur-muted" />
-                                                <span className={cn(formData.date ? "text-cur-ink" : "text-cur-muted")}>
-                                                    {formData.date ? format(formData.date, "yyyy년 MM월 dd일 (EEE)", { locale: ko }) : "날짜 선택"}
-                                                </span>
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0 rounded-[12px] border-cur-hairline shadow-[0_4px_24px_rgba(0,0,0,0.08)]" align="center">
-                                            <Calendar mode="single" locale={ko} selected={formData.date} onSelect={(date) => setFormData(prev => ({ ...prev, date }))} initialFocus className="p-3" />
-                                        </PopoverContent>
-                                    </Popover>
+                                    {/* 고를 수 없다(Chris) — 오늘로 자동 기입. 교육일지와 같은 규칙.
+                                        회의록도 '그날 실시한 TBM'의 기록이라, 날짜를 손으로 고를 수 있으면
+                                        나중에 몰아 쓰면서 아무 날짜나 박는 문이 열린다(법정 증빙 신뢰도). */}
+                                    <div className={cn(FIELD_CLS, "flex items-center gap-2 cursor-default")}>
+                                        <CalendarIcon className="h-5 w-5 text-cur-muted shrink-0" />
+                                        <span className="text-cur-ink">
+                                            {formData.date ? format(formData.date, "yyyy년 MM월 dd일 (EEE)", { locale: ko }) : "-"}
+                                        </span>
+                                        <span className="ml-auto text-[11px] text-cur-muted bg-cur-elevated rounded-[6px] px-1.5 py-0.5 shrink-0">오늘 자동</span>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2"><Label className={LABEL_CLS}>장소</Label><Input name="location" value={formData.location} onChange={handleChange} className={FIELD_CLS} /></div>
@@ -945,10 +955,69 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {step === 2 && (
+                    {/* 2단계 현장 사진 — 교육일지와 같은 자리·같은 조작(Chris).
+                        회의 전 현장 상태를 남기는 단계라 녹음보다 앞에 온다. */}
+                    {step === S_PHOTO && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 회의 녹음
+                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">2</span> 현장 사진
+                            </h2>
+
+                            <div className="aspect-video bg-cur-canvas rounded-[12px] border border-cur-hairline flex items-center justify-center relative overflow-hidden">
+                                {formData.photo ? (
+                                    <img src={formData.photo} className="w-full h-full object-cover" alt="회의 현장" />
+                                ) : (
+                                    <span className="text-cur-muted font-semibold text-[15px]">등록된 사진이 없습니다.</span>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="relative group">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        className="absolute inset-0 opacity-0 z-10 w-full h-full cursor-pointer"
+                                        aria-label="현장 사진 바로 촬영"
+                                        onChange={(e) => {
+                                            if (e.target.files?.[0]) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => setFormData(prev => ({ ...prev, photo: reader.result as string }))
+                                                reader.readAsDataURL(e.target.files[0])
+                                            }
+                                        }} />
+                                    <Button className="w-full h-14 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
+                                        <Camera className="w-5 h-5 mr-2" /> 바로 촬영
+                                    </Button>
+                                </div>
+                                <div className="relative group">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="absolute inset-0 opacity-0 z-10 w-full h-full cursor-pointer"
+                                        aria-label="앨범에서 현장 사진 선택"
+                                        onChange={(e) => {
+                                            if (e.target.files?.[0]) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => setFormData(prev => ({ ...prev, photo: reader.result as string }))
+                                                reader.readAsDataURL(e.target.files[0])
+                                            }
+                                        }} />
+                                    <Button variant="outline" className="w-full h-14 border border-cur-hairline bg-cur-card hover:bg-cur-canvas text-cur-ink text-[15px] font-semibold rounded-[10px] flex items-center justify-center pointer-events-none shadow-sm transition-[transform,background-color] group-active:scale-95">
+                                        <Upload className="w-5 h-5 mr-2" /> 앨범 업로드
+                                    </Button>
+                                </div>
+                            </div>
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                촬영한 사진은 회의록 출력물(한글·워드·엑셀·PDF)에 함께 실립니다.
+                            </p>
+                        </div>
+                    )}
+
+                    {step === S_RECORD && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
+                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">3</span> 회의 녹음
                             </h2>
 
                             {/* 가이드 아코디언 — 전 상태 상시 렌더 (녹음 중에도 대본 접근 가능).
@@ -1041,10 +1110,10 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {step === 4 && (
+                    {step === S_REVIEW && (
                         <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                             <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 요약본 확인 및 수정
+                                <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">5</span> 요약본 확인 및 수정
                             </h2>
 
                             {(isProcessingSTT || isProcessingAI) ? (
@@ -1197,11 +1266,11 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {step === 3 && (
+                    {step === S_ROSTER && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex justify-between items-center">
                                 <h2 className="text-[20px] font-semibold text-cur-ink flex items-center gap-2 tracking-tight">
-                                    <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">3</span> 참석자 명단 <span className="text-[14px] font-medium text-cur-muted bg-cur-card px-2 py-0.5 rounded-[6px] border border-cur-hairline ml-1">{formData.participants.length}명</span>
+                                    <span className="bg-cur-primary text-cur-on-primary w-7 h-7 rounded-[8px] flex items-center justify-center text-[14px] font-bold shadow-sm">4</span> 참석자 명단 <span className="text-[14px] font-medium text-cur-muted bg-cur-card px-2 py-0.5 rounded-[6px] border border-cur-hairline ml-1">{formData.participants.length}명</span>
                                 </h2>
                                 <Button size="sm" onClick={addParticipant} className="bg-cur-card border border-cur-hairline text-cur-ink hover:bg-cur-canvas h-8 px-3 rounded-[6px] text-[12px] font-semibold shadow-sm"><Plus className="w-3.5 h-3.5 mr-1" /> 추가</Button>
                             </div>
@@ -1240,7 +1309,7 @@ export default function TBMMinutesPage() {
                         </div>
                     )}
 
-                    {step === 5 && (
+                    {step === S_DONE && (
                         <div className="flex flex-col items-center justify-center h-[50vh] animate-in zoom-in duration-300">
                             <div className="w-20 h-20 bg-cur-success/5 rounded-full flex items-center justify-center mb-6 shadow-sm">
                                 <CheckCircle2 className="w-10 h-10 text-cur-success" />
@@ -1260,24 +1329,24 @@ export default function TBMMinutesPage() {
 
                 </div>
 
-                {step < 5 && (
+                {step < S_DONE && (
                     <div className="bg-cur-card border-t border-cur-hairline p-4 flex gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.02)] sticky bottom-0 z-50 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:rounded-b-[24px]">
-                        {step > 1 && (
-                            <Button variant="outline" onClick={() => setStep(prev => Math.max(1, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
+                        {step > S_BASIC && (
+                            <Button variant="outline" onClick={() => setStep(prev => Math.max(S_BASIC, prev - 1))} className="flex-1 h-14 text-[15px] font-semibold border-cur-hairline text-cur-ink rounded-[10px] hover:bg-cur-elevated">이전</Button>
                         )}
-                        {step < 4 ? (
+                        {step < S_REVIEW ? (
                             <Button
-                                onClick={step === 2 ? submitRecording : handleNext}
-                                disabled={step === 2 && (isRecording || recordingCount === 0)}
+                                onClick={step === S_RECORD ? submitRecording : handleNext}
+                                disabled={step === S_RECORD && (isRecording || recordingCount === 0)}
                                 className={cn(
                                     "flex-[2] h-14 text-[16px] font-bold text-cur-on-primary rounded-[10px] shadow-[0_4px_12px_rgba(0,0,0,0.1)] transition-transform active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
                                     // step 2 일시정지 상태에서만 'AI 요약'을 주황으로 승격 — 커밋 행동=주황 패턴(step 4 '완료 및 저장'과 정합)
-                                    step === 2 && recordingCount > 0 && !isRecording
+                                    step === S_RECORD && recordingCount > 0 && !isRecording
                                         ? "bg-cur-primary hover:bg-cur-primary-active"
                                         : "bg-cur-ink hover:bg-cur-ink/90"
                                 )}
                             >
-                                {step === 2 ? "AI 요약" : "다음 단계"}
+                                {step === S_RECORD ? "AI 요약" : "다음 단계"}
                             </Button>
                         ) : (
                             <Button onClick={() => setIsConfirmationOpen(true)} disabled={isSaving} className="flex-[2] h-14 text-[16px] font-bold bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] shadow-sm transition-transform active:scale-[0.98]">

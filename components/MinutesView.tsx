@@ -151,6 +151,18 @@ export function MinutesView({ minutes, participants }: { minutes: any; participa
                     })()}
                 </tbody>
             </table>
+
+            {/* 현장 사진 — 출력물 별도 장 (교육일지 '교 육 사 진'과 같은 규격) */}
+            <div className="print:break-before-page pt-8 print:pt-0 px-[10mm] print:px-[15mm] flex flex-col">
+                <h1 className="text-3xl font-bold text-center mb-8 mt-4" style={{ fontFamily: "Batang, serif" }}>현 장 사 진</h1>
+                <div className="w-full h-[200mm] border border-black flex items-center justify-center p-2">
+                    {minutes.photo_url ? (
+                        <img src={minutes.photo_url} className="max-w-full max-h-full object-contain" alt="회의 현장" />
+                    ) : (
+                        <span className="text-gray-400">등록된 사진 없음</span>
+                    )}
+                </div>
+            </div>
         </div>
     )
 }

@@ -359,7 +359,7 @@ export default function MainPage() {
           <Users className="w-6 h-6" />
         </div>
         <div className="space-y-1 flex-1">
-          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">TBM 회의록<br />작성</h3>
+          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 TBM<br />작성</h3>
           <p className="text-cur-muted text-[12px] leading-snug">현장과의 더 많은 소통으로 사전에 위험을 통제하세요</p>
         </div>
         <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
@@ -373,7 +373,7 @@ export default function MainPage() {
           <HardHat className="w-6 h-6" />
         </div>
         <div className="space-y-1 flex-1">
-          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">안전보건교육일지<br />작성</h3>
+          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 교육일지<br />작성</h3>
           <p className="text-cur-muted text-[12px] leading-snug">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
         </div>
         <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
@@ -727,7 +727,7 @@ export default function MainPage() {
           >
             <div className="flex items-center justify-between gap-3 mb-5">
               <h3 className="text-[15px] font-semibold text-cur-ink flex items-center gap-2 flex-wrap tracking-[-0.11px] min-w-0">
-                법정 의무 교육 진행도
+                내 법정의무 교육 진행도
                 <span className="bg-cur-primary/15 px-2 py-0.5 rounded-[4px] text-[11px] text-cur-primary font-semibold shrink-0">
                   {user?.user_metadata?.worker_type || '현장 근로자 (비사무직)'}
                 </span>

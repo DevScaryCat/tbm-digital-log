@@ -48,6 +48,7 @@ export interface MinutesDocData {
     safety_phrase?: string | null
     instructions?: string | null
     hazards?: MinutesHazard[] | null
+    photo_url?: string | null
     raw_transcript?: string | null
 }
 
@@ -314,8 +315,9 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
     const m = item.minutes
     const parts = item.participants || []
 
-    const [leaderSig, ...partSigs] = await Promise.all([
+    const [leaderSig, photo, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
+        loadImage(m.photo_url, stats, { photo: true }),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -426,7 +428,22 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
         ], 550))
     }
 
-    return [table(grid([15, 35, 15, 35]), rows), ...transcriptParas(m.raw_transcript)]
+    // --- 다음 장: 현장 사진 (교육일지와 같은 규격) ---
+    const photoPage: Paragraph[] = [
+        pageBreak(),
+        new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 },
+            children: [run("현 장 사 진", { bold: true, size: 44 })],
+        }),
+        new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 200, after: 200 },
+            children: photo ? [imageRun(photo, 680, 780)] : [run("등록된 현장 사진이 없습니다.", { bold: true, color: C.gray500 })],
+        }),
+    ]
+
+    return [table(grid([15, 35, 15, 35]), rows), ...photoPage, ...transcriptParas(m.raw_transcript)]
 }
 
 // ---------------- 안전보건교육일지 (ReportView 재현: 일지 + 참석자 명단 + 사진) ----------------
