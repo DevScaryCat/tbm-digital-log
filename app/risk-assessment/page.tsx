@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DateRange } from "react-day-picker"
 import { ExternalLink, Loader2 } from "lucide-react"
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay, startOfMonth, startOfWeek, endOfMonth, subMonths } from "date-fns"
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns"
 
 interface RiskItem {
     hazard: string
@@ -22,13 +22,6 @@ interface RiskItem {
     measures: string
     recurring?: boolean
 }
-
-// 기간 프리셋 (달력 대신 버튼 선택) — 위험성평가는 최대 1개월까지만
-const PRESETS: { key: string; label: string; range: () => DateRange }[] = [
-    { key: "week", label: "이번 주", range: () => ({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: new Date() }) },
-    { key: "month", label: "이번 달", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
-    { key: "lastmonth", label: "지난 달", range: () => ({ from: startOfMonth(subMonths(new Date(), 1)), to: endOfMonth(subMonths(new Date(), 1)) }) },
-]
 
 const SAMPLE_ITEMS: RiskItem[] = [
     { hazard: "고소작업 중 추락", cause: "여러 날 반복된 비계·고소 작업, 안전대 미체결", measures: "안전대 100% 체결, 작업발판·안전난간 점검, 추락방지망 설치", recurring: true },
@@ -55,7 +48,6 @@ export default function RiskAssessmentPage() {
     const [phaseSteps, setPhaseSteps] = useState<ProgressStep[]>([])
     const [phase, setPhase] = useState("")
     const [range, setRange] = useState<DateRange | undefined>()
-    const [preset, setPreset] = useState<string | null>(null)
     const [items, setItems] = useState<RiskItem[]>([])
     const [periodLabel, setPeriodLabel] = useState("")
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -63,7 +55,8 @@ export default function RiskAssessmentPage() {
 
     // 안전관리자(owner) 모드: 대상 현장을 골라 서버가 그 현장 데이터로 분석 (§4-A)
     const [orgKind, setOrgKind] = useState<"owner" | "member" | "solo">("solo")
-    const [sites, setSites] = useState<{ userId: string; siteName: string }[]>([])
+    // 현장 목록은 화면에 없다(입구가 달력뿐이라 대상은 항상 본인 현장) — 조회 결과만 흘려보낸다
+    const [, setSites] = useState<{ userId: string; siteName: string }[]>([])
     const [targetSite, setTargetSite] = useState<{ userId: string; siteName: string } | null>(null)
 
     // 보고서 보내기 (결과 화면) — 서버가 내 이메일(인증 real_email·카카오)을 자동 포함하므로 입력은 추가 수신자만
@@ -77,6 +70,9 @@ export default function RiskAssessmentPage() {
     const [minutesHtml, setMinutesHtml] = useState("")
     const [eduHtml, setEduHtml] = useState("")
     const [loadingPreviews, setLoadingPreviews] = useState(false)
+    // 버튼이 "몇 명에게 보내는지"를 그대로 말하도록 — 입력창의 쉼표 목록 + 내 이메일
+    const extraEmails = reportEmail.split(",").map((e) => e.trim()).filter((e) => e && e !== myEmail).slice(0, 3)
+    const recipientCount = (myEmail ? 1 : 0) + extraEmails.length
 
 
     useEffect(() => {
@@ -175,7 +171,6 @@ export default function RiskAssessmentPage() {
                     try {
                         const rng = { from: parseISO(pendingRange.from), to: pendingRange.to ? parseISO(pendingRange.to) : parseISO(pendingRange.from) }
                         setRange(rng)
-                        setPreset(null)
                         setTargetSite(selfSite)
                         if (p) analyze(rng, p, selfSite, "owner")
                     } catch { /* 무시 */ }
@@ -192,12 +187,24 @@ export default function RiskAssessmentPage() {
                 try {
                     const rng = { from: parseISO(pendingRange.from), to: pendingRange.to ? parseISO(pendingRange.to) : parseISO(pendingRange.from) }
                     setRange(rng)
-                    setPreset(null)
                     if (p) analyze(rng, p)
                 } catch { /* 무시 */ }
+            } else {
+                // 기간 없이 들어왔다 = 주소 직접 입력이거나 새로고침. 여기서 기간을 다시 고르게 하면
+                // 달력과 두 개의 입구가 생긴다 — 달력으로 돌려보낸다(마지막 기간은 dash_restore로 복원).
+                router.replace("/dashboard")
             }
         })()
     }, [router])
+
+    // 새로고침하면 결과가 날아가고 달력으로 되돌아간다 — 그 전에 한 번 물어본다.
+    // (브라우저 기본 경고라 문구는 브라우저가 정한다. 앱 모달로는 이탈을 막을 수 없다.)
+    useEffect(() => {
+        if (!analyzing && step !== 2) return
+        const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault() }
+        window.addEventListener("beforeunload", onBeforeUnload)
+        return () => window.removeEventListener("beforeunload", onBeforeUnload)
+    }, [analyzing, step])
 
     // owner: 대상 현장이 바뀌면 그 현장의 회의록 작성일을 서버에서 로드 (건수 표시)
     useEffect(() => {
@@ -424,7 +431,7 @@ export default function RiskAssessmentPage() {
             // 베이직 체험: 실제 발송하지 않음
             if (!pro) {
                 await new Promise((r) => setTimeout(r, 800))
-                setSendMsg({ type: "ok", text: `체험 모드 — Pro에서는 ${myEmail ? "내 이메일 포함 " : ""}${total}명에게 엑셀 첨부 메일이 실제 발송됩니다.` })
+                setSendMsg({ type: "ok", text: `체험 모드 — Pro에서는 ${total}명에게 실제로 발송돼요.` })
                 return
             }
             const { data: sessionData } = await supabase.auth.getSession()
@@ -460,7 +467,7 @@ export default function RiskAssessmentPage() {
             if (eduSent) parts.push("안전보건교육일지 종합")
             setSendMsg({
                 type: "ok",
-                text: `${myEmail ? "내 이메일 포함 " : ""}${total}명에게 ${parts.join(" + ")} 메일${parts.length > 1 ? " 2개" : ""}를 보냈어요.${hasEdu && !eduSent ? " (교육 메일은 실패)" : ""}`,
+                text: `${total}명에게 보냈어요 · 메일 ${parts.length}통${hasEdu && !eduSent ? " (교육일지 메일은 실패)" : ""}`,
             })
         } finally { setSending(false) }
     }
@@ -473,7 +480,18 @@ export default function RiskAssessmentPage() {
         setTimeout(() => URL.revokeObjectURL(url), 60_000)
     }
 
-    const restart = () => { setStep(1); setItems([]); setMsg(null); setSendMsg(null) }
+    // 기간을 다시 고르는 곳은 달력 하나뿐이다 — 지금 기간을 들고 그리로 돌아간다
+    const backToCalendar = () => {
+        try {
+            if (range?.from) {
+                sessionStorage.setItem("dash_restore", JSON.stringify({
+                    from: format(range.from, "yyyy-MM-dd"),
+                    to: format(range.to ?? range.from, "yyyy-MM-dd"),
+                }))
+            }
+        } catch { /* 무시 */ }
+        router.push("/dashboard")
+    }
 
     if (checking) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
@@ -569,66 +587,13 @@ export default function RiskAssessmentPage() {
                     )}
 
                     {/* 시작: 직접 진입·통계 경로 — 현장(owner)·기간·시작 버튼을 카드 하나로 */}
+                    {/* 기간 선택 화면은 없앴다(Chris) — 이 페이지의 입구는 출력(달력)에서 기간을 잡고
+                        들어오는 것 하나뿐이다. 직접 들어오거나 새로고침하면 아래 효과가 달력으로 돌려보낸다. */}
                     {!analyzing && step === 1 && (
-                        <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
-                            {orgKind === "owner" && (
-                                <div className="space-y-2">
-                                    <p className="text-[14px] font-bold text-cur-ink">분석할 현장</p>
-                                    {sites.length === 0 ? (
-                                        <div className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
-                                            연결된 현장이 없어요. 현장 계정 관리에서 현장 계정을 먼저 만들어주세요.
-                                        </div>
-                                    ) : (
-                                        <select
-                                            value={targetSite?.userId ?? ""}
-                                            onChange={(e) => {
-                                                const s = sites.find((x) => x.userId === e.target.value) || null
-                                                setTargetSite(s)
-                                            }}
-                                            className="w-full h-11 rounded-[8px] border border-cur-hairline bg-cur-card px-3 text-[14px] font-medium text-cur-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                                        >
-                                            <option value="" disabled>현장 선택</option>
-                                            {sites.map((s) => (
-                                                <option key={s.userId} value={s.userId}>{s.siteName}</option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            )}
-
-                            <div className="space-y-2">
-                                <p className="text-[14px] font-bold text-cur-ink">분석 기간</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {PRESETS.map((p) => (
-                                        <button
-                                            key={p.key}
-                                            type="button"
-                                            onClick={() => { setRange(p.range()); setPreset(p.key) }}
-                                            className={`h-10 rounded-[8px] border text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${preset === p.key ? "border-cur-primary bg-cur-primary/[0.06] text-cur-primary" : "border-cur-hairline bg-cur-elevated text-cur-ink hover:border-cur-primary/40"}`}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {range?.from && (
-                                <p className="text-[13px] text-cur-muted">
-                                    {format(range.from, "yyyy.MM.dd")} ~ {format(range.to ?? range.from, "yyyy.MM.dd")} · 회의록 {countInRange()}건
-                                </p>
-                            )}
-
-                            <Button
-                                onClick={() => analyze()}
-                                disabled={!range?.from || (orgKind === "owner" && !targetSite)}
-                                className="w-full h-11 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold focus-visible:ring-2 focus-visible:ring-cur-primary"
-                            >
-                                분석 시작
-                            </Button>
-                        </div>
+                        <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
                     )}
 
-                    {/* 결과: 요약 행 → 미리보기 탭 → 이메일 발송, 전부 한 화면 */}
+
                     {!analyzing && step === 2 && (
                         <div className="space-y-4">
                             <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 flex items-center justify-between gap-3">
@@ -643,7 +608,7 @@ export default function RiskAssessmentPage() {
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={restart}
+                                    onClick={backToCalendar}
                                     className="h-10 px-3 rounded-[8px] border border-cur-hairline bg-cur-elevated text-[13px] font-semibold text-cur-ink hover:border-cur-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary shrink-0"
                                 >
                                     기간 다시 선택
@@ -684,13 +649,16 @@ export default function RiskAssessmentPage() {
                             {/* 이메일로 보고서 전송 (회의록 종합 + 안전보건교육일지 종합, 메일 2개)
                                 내 이메일(인증 real_email·카카오)이 있으면 서버가 자동 포함 — 입력은 추가 수신자만 */}
                             <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-2 print:hidden">
-                                <h3 className="text-[14px] font-bold text-cur-ink">이메일로 보고서 전송</h3>
+                                <h3 className="text-[14px] font-bold text-cur-ink">이메일로 보내기</h3>
+                                {/* '자동으로 보내드려요'가 이미 보낸 것처럼 읽혀서 버튼을 눌러야 하는지 헷갈렸다(Chris).
+                                    받는 사람을 목록으로 보여주고, 버튼이 '누구에게 보낼지'를 그대로 말한다. */}
                                 {myEmail ? (
-                                    <div className="flex items-center gap-2 rounded-[8px] border border-cur-hairline bg-cur-elevated px-3 py-2.5 min-w-0">
-                                        <p className="text-[13px] text-cur-ink min-w-0 truncate">
-                                            <span className="font-semibold">{myEmail}</span>
-                                            <span className="text-cur-muted">(내 이메일)로 자동으로 보내드려요</span>
-                                        </p>
+                                    <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated px-3 py-2.5 min-w-0">
+                                        <p className="text-[11px] font-semibold text-cur-muted mb-0.5">받는 사람</p>
+                                        <p className="text-[13px] font-semibold text-cur-ink truncate">{myEmail}</p>
+                                        {extraEmails.map((e) => (
+                                            <p key={e} className="text-[13px] font-semibold text-cur-ink truncate">{e}</p>
+                                        ))}
                                     </div>
                                 ) : (
                                     <p className="text-[12px] text-cur-muted-soft">
@@ -705,8 +673,8 @@ export default function RiskAssessmentPage() {
                                         placeholder={myEmail ? "다른 받는 분 이메일 (쉼표로 최대 3명)" : "이메일 (쉼표로 최대 3명)"}
                                         className="h-11 rounded-[8px] focus-visible:ring-2 focus-visible:ring-cur-primary"
                                     />
-                                    <Button onClick={sendReport} disabled={sending} className="h-11 px-4 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold shrink-0 focus-visible:ring-2 focus-visible:ring-cur-primary">
-                                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : "보내기"}
+                                    <Button onClick={sendReport} disabled={sending || recipientCount === 0} className="h-11 px-4 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold shrink-0 focus-visible:ring-2 focus-visible:ring-cur-primary disabled:opacity-40">
+                                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : `${recipientCount}명에게 보내기`}
                                     </Button>
                                 </div>
                                 {sendMsg && <p className={`text-[13px] ${sendMsg.type === "ok" ? "text-cur-primary" : "text-cur-error"}`}>{sendMsg.text}</p>}
