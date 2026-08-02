@@ -35,7 +35,9 @@ export async function sendMail(params: {
   }
   try {
     await getTransport().sendMail({
-      from: `"안톡" <${process.env.EMAIL_USER}>`,
+      // 발신 표기는 env로 뺀다 — 회사 도메인 메일(Zoho 등)로 갈아끼울 때 코드를 안 고치게.
+      // 기본값은 인증 계정 그대로: 대부분의 SMTP는 인증 계정과 다른 From을 거부한다(SPF/DMARC도 마찬가지).
+      from: `"${process.env.EMAIL_FROM_NAME || "안톡"}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to: Array.isArray(params.to) ? params.to.join(", ") : params.to,
       subject: params.subject,
       html: params.html,

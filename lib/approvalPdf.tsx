@@ -251,7 +251,6 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
               ))}
             </View>
             <Text style={{ fontSize: 7.5, color: C.muted, marginTop: 4 }}>
-              ※ 본 표는 TBM 기록에서 정리한 참고용 위험요인 목록으로, 산업안전보건법상 위험성평가를 대체하지 않습니다.
             </Text>
           </>
         ) : null}

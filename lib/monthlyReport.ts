@@ -435,8 +435,7 @@ function riskTableHtml(items: RiskItem[]): string {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
-      </table>
-      <div style="font-size:11px;color:#999;margin-top:8px;">※ 본 표는 TBM 기록에서 정리한 참고용 위험요인 목록으로, 산업안전보건법상 위험성평가를 대체하지 않습니다.</div>`;
+      </table>`;
 }
 
 /** 이메일/공개페이지용 HTML 본문 (월간·위험성평가 공용 단일 템플릿) */
@@ -453,6 +452,12 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   const displayStats = stats;
   // 총 언급 건수는 저장된 값이 우선 — 없는 구버전 콘텐츠는 등급 합으로 되짚는다
   const mentioned = stats.mentioned ?? stats.high + stats.mid + (stats.low ?? 0);
+  // 메일 클라이언트는 로컬 경로를 못 읽는다 — 절대 URL이어야 뜬다. 주소를 못 만들면 로고를 빼고
+  // 글자만 남긴다(깨진 이미지 아이콘이 보고서 맨 아래 남는 것보다 낫다).
+  const base = appBaseUrl();
+  const logoImg = base
+    ? `<img src="${base}/brand/antok-icon-256.png" alt="안톡" width="28" height="28" style="width:28px;height:28px;border-radius:6px;display:inline-block;" />`
+    : `<div style="font-size:13px;font-weight:700;color:#f54e00;">안톡</div>`;
   const recurringCount = stats.recurring ?? (content.riskItems || []).filter((r) => r.recurring).length;
 
   // 지난달보다 나아진 점 — 개선 항목만 (없거나 첫 달이면 섹션 자체가 없다)
@@ -630,9 +635,12 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
             </div>`
           : ""
       }
-      <div style="font-size:12px;color:#999;margin-top:24px;text-align:center;line-height:1.6;">
-        본 보고서는 안톡이 ${escapeHtml(periodLabel)} TBM 회의록을 AI로 분석해 자동 생성한 참고 자료입니다.<br/>
-        작성된 회의록에서 언급된 내용만 집계되며, 법정 위험성평가를 대신하지 않습니다.
+      <div style="margin-top:28px;padding-top:18px;border-top:1px solid #eee;text-align:center;">
+        ${logoImg}
+        <div style="font-size:12px;color:#999;margin-top:8px;line-height:1.6;">
+          본 보고서는 안톡이 ${escapeHtml(periodLabel)} TBM 회의록을 AI로 분석해 자동 생성한 참고 자료입니다.<br/>
+          작성된 회의록에서 언급된 내용만 집계되며, 법정 위험성평가를 대신하지 않습니다.
+        </div>
       </div>
     </div>
     </div>
