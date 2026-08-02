@@ -56,6 +56,8 @@ export default function DashboardPage() {
     const to = dateRange?.to
     // 끝점을 안 찍었거나 같은 날을 두 번 찍었으면 '하루' — 이때만 그 날 문서를 펼친다
     const singleDay = !!from && (!to || isSameDay(to, from))
+    // 작성은 항상 '오늘' 문서다(날짜 자동 고정) — 과거·미래 날짜에선 작성 유도가 거짓말이 된다
+    const todaySelected = !from || (singleDay && isSameDay(from, new Date()))
 
     // 기간은 최대 1개월까지. rdp 표준 onSelect(단일 소스 제어)로 이중 하이라이트를 막고,
     // 클릭한 날(day) 기준으로 직접 판단: 시작 → 끝 → (다시 누르면) 새로 시작.
@@ -363,9 +365,15 @@ export default function DashboardPage() {
                                 날짜를 누르면 그 날 문서가 보이고,
                                 <br />한 번 더 누르면 그 사이 기간으로 잡혀요.
                             </p>
-                            <Button onClick={() => router.push('/')} className="w-full bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary h-12 text-[15px] font-medium rounded-[8px] shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-colors">
-                                <Plus className="mr-2 w-5 h-5" /> 오늘 일지 작성하기
-                            </Button>
+                            {/* 홈을 경유시키지 않는다 — 작성 화면은 둘뿐이라 여기서 바로 고른다 */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={() => router.push('/tbm-minutes')} className="h-12 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold rounded-[8px]">
+                                    <Plus className="mr-1.5 w-4 h-4" /> TBM 작성
+                                </Button>
+                                <Button onClick={() => router.push('/safety-log')} variant="outline" className="h-12 border-cur-hairline text-cur-ink text-[14px] font-bold rounded-[8px] hover:bg-cur-elevated">
+                                    <Plus className="mr-1.5 w-4 h-4" /> 교육일지 작성
+                                </Button>
+                            </div>
                         </div>
                     ) : (
                         <div className="bg-cur-card border border-cur-hairline p-4 rounded-[12px] space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
@@ -469,14 +477,18 @@ export default function DashboardPage() {
                                             </button>
                                         )}
                                     </div>
-                                ) : (
-                                    <Button
-                                        onClick={() => router.push('/')}
-                                        className="w-full bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active h-12 text-[14px] font-bold rounded-[8px]"
-                                    >
-                                        <Plus className="mr-2 w-4 h-4" /> 이 날짜에 작성하기
-                                    </Button>
-                                )
+                                ) : todaySelected ? (
+                                    /* 작성은 항상 오늘 문서 — 오늘을 보고 있을 때만 작성으로 이어준다.
+                                       과거·미래 날짜에선 버튼을 그리지 않는다(날짜가 오늘로 고정이라 그 날짜 작성은 불가능). */
+                                    <div className="grid grid-cols-2 gap-2">
+                                <Button onClick={() => router.push('/tbm-minutes')} className="h-12 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold rounded-[8px]">
+                                    <Plus className="mr-1.5 w-4 h-4" /> TBM 작성
+                                </Button>
+                                <Button onClick={() => router.push('/safety-log')} variant="outline" className="h-12 border-cur-hairline text-cur-ink text-[14px] font-bold rounded-[8px] hover:bg-cur-elevated">
+                                    <Plus className="mr-1.5 w-4 h-4" /> 교육일지 작성
+                                </Button>
+                            </div>
+                                ) : null
                             ) : (
                                 /* 다른 현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
                                 <p className="text-[12px] text-cur-muted-soft text-center">
