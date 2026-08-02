@@ -25,7 +25,7 @@ const CHANNELS: Record<string, string | undefined> = {
 // 카카오 말풍선 마크. 버튼이 흰 바탕이 되면서 브랜드색을 마크 쪽으로 옮겼다
 // (노란 판 위 검정 버블 = 노란 판이 있을 때의 표기법이라, 판이 없어지면 마크가 색을 가져야 식별된다)
 const KakaoIcon = () => (
-    <svg viewBox="0 0 256 256" fill="#FEE500" className="w-[20px] h-[20px]" aria-hidden="true">
+    <svg viewBox="0 0 256 256" fill="#FEE500" className="w-[22px] h-[22px]" aria-hidden="true">
         <path d="M128 36C70.562 36 24 72.713 24 118c0 29.279 19.466 54.97 48.748 69.477-1.593 5.494-10.237 35.344-10.581 37.689 0 0-.207 1.762.934 2.434s2.483.15 2.483.15c3.272-.457 37.943-24.811 43.944-29.04 5.995.849 12.168 1.29 18.472 1.29 57.438 0 104-36.712 104-82 0-45.287-46.562-82-104-82z" />
     </svg>
 )
@@ -50,9 +50,9 @@ type Method = {
 const METHOD_STYLE = "bg-cur-card text-cur-ink hover:bg-cur-elevated/60"
 
 const ALL_METHODS: Method[] = [
-    { key: "card", label: "카드", billingKeyMethod: "CARD", style: METHOD_STYLE, icon: <CreditCard className="w-[20px] h-[20px] text-cur-muted" /> },
+    { key: "card", label: "카드", billingKeyMethod: "CARD", style: METHOD_STYLE, icon: <CreditCard className="w-[22px] h-[22px] text-cur-muted" /> },
     { key: "kakaopay", label: "카카오페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <KakaoIcon /> },
-    { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <span className="text-[15px] font-black leading-none text-[#03C75A]">N</span> },
+    { key: "naverpay", label: "네이버페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <span className="text-[18px] font-black leading-none text-[#03C75A]">N</span> },
     { key: "tosspay", label: "토스페이", billingKeyMethod: "EASY_PAY", style: METHOD_STYLE, icon: <TossIcon /> },
 ]
 // 실연동(라이브) 완료된 결제수단만 운영(실서버)에 노출.
@@ -243,7 +243,7 @@ export function SubscribeButtons({
                         onClick={() => handleIssue(m)}
                         disabled={!!processing || isCurrent}
                         aria-disabled={isCurrent}
-                        className={`w-full font-bold h-14 rounded-none border-0 shadow-none transition-colors justify-center px-4 ${
+                        className={`w-full font-bold h-14 rounded-none shadow-none transition-colors justify-center px-4 ${
                             isCurrent
                                 ? "bg-cur-elevated text-cur-muted hover:opacity-100 disabled:opacity-100 cursor-default"
                                 : m.style
@@ -254,7 +254,7 @@ export function SubscribeButtons({
                         ) : (
                             // 아이콘 + 라벨을 가운데로 — 소셜 로그인 버튼과 같은 읽는 방식
                             <span className="flex items-center justify-center gap-2.5 w-full relative">
-                                <span className="flex w-[20px] h-[20px] items-center justify-center shrink-0">{m.icon}</span>
+                                <span className="flex w-[22px] h-[22px] items-center justify-center shrink-0">{m.icon}</span>
                                 <span className="text-[15px]">{isCurrent ? m.label : `${m.label}${ctaSuffix}`}</span>
                                 {isCurrent && (
                                     <span className="absolute right-0 text-[11px] font-semibold text-cur-muted">현재 사용 중</span>
