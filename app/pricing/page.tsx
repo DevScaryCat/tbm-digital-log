@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, ArrowLeft, Loader2, LogOut, Sparkles } from "lucide-react"
+import { Check, ArrowLeft, Loader2, LogOut, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
@@ -204,37 +204,29 @@ export default function PricingPage() {
                     )}
                 </div>
 
-                <header className="text-center space-y-2">
-                    <h1 className="text-[26px] font-bold text-cur-ink tracking-[-0.02em]">요금제</h1>
-                    <p className="text-[14px] text-cur-muted leading-relaxed">
-                        플랜은 하나뿐이에요. 쓰는 계정 수만큼만 냅니다.
-                    </p>
-                </header>
+                {/* 부제를 없앴다(Chris) — "플랜은 하나뿐이에요. 쓰는 계정 수만큼만 냅니다"는
+                    설명하려다 오히려 "왜 계정이 여러 개인데?"를 만들었다. 계정 단위 과금은
+                    금액 바로 아래 한 줄이면 충분하고, 계정이 여럿인 사람에겐 실계산이 대신 말한다. */}
+                <h1 className="text-[26px] font-bold text-cur-ink tracking-[-0.02em] text-center">요금제</h1>
 
-                <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-6 space-y-5">
-                    <div className="text-center">
-                        <p className="text-[36px] font-bold text-cur-ink leading-none tracking-[-0.02em]">
+                <section className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
+                    <div className="text-center px-6 pt-7 pb-6 border-b border-cur-hairline">
+                        <p className="text-[40px] font-bold text-cur-ink leading-none tracking-[-0.03em]">
                             {(accountCount * SEAT_PRICE).toLocaleString()}
-                            <span className="text-[16px] font-semibold text-cur-muted ml-1">원 / 월</span>
+                            <span className="text-[15px] font-semibold text-cur-muted ml-1.5">원</span>
                         </p>
-                        <p className="text-[13px] text-cur-muted mt-2">
+                        <p className="text-[13px] text-cur-muted mt-2.5">
                             {accountCount > 1
-                                ? `내 현장 1 + 소속 현장 ${accountCount - 1} = 계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · VAT 포함`
-                                : `계정 1개 기준 · VAT 포함`}
+                                ? `계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · 매달 · VAT 포함`
+                                : `계정 1개당 · 매달 · VAT 포함`}
                         </p>
+                        <p className="text-[12px] text-cur-muted-soft mt-1">첫 달 무료 · 언제든 해지</p>
                     </div>
 
-                    {/* 계정이 여럿이면 위 실계산 문구가 이미 설명한다 — 예시 박스는 1계정일 때만 */}
-                    {accountCount === 1 && (
-                        <div className="rounded-[8px] bg-cur-elevated p-3.5 text-[13px] text-cur-body leading-relaxed">
-                            현장이 여러 곳이면 <b className="text-cur-ink">현장 계정을 추가한 만큼만</b> 더 냅니다.
-                        </div>
-                    )}
-
-                    <ul className="space-y-2.5">
+                    <ul className="px-6 py-5 space-y-3">
                         {FEATURES.map((f) => (
                             <li key={f} className="flex items-start gap-2.5 text-[14px] text-cur-body">
-                                <CheckCircle2 className="w-[18px] h-[18px] mt-px shrink-0 text-cur-primary" />
+                                <Check className="w-4 h-4 mt-[3px] shrink-0 text-cur-muted-soft" strokeWidth={2.5} />
                                 <span className="leading-snug">{f}</span>
                             </li>
                         ))}
@@ -244,8 +236,7 @@ export default function PricingPage() {
                 {renderAction()}
 
                 <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
-                    첫 달 무료 체험 · 언제든 해지할 수 있어요.<br />
-                    해지하면 남은 기간까지 이용할 수 있습니다.
+                    해지해도 남은 기간까지는 그대로 쓸 수 있어요.
                 </p>
             </div>
         </div>
