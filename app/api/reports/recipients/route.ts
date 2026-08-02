@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserAndSubscription } from "@/lib/portone";
-import { requestConsent, listAccountConsents } from "@/lib/consent";
+import { requestConsent, listAccountConsents, ensureSelfConsent } from "@/lib/consent";
+import { resolveMyReportEmail } from "@/lib/myEmail";
 import { getOrgContext } from "@/lib/org";
 
 export const runtime = "nodejs";
@@ -18,8 +19,11 @@ export async function GET(request: Request) {
   if (ctx.kind === "member") {
     return NextResponse.json({ error: "조직 소속 계정입니다. 출력/발송 설정은 회사 안전관리자가 관리합니다." }, { status: 403 });
   }
+  // 내 이메일은 늘 목록에 있어야 한다 — 인증만 해두고 여기 안 보이면 화면이 어긋난다.
+  // 기존 계정도 이 조회 한 번으로 따라온다(멱등).
+  await ensureSelfConsent(admin, user.id, resolveMyReportEmail(user as never));
   const recipients = await listAccountConsents(admin, user.id);
-  return NextResponse.json({ recipients, isPro });
+  return NextResponse.json({ recipients, isPro, myEmail: resolveMyReportEmail(user as never) });
 }
 
 // POST: 수신처 추가(승인요청 메일)/삭제 (Pro 전용)
@@ -109,11 +113,21 @@ export async function POST(request: Request) {
 
   // ③ 수신처 삭제
   if (body.removeRecipient !== undefined) {
+    const target = String(body.removeRecipient).trim();
+    // 내 이메일은 지울 수 없다(Chris) — 지우면 "설정은 다 했는데 아무도 못 받는" 상태가 다시 생긴다.
+    // 받고 싶지 않으면 발송 주기를 끄면 된다(그쪽이 의도를 정확히 표현한다).
+    const mine = resolveMyReportEmail(user as never);
+    if (mine && target.toLowerCase() === mine.toLowerCase()) {
+      return NextResponse.json(
+        { error: "내 이메일은 수신처에서 뺄 수 없어요. 받지 않으려면 발송 주기를 꺼주세요." },
+        { status: 400 }
+      );
+    }
     await admin
       .from("report_recipient_consents")
       .delete()
       .eq("account_user_id", user.id)
-      .eq("recipient_email", String(body.removeRecipient).trim());
+      .eq("recipient_email", target);
   }
 
   const recipients = await listAccountConsents(admin, user.id);

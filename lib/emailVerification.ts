@@ -3,6 +3,7 @@
 // 토큰은 email_verifications 테이블 (만료 3일 — consent 토큰 무만료 전례 반복 금지).
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
+import { ensureSelfConsent } from "@/lib/consent";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -114,6 +115,8 @@ export async function verifyRealEmailToken(
   // 새 주소는 승인 요청부터 다시 받아야 한다. 승인 상태를 유지하는 근거: 방금 그 사람이
   // 새 주소의 인증 링크를 눌러 수신 의사를 직접 증명했다(수신 동의의 실질과 같다).
   await migrateOwnConsent(admin, row.user_id, prevEmail, row.email);
+  // 처음 인증한 경우엔 옮길 행이 없다 — 새로 만들어 넣는다
+  await ensureSelfConsent(admin, row.user_id, row.email);
 
   return { ok: true, email: row.email };
 }

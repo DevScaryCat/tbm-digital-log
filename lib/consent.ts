@@ -146,6 +146,40 @@ export async function respondConsent(
 }
 
 /** 한 계정의 수신자 목록 + 상태 (설정 화면용) */
+/**
+ * 내 이메일은 늘 수신처에 있어야 한다(Chris).
+ * 인증까지 끝난 본인 주소는 "받겠다"를 이미 증명한 것이므로 승인 요청 메일 없이 approved로 넣는다.
+ * (본인에게 "본인 주소로 보내도 되냐"고 다시 묻는 건 의미가 없고, 안 넣으면 내 정보에 이메일을
+ *  적어놨는데 발송설정에는 받는 사람이 0명인 어긋난 화면이 된다.)
+ * 이미 있으면 아무것도 하지 않는다 — 사용자가 '받지 않기'로 declined 해둔 것도 존중.
+ */
+export async function ensureSelfConsent(
+  admin: SupabaseClient,
+  accountUserId: string,
+  selfEmail: string | null | undefined
+): Promise<void> {
+  const email = normEmail(selfEmail ?? "");
+  if (!email) return;
+  try {
+    const { data: existing } = await admin
+      .from("report_recipient_consents")
+      .select("id")
+      .eq("account_user_id", accountUserId)
+      .ilike("recipient_email", email)
+      .maybeSingle();
+    if (existing) return;
+    await admin.from("report_recipient_consents").insert({
+      account_user_id: accountUserId,
+      recipient_email: email,
+      status: "approved",
+      responded_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    // 실패해도 화면은 열려야 한다 — 다음 조회에서 다시 시도된다
+    console.error("본인 수신처 등록 실패:", e);
+  }
+}
+
 export async function listAccountConsents(
   admin: SupabaseClient,
   accountUserId: string

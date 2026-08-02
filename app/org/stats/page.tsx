@@ -288,7 +288,7 @@ export default function OrgStatsPage() {
                                 <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                                     {months.map((m) => (
                                         <SelectItem key={m} value={m} className="text-[15px] py-3">
-                                            {monthLabel(m)}{m === currentMonth() ? " (이번 달)" : ""}
+                                            {m === currentMonth() ? "이번 달" : monthLabel(m)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

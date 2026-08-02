@@ -33,9 +33,12 @@ const s = StyleSheet.create({
   page: { paddingTop: 34, paddingBottom: 40, paddingHorizontal: 34, fontFamily: "Nanum", fontSize: 9.5, color: C.body, lineHeight: 1.5 },
   header: { position: "relative", minHeight: 74, marginBottom: 14 },
   appAbs: { position: "absolute", top: 0, right: 0 },
-  brand: { fontSize: 8.5, color: C.primary, fontWeight: "bold" },
-  title: { fontSize: 17, color: C.ink, fontWeight: "bold", marginTop: 7, marginRight: 178, lineHeight: 1.25 },
-  company: { fontSize: 10, color: C.muted, marginTop: 7, lineHeight: 1.3 },
+  brand: { fontSize: 8.5, color: C.primary, fontWeight: "bold", marginRight: 196 },
+  // 결재란 실제 폭 = 결재라벨 17 + (54+0.8)*2 + 54 + 바깥 테두리 ≈ 182. 종전 178은 그보다 좁아
+  // 제목 긴 문서에서 글자가 표 위로 올라탔다. 표 폭 + 여백 14로 잡는다.
+  title: { fontSize: 16, color: C.ink, fontWeight: "bold", marginTop: 7, marginRight: 196, lineHeight: 1.25 },
+  // 제목이 한 줄로 끝나면 이 줄이 결재란 높이 안에 들어온다 — 같은 여백을 준다
+  company: { fontSize: 10, color: C.muted, marginTop: 7, marginRight: 196, lineHeight: 1.3 },
   // 결재란
   appBox: { flexDirection: "row", borderWidth: 0.8, borderColor: C.ink },
   appLabel: { width: 17, alignItems: "center", justifyContent: "center", borderRightWidth: 0.8, borderColor: C.ink },

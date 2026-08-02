@@ -159,7 +159,7 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                                     <span className="flex-1 min-w-0">
                                         <span className="block text-[14px] text-cur-ink truncate">{r.email}</span>
                                         {myEmail && r.email.toLowerCase() === myEmail.toLowerCase() && (
-                                            <span className="block text-[11px] font-semibold text-cur-primary mt-0.5">내 이메일 · 내 정보 수정에서 바꿀 수 있어요</span>
+                                            <span className="block text-[11px] font-semibold text-cur-primary mt-0.5">내 이메일 · 주소 변경은 내 정보 수정에서</span>
                                         )}
                                     </span>
                                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_BADGE[r.status].cls}`}>
@@ -168,7 +168,11 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                                     {r.status !== "approved" && (
                                         <button onClick={() => resendRecipient(r.email)} disabled={saving} className="text-[12px] text-cur-primary hover:opacity-70 shrink-0 transition-colors">재발송</button>
                                     )}
-                                    <button onClick={() => removeRecipient(r.email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 transition-colors">삭제</button>
+                                    {/* 내 이메일은 뺄 수 없다(Chris) — 지우면 "설정은 끝냈는데 아무도 못 받는" 상태가 다시 생긴다.
+                                        받고 싶지 않으면 아래 발송 주기를 끄면 된다(그쪽이 의도를 정확히 표현한다) */}
+                                    {!(myEmail && r.email.toLowerCase() === myEmail.toLowerCase()) && (
+                                        <button onClick={() => removeRecipient(r.email)} disabled={saving} className="text-[12px] text-cur-muted hover:text-cur-error shrink-0 transition-colors">삭제</button>
+                                    )}
                                 </div>
                             ))}
                         </div>

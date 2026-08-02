@@ -315,9 +315,9 @@ export default function DashboardPage() {
                     {ctx?.kind === "owner" && selfId && (
                         <div className="space-y-1.5">
                             <Select value={siteId ?? selfId} onValueChange={pickSite} onOpenChange={(open) => { if (open) loadSiteOptions() }}>
-                                <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                                <SelectTrigger className="w-auto max-w-full h-10 px-3 gap-2 text-[14px] font-bold border-cur-hairline rounded-[10px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                                     <span className="flex items-center gap-2.5 min-w-0">
-                                        <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
+                                        <Building2 className="w-4 h-4 text-cur-muted shrink-0" />
                                         <SelectValue />
                                     </span>
                                 </SelectTrigger>
