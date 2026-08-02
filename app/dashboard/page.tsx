@@ -25,7 +25,8 @@ import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Plus, Printer, ChevronRight, Loader2, CheckCircle2, FileText, Circle, Building2, Sparkles } from "lucide-react"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Plus, Printer, ChevronRight, Loader2, FileText, Building2, Sparkles } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 
 export default function DashboardPage() {
@@ -35,13 +36,13 @@ export default function DashboardPage() {
     const [logs, setLogs] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
-    // 현장은 한 번에 한 곳만 본다(Chris) — 여러 현장 합쳐보기는 실사용이 없어 걷어냈다
-    const [stage, setStage] = useState<"pick" | "cal">("cal")
+    // 현장은 한 번에 한 곳만 본다(Chris) — 여러 현장 합쳐보기는 실사용이 없어 걷어냈다.
+    // 고르는 UI는 별도 화면이 아니라 셀렉트 하나(모든 현장 통계와 같은 모양).
     const [selfId, setSelfId] = useState<string | null>(null)
-    const [siteOptions, setSiteOptions] = useState<{ userId: string; siteName: string; isSelf: boolean }[]>([])
+    const [memberSites, setMemberSites] = useState<{ userId: string; siteName: string }[]>([])
+    const [sitesLoaded, setSitesLoaded] = useState(false)
     const [siteId, setSiteId] = useState<string | null>(null)
     const [pickErr, setPickErr] = useState<string | null>(null)
-    const [siteNameOf, setSiteNameOf] = useState<Map<string, string>>(new Map())
     // 내 현장일 때만 기존 경로(문서 열기·삭제·일괄 PDF). 다른 현장은 서버 경유 읽기 전용
     const selfMode = !siteId || siteId === selfId
 
@@ -175,7 +176,6 @@ export default function DashboardPage() {
                 return false
             }
             const j = await res.json()
-            setSiteNameOf(new Map((j.sites ?? []).map((x: any) => [x.userId, x.siteName])))
             setLogs(((j.docs ?? []) as any[]).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
             return true
         } finally {
@@ -195,33 +195,27 @@ export default function DashboardPage() {
         })()
     }, [ctxLoading, router])
 
-    // 현장 목록은 픽커를 열 때만 불러온다
-    const openPicker = async () => {
-        if (!selfId) return
-        if (siteOptions.length === 0) {
-            try {
-                const { data: { session } } = await supabase.auth.getSession()
-                const meta = session?.user.user_metadata ?? {}
-                const selfName = String(meta.site_name ?? "").trim() || "내 현장"
-                const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${session?.access_token}` } })
-                const j = res.ok ? await res.json() : { members: [] }
-                setSiteOptions([
-                    { userId: selfId, siteName: selfName, isSelf: true },
-                    ...((j.members ?? []) as any[])
-                        .filter((m) => m.status === "active")
-                        .map((m) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정", isSelf: false })),
-                ])
-            } catch {
-                setSiteOptions([{ userId: selfId, siteName: "내 현장", isSelf: true }])
-            }
+    // 소속 현장 명단은 셀렉트를 처음 열 때만 불러온다 — 대부분은 내 현장만 보고 나간다
+    const loadSiteOptions = async () => {
+        if (sitesLoaded) return
+        try {
+            const { data: { session } } = await supabase.auth.getSession()
+            const res = await fetch("/api/org/members", { headers: { Authorization: `Bearer ${session?.access_token}` } })
+            const j = res.ok ? await res.json() : { members: [] }
+            setMemberSites(
+                ((j.members ?? []) as any[])
+                    .filter((m) => m.status === "active")
+                    .map((m) => ({ userId: m.userId, siteName: m.siteName || "현장명 미설정" }))
+            )
+        } catch { /* 목록이 비어도 '내 현장'은 항상 고를 수 있다 */ } finally {
+            setSitesLoaded(true)
         }
-        setPickErr(null)
-        setStage("pick")
     }
 
-    // 고르는 즉시 적용 — '선택 → 확인 버튼' 2단계는 한 곳만 고르는 화면에서 군더더기다.
-    // 로드에 실패하면 픽커에 남는다(화면과 실제 데이터가 어긋나지 않게).
+    // 고르는 즉시 적용. 로드에 실패하면 선택을 커밋하지 않는다 —
+    // 셀렉트만 바뀌고 달력은 이전 현장 데이터인 어긋난 상태를 만들지 않기 위해.
     const pickSite = async (id: string) => {
+        if (id === siteId) return
         setPickErr(null)
         const ok = id === selfId ? await loadOwn() : await loadSites(id)
         if (!ok) return
@@ -229,7 +223,6 @@ export default function DashboardPage() {
         setDateRange(undefined)
         setDayDocs([])
         setRangeNote(null)
-        setStage("cal")
     }
 
     const handleDelete = async (doc: any) => {
@@ -300,57 +293,6 @@ export default function DashboardPage() {
 
     if (loading || ctxLoading) return <div className="min-h-screen flex justify-center items-center bg-cur-canvas"><Loader2 className="animate-spin w-10 h-10 text-cur-ink" /></div>
 
-    const currentSiteName = selfMode
-        ? "내 현장"
-        : (siteOptions.find((s) => s.userId === siteId)?.siteName ?? siteNameOf.get(siteId!) ?? "현장")
-
-    // 현장 고르기 — 한 곳만, 누르는 즉시 적용
-    if (stage === "pick") {
-        return (
-            <div className="min-h-screen bg-cur-canvas font-sans text-cur-ink">
-                <div className="max-w-lg mx-auto px-4 pt-4">
-                    <TBMHeader title="출력" backHref="/" />
-                </div>
-                <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
-                    <div className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-3">
-                        <h2 className="text-[15px] font-bold text-cur-ink">어떤 현장을 볼까요?</h2>
-                        <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">
-                            {siteOptions.map((s) => {
-                                const on = s.userId === siteId
-                                return (
-                                    <button
-                                        key={s.userId}
-                                        type="button"
-                                        onClick={() => pickSite(s.userId)}
-                                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-cur-elevated/50 active:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary focus-visible:ring-inset"
-                                    >
-                                        {on ? (
-                                            <CheckCircle2 className="w-5 h-5 text-cur-primary shrink-0" />
-                                        ) : (
-                                            <Circle className="w-5 h-5 text-cur-muted-soft shrink-0" />
-                                        )}
-                                        <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-ink truncate">{s.siteName}</span>
-                                        {s.isSelf && (
-                                            <span className="shrink-0 text-[10px] font-bold text-cur-primary bg-cur-primary/10 px-1.5 py-0.5 rounded-[4px]">내 현장</span>
-                                        )}
-                                    </button>
-                                )
-                            })}
-                        </div>
-                        {pickErr && <p className="text-[12px] text-cur-error">{pickErr}</p>}
-                        <Button
-                            variant="outline"
-                            onClick={() => { setPickErr(null); setStage("cal") }}
-                            className="w-full h-10 rounded-[8px] border-cur-hairline text-cur-ink text-[13px] font-semibold"
-                        >
-                            취소
-                        </Button>
-                    </div>
-                </main>
-            </div>
-        )
-    }
-
     return (
         <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
             <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
@@ -360,17 +302,36 @@ export default function DashboardPage() {
 
                 <div className="p-6 space-y-4 flex-1 bg-cur-canvas-soft">
 
-                    {/* 감독자 — 지금 보고 있는 현장 (한 곳만) */}
-                    {ctx?.kind === "owner" && (
-                        <button
-                            type="button"
-                            onClick={openPicker}
-                            className="w-full flex items-center gap-2 bg-cur-card px-3.5 py-2.5 rounded-[12px] border border-cur-hairline hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-                        >
-                            <Building2 className="w-4 h-4 text-cur-muted shrink-0" />
-                            <span className="flex-1 min-w-0 text-[13px] font-semibold text-cur-ink truncate text-left">{currentSiteName}</span>
-                            <span className="shrink-0 text-[12px] text-cur-primary font-semibold">변경</span>
-                        </button>
+                    {/* 감독자 — 볼 현장 하나 (모든 현장 통계와 같은 셀렉트 모양) */}
+                    {ctx?.kind === "owner" && selfId && (
+                        <div className="space-y-1.5">
+                            <Select value={siteId ?? selfId} onValueChange={pickSite} onOpenChange={(open) => { if (open) loadSiteOptions() }}>
+                                <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                                    <span className="flex items-center gap-2.5 min-w-0">
+                                        <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
+                                        <SelectValue />
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                                    <SelectItem value={selfId} className="text-[15px] py-3 font-semibold">내 현장</SelectItem>
+                                    {memberSites.length > 0 && (
+                                        <>
+                                            <SelectSeparator className="bg-cur-hairline" />
+                                            <SelectGroup>
+                                                <SelectLabel className="text-[11px] font-semibold text-cur-muted-soft px-8 pt-1.5">소속 현장</SelectLabel>
+                                                {memberSites.map((s) => (
+                                                    <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-3">{s.siteName}</SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        </>
+                                    )}
+                                    {!sitesLoaded && (
+                                        <p className="px-8 py-2.5 text-[12px] text-cur-muted-soft">소속 현장 불러오는 중…</p>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            {pickErr && <p className="text-[12px] text-cur-error px-1">{pickErr}</p>}
+                        </div>
                     )}
 
                     <div className="border border-cur-hairline rounded-[12px] p-2 sm:p-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] bg-cur-card flex justify-center overflow-x-auto">
