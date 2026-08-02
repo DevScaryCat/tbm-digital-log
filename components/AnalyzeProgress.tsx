@@ -9,20 +9,46 @@ export type ProgressStep = {
     label: string
     /** 끝났을 때 문구 (생략하면 label 유지) */
     doneLabel?: string
+    /**
+     * 진행 중일 때 아래 줄에 순서대로 바뀌는 보조 문구.
+     * 서버 한 번 호출 안에서 일어나는 일들이라 클라이언트가 경계를 볼 수 없다 —
+     * 순서는 실제 처리 순서이고, 넘어가는 시점만 경과 시간 기준의 근사치다.
+     * 그래서 이 문구에는 체크(완료 표시)를 붙이지 않는다: 끝났다고 말하지 않는다.
+     */
+    subSteps?: string[]
 }
+
+/** subSteps를 몇 초마다 넘길지 */
+const SUB_STEP_SEC = 4
 
 /**
  * 진행 중인 단계의 경과 초. 단계마다 새로 마운트되므로(key=단계) 0부터 다시 센다.
  * 3초 넘게 걸릴 때만 나타난다 — 짧은 단계에서 숫자가 깜빡이면 소음이다.
  */
-function ElapsedSeconds() {
+function useElapsed(): number {
     const [n, setN] = useState(0)
     useEffect(() => {
         const t = setInterval(() => setN((v) => v + 1), 1000)
         return () => clearInterval(t)
     }, [])
-    if (n < 3) return null
-    return <span className="text-[12px] leading-6 text-cur-muted-soft tabular-nums shrink-0">{n}초</span>
+    return n
+}
+
+/** 진행 중 단계의 경과 초 + 보조 문구 — 단계마다 새로 마운트되므로(key=단계) 0부터 다시 센다 */
+function ActiveDetail({ subSteps }: { subSteps?: string[] }) {
+    const n = useElapsed()
+    const sub = subSteps?.length ? subSteps[Math.min(subSteps.length - 1, Math.floor(n / SUB_STEP_SEC))] : null
+    return (
+        <>
+            {/* 3초 넘게 걸릴 때만 초를 붙인다 — 짧은 단계에서 숫자가 깜빡이면 소음이다 */}
+            {n >= 3 && <span className="text-[12px] leading-6 text-cur-muted-soft tabular-nums shrink-0">{n}초</span>}
+            {sub && (
+                <span className="block w-full text-[12px] leading-5 text-cur-muted mt-0.5 animate-in fade-in duration-300 motion-reduce:animate-none">
+                    {sub}
+                </span>
+            )}
+        </>
+    )
 }
 
 /**
@@ -88,7 +114,7 @@ export function AnalyzeProgress({
                                     />
                                 )}
                             </div>
-                            <div className={`min-w-0 flex-1 flex items-baseline gap-2 ${last ? "" : "pb-4"}`}>
+                            <div className={`min-w-0 flex-1 flex items-baseline gap-2 flex-wrap ${last ? "" : "pb-4"}`}>
                                 <span
                                     className={`text-[14px] leading-6 transition-colors duration-200 ease-out ${
                                         state === "active"
@@ -100,7 +126,7 @@ export function AnalyzeProgress({
                                 >
                                     {state === "done" ? (s.doneLabel ?? s.label) : s.label}
                                 </span>
-                                {state === "active" && <ElapsedSeconds key={activeKey} />}
+                                {state === "active" && <ActiveDetail key={activeKey} subSteps={s.subSteps} />}
                             </div>
                         </li>
                     )

@@ -285,13 +285,34 @@ export default function RiskAssessmentPage() {
 
         // 진행 표시 단계 — 경로마다 실제로 일어나는 일이 달라서 목록도 다르다.
         // (owner는 회의록 수집을 서버가 AI 호출 안에서 하므로 클라가 관측할 수 있는 경계가 없다)
-        const AI_STEP: ProgressStep = { key: "ai", label: "AI가 위험요인을 뽑는 중", doneLabel: "위험요인 정리 완료" }
-        const COMPOSE_STEP: ProgressStep = { key: "compose", label: "보고서 만드는 중", doneLabel: "보고서 완성" }
+        // 단계는 클라이언트가 실제로 관측할 수 있는 경계에서만 나눈다(체크=진짜 끝났다는 뜻).
+        // 다만 AI 호출은 한 번의 요청이라 안이 안 보인다 — 그 안에서 순서대로 일어나는 일을
+        // 보조 문구로 흘려보낸다(체크는 안 붙는다. 끝났다고 말하지 않는다).
+        const AI_STEP: ProgressStep = {
+            key: "ai",
+            label: "AI가 위험요인을 뽑는 중",
+            doneLabel: "위험요인 정리 완료",
+            subSteps: [
+                "회의에서 오간 말을 읽는 중",
+                "위험요인 후보를 추려내는 중",
+                "비슷한 지적을 하나로 묶는 중",
+                "위험 등급을 매기는 중",
+                "감소대책을 정리하는 중",
+                "거의 다 됐어요",
+            ],
+        }
+        const EDU_STEP: ProgressStep = { key: "edu", label: "같은 기간 교육일지 집계 중", doneLabel: "교육일지 집계 완료" }
+        const COMPOSE_STEP: ProgressStep = {
+            key: "compose",
+            label: "출력물 서식 만드는 중",
+            doneLabel: "보고서 완성",
+            subSteps: ["회의록 종합 서식 채우는 중", "교육일지 종합 서식 채우는 중"],
+        }
         const steps: ProgressStep[] = !isPro
             ? [{ key: "collect", label: "예시 데이터를 준비하는 중", doneLabel: "예시 데이터 준비 완료" }, COMPOSE_STEP]
             : kind === "owner"
-              ? [AI_STEP, COMPOSE_STEP]
-              : [{ key: "collect", label: "기간 안 회의록을 모으는 중", doneLabel: "회의록 수집 완료" }, AI_STEP, COMPOSE_STEP]
+              ? [AI_STEP, EDU_STEP, COMPOSE_STEP]
+              : [{ key: "collect", label: "기간 안 회의록을 모으는 중", doneLabel: "회의록 수집 완료" }, AI_STEP, EDU_STEP, COMPOSE_STEP]
         setPhaseSteps(steps)
         setPhase(steps[0].key)
 
@@ -325,6 +346,7 @@ export default function RiskAssessmentPage() {
                 setItems(json.items as RiskItem[])
                 setPeriodLabel(label)
                 setSendMsg(null)
+                setPhase("edu")
                 const sessions = Number(json.eduSessions) || 0
                 setEduStats(sessions > 0 ? { sessions, days: 0, headcount: 0, avg: "-" } : null)
                 setPhase("compose")
@@ -348,9 +370,13 @@ export default function RiskAssessmentPage() {
             setItems(json.items as RiskItem[])
             setPeriodLabel(label)
             setSendMsg(null)
-            setPhase("compose")
-            // 서로 독립인 로더 2개는 병렬로 (교육통계 ↔ 미리보기)
-            await Promise.all([loadEduStats(fromS, toS), loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId)])
+            setPhase("edu")
+            // 서로 독립인 로더 2개는 병렬로 (교육통계 ↔ 미리보기) — 직렬화하면 그만큼 느려진다.
+            // 다만 표시는 교육 집계가 '실제로' 끝난 시점에 다음 단계로 넘긴다(가짜 경계 아님).
+            await Promise.all([
+                loadEduStats(fromS, toS).then(() => setPhase("compose")),
+                loadPreviews(fromS, toS, json.items as RiskItem[], targetUserId),
+            ])
             setStep(2)
         } catch {
             setMsg({ type: "err", text: "분석 중 오류가 발생했습니다." })
