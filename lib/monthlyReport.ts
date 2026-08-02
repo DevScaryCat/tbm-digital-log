@@ -18,6 +18,11 @@ export interface ReportStats {
   total: number; // 회의록 건수
   high: number; // 위험성(상)
   mid: number; // 위험성(중)
+  /** 회의에서 언급된 위험 총 건수 = 상+중+하. 등급별 수와 혼동하면 총평이 틀린다 */
+  mentioned?: number;
+  low?: number; // 위험성(하)
+  /** 여러 TBM에서 반복 등장한 위험 건수 */
+  recurring?: number;
 }
 
 export interface HazardRow {
@@ -65,6 +70,8 @@ export interface ReportContent {
    *  나빠진 항목은 절대 넣지 않는다: 부정 표시는 가라 기록을 유인한다 (제품 원칙). */
   improvements?: { label: string; detail: string }[];
 }
+
+import { accidentTypeTop, agentTop } from "./koshaTaxonomy";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -121,7 +128,10 @@ async function buildMinutesContent(
   const mid = items.filter((it) => it.level === "중").length;
   const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 30);
 
-  const stats: ReportStats = { total: minuteRows.length, high, mid };
+  const low = items.filter((it) => it.level === "하").length;
+  // 같은 문구가 2회 이상 나온 것 = 반복 지적된 위험 (우선 관리 대상)
+  const recurringCount = [...freq.values()].filter((c) => c > 1).length;
+  const stats: ReportStats = { total: minuteRows.length, high, mid, low, mentioned: items.length, recurring: recurringCount };
   const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
 
   return { companyName, periodLabel, stats, keywords, hazards, aiSummary };
@@ -200,7 +210,9 @@ export async function buildMergedMinutesForRange(
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
   const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 40);
-  const stats: ReportStats = { total: totalMinutes, high, mid };
+  const low = items.filter((it) => it.level === "하").length;
+  const recurringCount = [...freq.values()].filter((c) => c > 1).length;
+  const stats: ReportStats = { total: totalMinutes, high, mid, low, mentioned: items.length, recurring: recurringCount };
   const improvements = monthCtx
     ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
     : [];
@@ -336,7 +348,9 @@ function summaryRequestParams(
   const facts = [
     `현장/업체: ${companyName ?? "미상"}`,
     `대상 기간: ${periodLabel} (TBM 회의록 기준)`,
-    `회의록 ${stats.total}건, 위험요인 등급 상 ${stats.high}건 / 중 ${stats.mid}건`,
+    `회의록 ${stats.total}건`,
+    `회의에서 언급된 위험 총 ${stats.mentioned ?? stats.high + stats.mid}건 = 상 ${stats.high}건 + 중 ${stats.mid}건 + 하 ${stats.low ?? 0}건`,
+    stats.recurring ? `여러 회의에서 반복 언급된 위험 ${stats.recurring}건` : "",
     `자주 논의된 위험요인: ${keywords.map((k) => `${k.word}(${k.count})`).join(", ") || "없음"}`,
   ].join("\n");
   return {
@@ -356,6 +370,8 @@ function summaryRequestParams(
       "- 가장 우선 관리할 위험을 구체적인 위험요인 이름으로 짚고, 실무적인 권고 한 가지를 덧붙입니다.",
       "- 'AI가 분석한', '~로 보입니다', '~필요가 있어 보입니다' 같은 군더더기·기계적 표현을 피하고 현장 관리자가 말하듯 단정적으로.",
       "- 주어진 집계 수치만 사용하고, 없는 수치·사실을 지어내지 마세요.",
+      "- 총 건수와 등급별 건수를 절대 섞지 마세요. '총 N건'은 상+중+하 합계이고, '상 N건'은 그중 상 등급만입니다.",
+      "- 이 집계는 TBM에서 '언급·지적된' 위험이지 위험성평가 결과가 아닙니다. '평가되었다'가 아니라 '언급되었다/지적되었다'로 쓰세요.",
     ].join("\n"),
     messages: [{ role: "user", content: facts }],
   };
@@ -409,7 +425,7 @@ function riskTableHtml(items: RiskItem[]): string {
     .join("");
   return `
       <div style="font-size:15px;font-weight:700;margin:22px 0 10px;">위험요인 분석</div>
-      ${recurring ? `<div style="background:#f54e000d;border:1px solid #f54e0033;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#c2410c;">⟳ 반복 위험요인 ${recurring}건 — 여러 TBM에서 반복 등장, 우선 관리 대상</div>` : ""}
+      ${recurring ? `<div style="background:#f54e000d;border:1px solid #f54e0033;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#c2410c;">반복 위험요인 ${recurring}건 — 여러 TBM에서 반복 등장, 우선 관리 대상</div>` : ""}
       <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e6e5e0;border-radius:8px;overflow:hidden;">
         <thead>
           <tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
@@ -435,6 +451,9 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   // 등급 없는 정보성 표라 요약·통계 파생에 쓰지 않는다.
   const summaryItems = hazards;
   const displayStats = stats;
+  // 총 언급 건수는 저장된 값이 우선 — 없는 구버전 콘텐츠는 등급 합으로 되짚는다
+  const mentioned = stats.mentioned ?? stats.high + stats.mid + (stats.low ?? 0);
+  const recurringCount = stats.recurring ?? (content.riskItems || []).filter((r) => r.recurring).length;
 
   // 지난달보다 나아진 점 — 개선 항목만 (없거나 첫 달이면 섹션 자체가 없다)
   const improvements = content.improvements || [];
@@ -476,18 +495,35 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
       </table>`
       : "";
 
-  const topWords = keywords.slice(0, 2).map((k) => escapeHtml(k.word));
-  const keywordChips =
-    keywords.length > 0
-      ? keywords
-          .map(
-            (k) =>
-              `<span style="display:inline-block;font-size:13px;font-weight:600;color:#26251e;background:#f1f0ea;border:1px solid #e6e5e0;border-radius:9999px;padding:6px 12px;margin:0 6px 8px 0;">#${escapeHtml(
-                k.word
-              )} <span style="color:#888;font-weight:500;">(${k.count})</span></span>`
-          )
-          .join("")
-      : `<span style="font-size:13px;color:#999;">집계된 위험 키워드가 없습니다.</span>`;
+  // 키워드 칩은 '주요 위험요인' 표를 한 번 더 보여주는 것에 지나지 않았다(Chris).
+  // 대신 재해유형·기인물로 묶어 "무엇 때문에 어떻게 다칠 위험이 언급됐나"를 보여준다.
+  const hazardTexts = [...hazards.map((h) => h.factor), ...riskItems.map((r) => `${r.hazard} ${r.cause}`)];
+  const typeTop = accidentTypeTop(hazardTexts, 5);
+  const agentTopList = agentTop(hazardTexts, 5);
+  const maxOf = (rows: { count: number }[]) => Math.max(1, ...rows.map((r) => r.count));
+  const tallyTable = (title: string, rows: { name: string; count: number }[]): string => {
+    if (rows.length === 0) return "";
+    const max = maxOf(rows);
+    return `
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#26251e;">${escapeHtml(title)}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          ${rows
+            .map(
+              (r) => `<tr>
+            <td style="padding:5px 0;color:#26251e;white-space:nowrap;">${escapeHtml(r.name)}</td>
+            <td style="padding:5px 8px;width:100%;">
+              <div style="background:#f1f0ea;border-radius:9999px;height:6px;">
+                <div style="background:#f54e00;border-radius:9999px;height:6px;width:${Math.round((r.count / max) * 100)}%;"></div>
+              </div>
+            </td>
+            <td style="padding:5px 0;text-align:right;color:#807d72;white-space:nowrap;">${r.count}건</td>
+          </tr>`
+            )
+            .join("")}
+        </table>
+      </div>`;
+  };
 
   const hazardRows =
     summaryItems.length > 0
@@ -511,25 +547,39 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
     <div style="border:1px solid #e6e5e0;border-radius:14px;overflow:hidden;background:#fff;">
     <div style="padding:22px 24px 18px;border-bottom:1px solid #eee;">
-      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안톡 · TBM 회의록 종합분석</div>
+      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">안톡 · TBM 회의록 AI 분석</div>
       <div style="color:#26251e;font-size:24px;font-weight:700;margin-top:8px;letter-spacing:-0.5px;">${escapeHtml(periodLabel)}</div>
       ${companyName ? `<div style="color:#807d72;font-size:14px;margin-top:3px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
     <div style="padding:24px;background:#fff;">
 
-      <table style="width:100%;border-collapse:separate;border-spacing:8px;margin:-8px 0 18px;text-align:center;">
+      <!-- 이 보고서의 성격을 맨 앞에서 못 박는다: AI가 회의록에서 '언급된' 위험을 정리한 것이지
+           위험성평가가 아니다. 이 구분이 흐려지면 법정 평가를 대체한 것처럼 읽힌다. -->
+      <div style="border:1px solid #e6e5e0;background:#fafaf7;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:#26251e;margin-bottom:6px;">이 문서는 AI가 정리한 참고 자료입니다 — 위험성평가가 아닙니다</div>
+        <div style="font-size:13px;line-height:1.7;color:#5a5852;">
+          아래 내용은 해당 기간 TBM 회의록에서 <b>현장 근로자가 실제로 언급한 위험</b>을 AI가 모아 정리한 것입니다.
+          법에서 정한 위험성평가는 이 자료를 출발점으로 삼아, <b>현장 확인과 근로자 면담</b>을 통해 별도로 진행해 주세요.
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:separate;border-spacing:6px;margin:-6px 0 18px;text-align:center;">
         <tr>
-          <td style="width:33%;background:#fff;border:1px solid #e6e5e0;border-radius:8px;padding:12px 6px;">
-            <div style="font-size:12px;color:#807d72;margin-bottom:4px;">총 회의록</div>
-            <div style="font-size:22px;font-weight:700;color:#26251e;">${stats.total}<span style="font-size:13px;color:#888;margin-left:2px;">건</span></div>
+          <td style="width:25%;background:#fff;border:1px solid #e6e5e0;border-radius:8px;padding:12px 4px;">
+            <div style="font-size:11px;color:#807d72;margin-bottom:4px;">총 회의록</div>
+            <div style="font-size:20px;font-weight:700;color:#26251e;">${stats.total}<span style="font-size:12px;color:#888;margin-left:2px;">건</span></div>
           </td>
-          <td style="width:33%;background:#fdecef;border:1px solid #f6cdd6;border-radius:8px;padding:12px 6px;">
-            <div style="font-size:12px;color:#cf2d56;margin-bottom:4px;">위험성 (상)</div>
-            <div style="font-size:22px;font-weight:700;color:#cf2d56;">${displayStats.high}<span style="font-size:13px;margin-left:2px;">건</span></div>
+          <td style="width:25%;background:#fff;border:1px solid #e6e5e0;border-radius:8px;padding:12px 4px;">
+            <div style="font-size:11px;color:#807d72;margin-bottom:4px;">언급된 위험</div>
+            <div style="font-size:20px;font-weight:700;color:#26251e;">${mentioned}<span style="font-size:12px;color:#888;margin-left:2px;">건</span></div>
           </td>
-          <td style="width:33%;background:#fff1e3;border:1px solid #ffd9b3;border-radius:8px;padding:12px 6px;">
-            <div style="font-size:12px;color:#d4691a;margin-bottom:4px;">위험성 (중)</div>
-            <div style="font-size:22px;font-weight:700;color:#d4691a;">${displayStats.mid}<span style="font-size:13px;margin-left:2px;">건</span></div>
+          <td style="width:25%;background:#fdecef;border:1px solid #f6cdd6;border-radius:8px;padding:12px 4px;">
+            <div style="font-size:11px;color:#cf2d56;margin-bottom:4px;">고위험(상)</div>
+            <div style="font-size:20px;font-weight:700;color:#cf2d56;">${displayStats.high}<span style="font-size:12px;margin-left:2px;">건</span></div>
+          </td>
+          <td style="width:25%;background:#fff1e3;border:1px solid #ffd9b3;border-radius:8px;padding:12px 4px;">
+            <div style="font-size:11px;color:#d4691a;margin-bottom:4px;">반복 언급</div>
+            <div style="font-size:20px;font-weight:700;color:#d4691a;">${recurringCount}<span style="font-size:12px;margin-left:2px;">건</span></div>
           </td>
         </tr>
       </table>
@@ -541,17 +591,20 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
       ${
         aiSummary
           ? `<div style="background:#fafaf7;border:1px solid #eee;border-radius:10px;padding:16px;margin-bottom:20px;">
-              <div style="font-size:13px;font-weight:700;color:#f54e00;margin-bottom:8px;">✨ AI 안전 총평</div>
+              <div style="font-size:13px;font-weight:700;color:#f54e00;margin-bottom:8px;">AI 안전 총평</div>
               <div style="font-size:14px;line-height:1.7;color:#444;white-space:pre-line;">${escapeHtml(aiSummary)}</div>
             </div>`
           : ""
       }
 
-      <div style="font-size:15px;font-weight:700;margin-bottom:10px;"># 핵심 위험 키워드</div>
-      <div style="margin-bottom:6px;">${keywordChips}</div>
       ${
-        topWords.length > 0
-          ? `<div style="font-size:13px;color:#807d72;line-height:1.6;margin-bottom:22px;"><span style="color:#cf2d56;font-weight:700;">${topWords[0]}</span>${topWords[1] ? ` 및 <span style="color:#cf2d56;font-weight:700;">${topWords[1]}</span>` : ""} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.</div>`
+        typeTop.length > 0 || agentTopList.length > 0
+          ? `<div style="font-size:15px;font-weight:700;margin-bottom:4px;">무엇이, 어떻게 — 언급된 위험의 분포</div>
+             <div style="font-size:12px;color:#807d72;margin-bottom:12px;">회의에서 언급된 문구를 재해유형·기인물로 묶은 것입니다.</div>
+             <div style="display:flex;gap:20px;margin-bottom:22px;">
+               ${tallyTable("재해유형 TOP 5", typeTop)}
+               ${tallyTable("기인물 TOP 5", agentTopList)}
+             </div>`
           : `<div style="margin-bottom:22px;"></div>`
       }
 
@@ -578,8 +631,8 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
           : ""
       }
       <div style="font-size:12px;color:#999;margin-top:24px;text-align:center;line-height:1.6;">
-        본 보고서는 안톡가 ${escapeHtml(periodLabel)} TBM 회의록을 분석해 자동 생성했습니다.<br/>
-        위험요인은 작성된 회의록에서만 집계됩니다.
+        본 보고서는 안톡이 ${escapeHtml(periodLabel)} TBM 회의록을 AI로 분석해 자동 생성한 참고 자료입니다.<br/>
+        작성된 회의록에서 언급된 내용만 집계되며, 법정 위험성평가를 대신하지 않습니다.
       </div>
     </div>
     </div>

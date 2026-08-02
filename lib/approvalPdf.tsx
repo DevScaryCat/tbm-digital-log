@@ -5,6 +5,7 @@ import { Document, Page, View, Text, Svg, Rect, Font, StyleSheet, renderToBuffer
 import type { ReportContent } from "@/lib/monthlyReport";
 import type { EducationReportContent } from "@/lib/educationReport";
 import { normLevel } from "@/lib/riskMatrix";
+import { accidentTypeTop, agentTop } from "./koshaTaxonomy";
 
 // 폰트는 레포에 번들(lib/fonts)해 외부 CDN 의존 없이 Vercel에서도 안정적으로 임베드.
 const FONT_DIR = path.join(process.cwd(), "lib", "fonts");
@@ -133,7 +134,12 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
   const displayHigh = stats.high;
   const displayMid = stats.mid;
   const lowCount = summaryItems.filter((h) => normLevel(h.level) === "하").length;
-  const topWords = keywords.slice(0, 2).map((k) => k.word);
+  // 키워드 칩은 '주요 위험요인' 표의 반복이라 재해유형·기인물 분포로 바꾼다(Chris)
+  const hazardTexts = summaryItems.map((h) => h.factor);
+  const mentioned = stats.mentioned ?? stats.high + stats.mid + (stats.low ?? 0);
+  const recurringCount = stats.recurring ?? (content.riskItems || []).filter((r) => r.recurring).length;
+  const typeTop = accidentTypeTop(hazardTexts, 5);
+  const agentTopList = agentTop(hazardTexts, 5);
 
   return (
     <Document title={docTitle} author="안톡">
@@ -145,11 +151,21 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
           <Text style={s.company}>{content.periodLabel}</Text>
         </View>
 
+        {/* 문서의 성격을 맨 앞에서 못 박는다 — 위험성평가를 대신한 것으로 읽히면 안 된다 */}
+        <View style={{ borderWidth: 1, borderColor: "#e6e5e0", backgroundColor: "#fafaf7", borderRadius: 6, padding: 8, marginBottom: 10 }}>
+          <Text style={{ fontSize: 9, fontWeight: 700, marginBottom: 3 }}>이 문서는 AI가 정리한 참고 자료입니다 — 위험성평가가 아닙니다</Text>
+          <Text style={{ fontSize: 8.5, color: C.muted, lineHeight: 1.5 }}>
+            해당 기간 TBM 회의록에서 현장 근로자가 실제로 언급한 위험을 AI가 모아 정리한 것입니다.
+            법에서 정한 위험성평가는 이 자료를 출발점으로 삼아, 현장 확인과 근로자 면담을 통해 별도로 진행해 주세요.
+          </Text>
+        </View>
+
         {/* 통계 */}
         <View style={s.statRow}>
           <View style={s.statCell}><Text style={s.statLabel}>총 회의록</Text><Text style={s.statVal}>{stats.total}건</Text></View>
-          <View style={[s.statCell, { backgroundColor: C.highBg, borderColor: "#f6cdd6" }]}><Text style={[s.statLabel, { color: C.high }]}>위험성 (상)</Text><Text style={[s.statVal, { color: C.high }]}>{displayHigh}건</Text></View>
-          <View style={[s.statCell, { backgroundColor: C.midBg, borderColor: "#ffd9b3" }]}><Text style={[s.statLabel, { color: C.mid }]}>위험성 (중)</Text><Text style={[s.statVal, { color: C.mid }]}>{displayMid}건</Text></View>
+          <View style={s.statCell}><Text style={s.statLabel}>언급된 위험</Text><Text style={s.statVal}>{mentioned}건</Text></View>
+          <View style={[s.statCell, { backgroundColor: C.highBg, borderColor: "#f6cdd6" }]}><Text style={[s.statLabel, { color: C.high }]}>고위험(상)</Text><Text style={[s.statVal, { color: C.high }]}>{displayHigh}건</Text></View>
+          <View style={[s.statCell, { backgroundColor: C.midBg, borderColor: "#ffd9b3" }]}><Text style={[s.statLabel, { color: C.mid }]}>반복 언급</Text><Text style={[s.statVal, { color: C.mid }]}>{recurringCount}건</Text></View>
         </View>
 
         {/* 등급 분포 그래프 */}
@@ -166,18 +182,23 @@ function ApprovalDoc({ content, docTitle }: { content: ReportContent; docTitle: 
           </View>
         ) : null}
 
-        {/* 핵심 위험 키워드 */}
-        {keywords.length > 0 ? (
+        {/* 재해유형 · 기인물 분포 — 무엇 때문에 어떻게 다칠 위험이 언급됐나 */}
+        {typeTop.length > 0 || agentTopList.length > 0 ? (
           <View wrap={false}>
-            <Text style={s.sectionTitle}># 핵심 위험 키워드</Text>
-            <View style={s.chips}>
-              {keywords.map((k) => <View key={k.word} style={s.chip}><Text style={s.chipTxt}>#{k.word} ({k.count})</Text></View>)}
+            <Text style={s.sectionTitle}>무엇이, 어떻게 — 언급된 위험의 분포</Text>
+            <View style={{ flexDirection: "row", gap: 16 }}>
+              {[["재해유형 TOP 5", typeTop], ["기인물 TOP 5", agentTopList]].map(([title, rows]) => (
+                <View key={String(title)} style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 9, fontWeight: 700, marginBottom: 3 }}>{String(title)}</Text>
+                  {(rows as { name: string; count: number }[]).map((r) => (
+                    <View key={r.name} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 1.5 }}>
+                      <Text style={{ fontSize: 8.5 }}>{r.name}</Text>
+                      <Text style={{ fontSize: 8.5, color: C.muted }}>{r.count}건</Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
             </View>
-            {topWords.length > 0 ? (
-              <Text style={{ fontSize: 8.5, color: C.muted, marginTop: 5 }}>
-                {topWords.join(" 및 ")} 관련 위험요인의 언급 빈도가 가장 높습니다. 해당 작업 전 집중 안전점검이 필요합니다.
-              </Text>
-            ) : null}
           </View>
         ) : null}
 

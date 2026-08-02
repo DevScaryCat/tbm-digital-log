@@ -345,7 +345,7 @@ export function renderEducationReportHtml(content: EducationReportContent): stri
   <div style="max-width:640px;margin:0 auto;font-family:'Apple SD Gothic Neo',Arial,sans-serif;color:#26251e;">
     <div style="border:1px solid #e6e5e0;border-radius:14px;overflow:hidden;background:#fff;">
     <div style="padding:22px 24px 18px;border-bottom:1px solid #eee;">
-      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">● 안톡 · 안전보건교육일지 종합분석</div>
+      <div style="font-size:12px;font-weight:700;color:#f54e00;letter-spacing:.2px;">안톡 · 안전보건교육일지 AI 분석</div>
       <div style="color:#26251e;font-size:24px;font-weight:700;margin-top:8px;letter-spacing:-0.5px;">${escapeHtml(periodLabel)}</div>
       ${companyName ? `<div style="color:#807d72;font-size:14px;margin-top:3px;">${escapeHtml(companyName)}</div>` : ""}
     </div>
