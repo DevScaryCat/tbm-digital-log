@@ -16,7 +16,7 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { secondsToHours, formatHoursProgress } from "@/lib/educationHours"
-import { Loader2, Building2 } from "lucide-react"
+import { Loader2, Building2, CalendarDays } from "lucide-react"
 
 interface DailyPoint { date: string; minutes: number; logs: number }
 // items는 구버전 응답(statsCache 잔존)에 없을 수 있어 optional — 접근은 항상 ?? [] 가드
@@ -31,6 +31,8 @@ interface SiteRow {
     status: "active" | "detached"
     isSelf: boolean
     todayDone: boolean
+    /** 조회된 달에 한 건이라도 기록했는지 (지난 달 조회용) */
+    monthActive?: boolean
     monthMinutes: number
     monthLogs: number
     totalMinutes: number
@@ -43,11 +45,30 @@ interface SiteRow {
 interface Overview {
     kind: "owner" | "member" | "solo"
     todayDoneCount: number
+    monthActiveCount?: number
     today: string
+    /** 조회된 달 YYYY-MM */
+    month?: string
+    isCurrentMonth?: boolean
     sites: SiteRow[]
     daily?: DailyPoint[]
     risk?: RiskAgg
 }
+
+/** KST 기준 이번 달 YYYY-MM */
+function currentMonth(): string {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" })
+        .format(new Date()).slice(0, 7)
+}
+/** 셀렉트에 올릴 최근 12개월 (이번 달부터 과거로) */
+function recentMonths(n = 12): string[] {
+    const [y, m] = currentMonth().split("-").map(Number)
+    return Array.from({ length: n }, (_, i) => {
+        const d = new Date(y, m - 1 - i, 1)
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    })
+}
+const monthLabel = (ym: string) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`
 
 // 현장별 법정 정기교육 진행도 — 반기 구간 조회라 overview와 분리해 늦게 불러온다
 interface EduData { half: string; seconds: Record<string, number> }
@@ -55,8 +76,9 @@ interface EduData { half: string; seconds: Record<string, number> }
 // 한 번에 보여줄 현장 수. 넘치면 '더 보기'가 화면에 들어오는 순간 자동으로 다음 묶음을 편다.
 const SITES_PAGE = 8
 
-// 재진입 시 풀 로딩(수 초)을 없애는 SWR 캐시 — 캐시로 즉시 그리고 뒤에서 조용히 갱신
-let statsCache: { userId: string; data: Overview } | null = null
+// 재진입 시 풀 로딩(수 초)을 없애는 SWR 캐시 — 캐시로 즉시 그리고 뒤에서 조용히 갱신.
+// 달을 바꾸면 다른 데이터이므로 캐시 키에 달을 포함한다.
+let statsCache: { userId: string; month: string; data: Overview } | null = null
 let eduCache: { userId: string; data: EduData } | null = null
 if (typeof window !== "undefined") {
     supabase.auth.onAuthStateChange((event) => {
@@ -67,7 +89,10 @@ if (typeof window !== "undefined") {
 export default function OrgStatsPage() {
     const router = useRouter()
     const { ctx, loading: ctxLoading } = useOrgContext()
-    const [data, setData] = useState<Overview | null>(statsCache?.data ?? null)
+    // 조회 달 — 셀렉트 2개(현장 / 달)가 이 화면의 범위를 정한다
+    const [month, setMonth] = useState<string>(currentMonth())
+    const months = recentMonths()
+    const [data, setData] = useState<Overview | null>(statsCache?.month === currentMonth() ? statsCache.data : null)
     const [loading, setLoading] = useState(!statsCache)
     // "all" 또는 소속 현장 userId — 내 현장은 목록에 없다
     const [sel, setSel] = useState<string>("all")
@@ -84,22 +109,23 @@ export default function OrgStatsPage() {
             const { data: s } = await supabase.auth.getSession()
             const uid = s?.session?.user?.id
             if (!uid) return
-            if (statsCache && statsCache.userId !== uid) {
+            if (statsCache && (statsCache.userId !== uid || statsCache.month !== month)) {
                 statsCache = null
                 setData(null)
                 setLoading(true)
             }
-            const res = await fetch("/api/org/overview", { headers: { Authorization: `Bearer ${s?.session?.access_token}` } })
+            const res = await fetch(`/api/org/overview?month=${month}`, { headers: { Authorization: `Bearer ${s?.session?.access_token}` } })
             if (!res.ok) return
             const j = (await res.json()) as Overview
             setData(j)
-            statsCache = { userId: uid, data: j }
+            statsCache = { userId: uid, month, data: j }
         } catch { /* 아래 !data 카드가 재시도를 제공 */ } finally {
             setLoading(false)
         }
-    }, [])
+    }, [month])
 
-    // 데이터 로드는 역할 판정과 병렬로 시작 — 직렬 대기(ctx → fetch)가 첫 진입을 느리게 했다
+    // 데이터 로드는 역할 판정과 병렬로 시작 — 직렬 대기(ctx → fetch)가 첫 진입을 느리게 했다.
+    // 달을 바꾸면 load가 새로 만들어져 다시 조회한다.
     useEffect(() => { load() }, [load])
 
     // 교육 진행도 — 실패해도 위쪽 통계는 그대로 살아있어야 하므로 이 카드 안에서만 상태를 말한다
@@ -153,7 +179,11 @@ export default function OrgStatsPage() {
 
     // ── 범위 뷰모델 — 전체/현장이 같은 UI를 쓰고 여기 값만 달라진다 ──
     const scopeSites = selected ? [selected] : activeSites
-    const todayCount = selected ? (selected.todayDone ? 1 : 0) : (data?.todayDoneCount ?? 0)
+    // 지난 달을 볼 땐 '오늘'이 없다 — 첫 타일을 "그 달에 기록한 현장 수"로 바꾼다
+    const isCurrentMonth = data?.isCurrentMonth ?? month === currentMonth()
+    const headCount = isCurrentMonth
+        ? (selected ? (selected.todayDone ? 1 : 0) : (data?.todayDoneCount ?? 0))
+        : (selected ? (selected.monthActive ? 1 : 0) : (data?.monthActiveCount ?? 0))
     const mMinutes = scopeSites.reduce((a, x) => a + x.monthMinutes, 0)
     const mLogs = scopeSites.reduce((a, x) => a + x.monthLogs, 0)
     const tMinutes = scopeSites.reduce((a, x) => a + x.totalMinutes, 0)
@@ -165,9 +195,10 @@ export default function OrgStatsPage() {
     // 펼친 키워드의 근거 목록 — 구형 캐시(items 없음)나 범위 전환으로 사라진 단어면 빈 배열
     const openItems = (openKw ? risk?.keywords.find((k) => k.word === openKw)?.items : null) ?? []
 
-    const dow = ["일", "월", "화", "수", "목", "금", "토"]
     const hasWeekData = daily.some((d) => d.minutes + d.logs > 0)
     const maxDay = Math.max(1, ...daily.map((d) => d.minutes + d.logs))
+    // 막대가 한 달치(최대 31개)라 날짜 라벨은 5일 간격 + 마지막 날에만 — 전부 찍으면 뭉개진다
+    const labelDay = (n: number) => n === 1 || n % 5 === 0 || n === daily.length
 
     // ── 법정 의무 교육 진행도 ── 홈·교육 진행도 화면과 같은 규칙(lib/educationHours)으로 계산한다
     const requiredHoursOf = (wt?: string) => (wt === "사무직 / 판매직" ? 6 : 12)
@@ -196,11 +227,14 @@ export default function OrgStatsPage() {
     }, [visibleSites, eduLoading, sel, data])
 
     return (
-        <div className="min-h-screen bg-cur-canvas font-sans">
-            <div className="max-w-lg mx-auto px-4 pt-4">
-                <TBMHeader title="현장 통계" backHref="/" />
-            </div>
-            <main className="max-w-lg mx-auto px-5 py-6 space-y-4 pb-16">
+        /* 화면 껍데기는 작성 화면(안전보건교육일지)과 같은 규격 — 카드 안에 헤더, p-4 헤더 / p-6 본문.
+           페이지마다 헤더 여백·폭이 달라 보이던 것을 하나로 맞춘다. */
+        <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-ink">
+            <div className="max-w-lg w-full mx-auto bg-cur-card sm:shadow-none sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
+                <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
+                    <TBMHeader title="현장 통계" backHref="/" />
+                </div>
+            <main className="p-6 space-y-4 flex-1 pb-12 bg-cur-canvas-soft">
                 {loading || ctxLoading ? (
                     <div className="py-24 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-cur-muted" /></div>
                 ) : !data ? (
@@ -218,40 +252,58 @@ export default function OrgStatsPage() {
                     <>
                         {/* 현장 선택 — 데이터 범위만 바꾼다. 전체와 현장 목록은 구분선+라벨로 구획.
                             범위가 바뀌면 키워드 펼침도 접는다 — 다른 범위의 근거가 남아 보이면 오해를 산다 */}
-                        <Select value={sel} onValueChange={(v) => { setSel(v); setOpenKw(null); setVisibleSites(SITES_PAGE) }}>
-                            <SelectTrigger className="w-full h-14 px-4 text-[16px] font-bold border-cur-hairline rounded-[12px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                                <span className="flex items-center gap-2.5 min-w-0">
-                                    <Building2 className="w-5 h-5 text-cur-muted shrink-0" />
-                                    <SelectValue />
-                                </span>
-                            </SelectTrigger>
-                            <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
-                                <SelectItem value="all" className="text-[15px] py-3 font-semibold">전체</SelectItem>
-                                {memberSites.length > 0 && (
-                                    <>
-                                        <SelectSeparator className="bg-cur-hairline" />
-                                        <SelectGroup>
-                                            <SelectLabel className="text-[11px] font-semibold text-cur-muted-soft px-8 pt-1.5">소속 현장</SelectLabel>
-                                            {memberSites.map((s) => (
-                                                <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-3">{s.siteName}</SelectItem>
-                                            ))}
-                                        </SelectGroup>
-                                    </>
-                                )}
-                            </SelectContent>
-                        </Select>
+                        {/* 범위 두 개 — 현장 / 달. 화면의 모든 숫자가 이 둘을 따른다 */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <Select value={sel} onValueChange={(v) => { setSel(v); setOpenKw(null); setVisibleSites(SITES_PAGE) }}>
+                                <SelectTrigger className="w-full h-11 px-3 text-[14px] font-bold border-cur-hairline rounded-[10px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                                    <span className="flex items-center gap-2 min-w-0">
+                                        <Building2 className="w-4 h-4 text-cur-muted shrink-0" />
+                                        <SelectValue />
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                                    <SelectItem value="all" className="text-[15px] py-3 font-semibold">전체</SelectItem>
+                                    {memberSites.length > 0 && (
+                                        <>
+                                            <SelectSeparator className="bg-cur-hairline" />
+                                            <SelectGroup>
+                                                <SelectLabel className="text-[11px] font-semibold text-cur-muted-soft px-8 pt-1.5">소속 현장</SelectLabel>
+                                                {memberSites.map((s) => (
+                                                    <SelectItem key={s.userId} value={s.userId} className="text-[15px] py-3">{s.siteName}</SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        </>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <Select value={month} onValueChange={(v) => { setMonth(v); setOpenKw(null); setVisibleSites(SITES_PAGE) }}>
+                                <SelectTrigger className="w-full h-11 px-3 text-[14px] font-bold border-cur-hairline rounded-[10px] bg-cur-card text-cur-ink shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                                    <span className="flex items-center gap-2 min-w-0">
+                                        <CalendarDays className="w-4 h-4 text-cur-muted shrink-0" />
+                                        <SelectValue />
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
+                                    {months.map((m) => (
+                                        <SelectItem key={m} value={m} className="text-[15px] py-3">
+                                            {monthLabel(m)}{m === currentMonth() ? " (이번 달)" : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
                         {/* 활동 기록 — 이번 달 3타일 + 7일 차트 + 누적 한 줄 (전체/현장 공통 UI) */}
                         <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                             <div className="flex items-center justify-between gap-3">
                                 <h2 className="text-[14px] font-bold text-cur-ink truncate">{selected ? selected.siteName : "활동 기록"}</h2>
-                                <span className="text-[12px] text-cur-muted-soft shrink-0">이번 달 · 차트는 최근 7일</span>
+                                <span className="text-[12px] text-cur-muted-soft shrink-0">{monthLabel(data.month ?? month)} · 일별</span>
                             </div>
                             <div className="grid grid-cols-3 gap-px bg-cur-hairline border border-cur-hairline rounded-[12px] overflow-hidden text-center">
                                 <div className="bg-cur-card py-3.5">
-                                    <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">오늘 실시</p>
+                                    <p className="text-[11px] text-cur-muted font-semibold uppercase tracking-[0.6px] mb-1">{isCurrentMonth ? "오늘 실시" : "기록한 현장"}</p>
                                     <p className="text-[24px] leading-none font-bold font-mono">
-                                        <span className={todayCount > 0 ? "text-cur-success" : "text-cur-primary"}>{todayCount}</span>
+                                        <span className={headCount > 0 ? "text-cur-success" : "text-cur-primary"}>{headCount}</span>
                                         <span className="text-[15px] text-cur-muted">/{scopeSites.length}</span>
                                     </p>
                                 </div>
@@ -265,22 +317,24 @@ export default function OrgStatsPage() {
                                 </div>
                             </div>
                             {hasWeekData ? (
-                                <div className="flex items-end justify-between gap-1.5 h-20 pt-1" aria-label="최근 7일 기록 수">
+                                /* 한 달치 일별 막대 — 요일 대신 날짜로 읽는다(Chris) */
+                                <div className="flex items-end justify-between gap-[2px] h-20 pt-1" aria-label={`${monthLabel(data.month ?? month)} 일별 기록 수`}>
                                     {daily.map((d) => {
                                         const v = d.minutes + d.logs
-                                        const [dy, dm, dd] = d.date.split("-").map(Number)
-                                        const kstDow = new Date(dy, dm - 1, dd).getDay()
+                                        const dd = Number(d.date.slice(8, 10))
                                         const isToday = d.date === data.today
                                         return (
-                                            <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                                                <span className={`text-[10px] leading-none font-mono ${v > 0 ? "text-cur-body font-semibold" : "text-cur-muted-soft"}`}>{v > 0 ? v : ""}</span>
+                                            <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${dd}일 · ${v}건`}>
+                                                <span className={`text-[9px] leading-none font-mono tabular-nums ${v > 0 ? "text-cur-body font-semibold" : "text-transparent"}`}>{v > 0 ? v : "·"}</span>
                                                 <div className="w-full h-12 flex items-end">
                                                     <div
-                                                        className={`w-full rounded-t-[4px] ${v > 0 ? "bg-cur-primary" : "bg-cur-elevated"}`}
+                                                        className={`w-full rounded-t-[2px] ${v > 0 ? "bg-cur-primary" : "bg-cur-elevated"}`}
                                                         style={{ height: v > 0 ? `${Math.max(14, Math.round((v / maxDay) * 100))}%` : "4px" }}
                                                     />
                                                 </div>
-                                                <span className={`text-[10px] leading-none ${isToday ? "font-bold text-cur-ink" : "text-cur-muted-soft"}`}>{isToday ? "오늘" : dow[kstDow]}</span>
+                                                <span className={`text-[9px] leading-none tabular-nums ${isToday ? "font-bold text-cur-ink" : "text-cur-muted-soft"}`}>
+                                                    {isToday || labelDay(dd) ? dd : ""}
+                                                </span>
                                             </div>
                                         )
                                     })}
@@ -288,7 +342,7 @@ export default function OrgStatsPage() {
                             ) : (
                                 /* 빈 차트 영역을 그대로 두면 화면이 횅해진다 — 자리 대신 상태를 말한다 */
                                 <p className="text-[12px] text-cur-muted-soft text-center rounded-[8px] border border-dashed border-cur-hairline-strong py-4">
-                                    최근 7일 기록이 없어요 — 기록이 쌓이면 요일별 차트가 채워집니다
+                                    {monthLabel(data.month ?? month)}에 기록이 없어요
                                 </p>
                             )}
                             <div className="pt-3 border-t border-cur-hairline flex items-center justify-between gap-3 text-[12px]">
@@ -299,10 +353,10 @@ export default function OrgStatsPage() {
                             </div>
                         </section>
 
-                        {/* 이번 달 위험요인 — 데이터 없으면 예시 스켈레톤 (전체/현장 공통 UI) */}
+                        {/* 선택한 달의 위험요인 — 데이터 없으면 예시 스켈레톤 (전체/현장 공통 UI) */}
                         <section className="bg-cur-card rounded-[12px] border border-cur-hairline p-5 space-y-4">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-[14px] font-bold text-cur-ink">이번 달 위험요인</h2>
+                                <h2 className="text-[14px] font-bold text-cur-ink">{monthLabel(data.month ?? month)} 위험요인</h2>
                                 {riskTotal > 0 ? (
                                     <span className="text-[12px] text-cur-muted-soft">{riskTotal}건 식별</span>
                                 ) : (
@@ -489,7 +543,8 @@ export default function OrgStatsPage() {
                         </section>
                     </>
                 )}
-            </main>
+                </main>
+            </div>
         </div>
     )
 }

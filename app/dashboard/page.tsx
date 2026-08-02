@@ -301,13 +301,14 @@ export default function DashboardPage() {
     if (loading || ctxLoading) return <div className="min-h-screen flex justify-center items-center bg-cur-canvas"><Loader2 className="animate-spin w-10 h-10 text-cur-ink" /></div>
 
     return (
-        <div className="min-h-screen bg-cur-canvas pb-24 font-sans text-cur-ink">
-            <div className="max-w-lg mx-auto min-h-screen bg-cur-card shadow-sm border-x border-cur-hairline overflow-hidden relative flex flex-col">
-                <div className="p-4 border-b border-cur-hairline bg-cur-card sticky top-0 z-10">
-                    <TBMHeader title="출력" />
+        /* 껍데기 규격은 작성 화면(안전보건교육일지)과 동일 — 화면마다 헤더 여백·폭이 달라 보이던 것을 맞춘다 */
+        <div className="bg-cur-canvas min-h-screen sm:py-8 flex sm:block items-center justify-center font-sans text-cur-ink">
+            <div className="max-w-lg w-full mx-auto bg-cur-card sm:shadow-none sm:rounded-[12px] relative flex flex-col min-h-[100dvh] sm:min-h-[85vh] border-x sm:border border-cur-hairline mb-[env(safe-area-inset-bottom)] overflow-hidden">
+                <div className="p-4 bg-cur-card border-b border-cur-hairline sticky top-0 z-50">
+                    <TBMHeader title="출력" backHref="/" />
                 </div>
 
-                <div className="p-6 space-y-4 flex-1 bg-cur-canvas-soft">
+                <div className="p-6 space-y-4 flex-1 pb-12 bg-cur-canvas-soft">
 
                     {/* 감독자 — 볼 현장 하나 (모든 현장 통계와 같은 셀렉트 모양) */}
                     {ctx?.kind === "owner" && selfId && (

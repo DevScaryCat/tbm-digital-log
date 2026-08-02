@@ -39,14 +39,18 @@ export async function GET(request: Request) {
   const canManage = ctx.kind === "owner" || ctx.kind === "solo";
 
   const today = kstToday();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  // 대시보드 미니 차트용 최근 7일 (월 경계를 넘을 수 있어 조회 시작은 둘 중 이른 날짜)
-  const last7: string[] = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(`${today}T00:00:00+09:00`);
-    d.setDate(d.getDate() - (6 - i));
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-  });
-  const fetchStart = last7[0] < monthStart ? last7[0] : monthStart;
+  // 조회 대상 달 — ?month=YYYY-MM (기본: 이번 달). 통계 화면의 달 선택이 쓴다.
+  const qMonth = new URL(request.url).searchParams.get("month") ?? "";
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(qMonth) ? qMonth : today.slice(0, 7);
+  const isCurrentMonth = month === today.slice(0, 7);
+  const monthStart = `${month}-01`;
+  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
+  // 일별 차트 = 그 달의 날짜들. 이번 달이면 오늘까지만(빈 미래 막대는 기록이 없는 것처럼 읽힌다).
+  const lastDay = isCurrentMonth ? Number(today.slice(8, 10)) : daysInMonth;
+  const days: string[] = Array.from({ length: lastDay }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+  const fetchStart = monthStart;
+  const fetchEnd = monthEnd;
 
   // 활성 계정 id는 owner면 ctx(memberIds)만으로 확정된다 — 메타데이터 조회(listOrgMembers,
   // 현장 수만큼 admin API 호출)를 기다렸다가 데이터 쿼리를 시작하던 직렬 구조가 통계 화면
@@ -74,10 +78,10 @@ export async function GET(request: Request) {
             .catch(() => ({} as Record<string, any>))
       : Promise.resolve({} as Record<string, any>),
     activeIds.length
-      ? admin.from("tbm_minutes").select("id, user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart)
+      ? admin.from("tbm_minutes").select("id, user_id, date, hazards").in("user_id", activeIds).gte("date", fetchStart).lte("date", fetchEnd)
       : Promise.resolve({ data: [] as any[] }),
     activeIds.length
-      ? admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart)
+      ? admin.from("tbm_logs").select("user_id, date").in("user_id", activeIds).gte("date", fetchStart).lte("date", fetchEnd)
       : Promise.resolve({ data: [] as any[] }),
     // 누적 카운트 — 현장 수 × 3개의 head-count 대신 RPC 1회 (20260729010000)
     activeIds.length
@@ -159,12 +163,12 @@ export async function GET(request: Request) {
   >();
   for (const id of activeIds) byUser.set(id, { minutesMonth: 0, logsMonth: 0, todayMinutes: 0, todayLogs: 0, lastDate: null });
   const dailyMap = new Map<string, { minutes: number; logs: number }>();
-  for (const d of last7) dailyMap.set(d, { minutes: 0, logs: 0 });
+  for (const d of days) dailyMap.set(d, { minutes: 0, logs: 0 });
   // 현장별 7일 차트 — 전체와 같은 UI를 현장 단위로 그리기 위한 분해본
   const dailyByUser = new Map<string, Map<string, { minutes: number; logs: number }>>();
   for (const id of activeIds) {
     const m = new Map<string, { minutes: number; logs: number }>();
-    for (const d of last7) m.set(d, { minutes: 0, logs: 0 });
+    for (const d of days) m.set(d, { minutes: 0, logs: 0 });
     dailyByUser.set(id, m);
   }
   for (const r of (minutesRes.data as any[]) || []) {
@@ -214,6 +218,8 @@ export async function GET(request: Request) {
       isOwner: m.isOwner,
       isSelf: m.userId === user.id,
       todayDone: !!s && (s.todayMinutes > 0 || s.todayLogs > 0),
+      // 지난 달을 볼 땐 '오늘'이 없다 — 그 달에 한 건이라도 쓴 현장인지로 대신 센다
+      monthActive: !!s && (s.minutesMonth > 0 || s.logsMonth > 0),
       todayMinutes: s?.todayMinutes ?? 0,
       todayLogs: s?.todayLogs ?? 0,
       monthMinutes: s?.minutesMonth ?? 0,
@@ -223,7 +229,7 @@ export async function GET(request: Request) {
       totalLogs: t?.logs ?? 0,
       suggestions: t?.suggestions ?? 0,
       // 현장 선택 시 전체와 같은 UI로 그리기 위한 현장 단위 차트·위험요인
-      daily: last7.map((day) => ({ date: day, ...(d?.get(day) ?? { minutes: 0, logs: 0 }) })),
+      daily: days.map((day) => ({ date: day, ...(d?.get(day) ?? { minutes: 0, logs: 0 }) })),
       risk: r ? { levels: r.levels, keywords: topKeywords(r.kw, r.kwItems) } : { levels: { high: 0, mid: 0, low: 0 }, keywords: [] },
     };
   });
@@ -237,10 +243,14 @@ export async function GET(request: Request) {
     // 소속 현장만의 수 (감독자 본인 제외) — "아직 현장이 없어요" 판정용
     memberCount: Math.max(0, activeIds.length - (ownerUserId ? 1 : 0)),
     todayDoneCount: sites.filter((s) => s.status === "active" && s.todayDone).length,
+    monthActiveCount: sites.filter((s) => s.status === "active" && s.monthActive).length,
     today,
+    // 선택된 달과 그 달이 '이번 달'인지 — 화면이 '오늘 실시' 타일을 쓸지 결정한다
+    month,
+    isCurrentMonth,
     sites,
     // 최근 7일 활동 (전 현장 합) — 현장관리 대시보드 미니 차트용
-    daily: last7.map((d) => ({ date: d, ...dailyMap.get(d)! })),
+    daily: days.map((d) => ({ date: d, ...dailyMap.get(d)! })),
     // 이번 달 위험요인 집계 — 등급 분포 + 자주 나온 키워드
     risk: { levels: levelCounts, keywords },
   });
