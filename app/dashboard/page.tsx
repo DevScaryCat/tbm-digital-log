@@ -195,6 +195,13 @@ export default function DashboardPage() {
         })()
     }, [ctxLoading, router])
 
+    // 소속 현장 명단은 뒤에서 미리 받아둔다 — 셀렉트를 열었을 때 '불러오는 중'을 보는 것이
+    // 이 화면에서 유일하게 기다리는 구간이었다. 감독자가 아니면 셀렉트 자체가 없다.
+    useEffect(() => {
+        if (ctx?.kind === "owner") loadSiteOptions()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ctx?.kind])
+
     // 소속 현장 명단은 셀렉트를 처음 열 때만 불러온다 — 대부분은 내 현장만 보고 나간다
     const loadSiteOptions = async () => {
         if (sitesLoaded) return
