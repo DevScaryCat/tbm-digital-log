@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ReportView } from "@/components/ReportView"
 import { MinutesView } from "@/components/MinutesView"
 import { Printer, ArrowLeft, Loader2, FileDown } from "lucide-react"
+import { showAlert, showConfirm } from "@/lib/uiDialog"
 
 // 파일명용 기간 표기 — "2026-07-01" → "0701"
 function mmdd(date?: string): string {
@@ -45,7 +46,7 @@ export default function BatchReportPage() {
                     import("@/lib/exportDocx"),
                 ])
                 const { blob, imageFailures } = await buildEducationHwpx(logs.map((l) => ({ log: l, participants: participantsMap[l.id] || [] })))
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestHwpxFilename("education", period, logs[0].company_name))
             } else if (exportFormat === "xlsx") {
                 // 엑셀 선택 시 서식 있는 .xlsx로 저장 — 1건 = 시트 1장
@@ -54,17 +55,17 @@ export default function BatchReportPage() {
                     import("@/lib/exportDocx"),
                 ])
                 const { blob, imageFailures } = await buildEducationXlsx2(logs.map((l) => ({ log: l, participants: participantsMap[l.id] || [] })))
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestXlsxFilename("education", period, logs[0].company_name))
             } else {
                 const { buildEducationDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
                 const { blob, imageFailures } = await buildEducationDocx(logs.map((l) => ({ log: l, participants: participantsMap[l.id] || [] })))
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestFilename("education", period, logs[0].company_name))
             }
         } catch (error) {
             console.error("문서 파일 생성 실패:", error)
-            alert("문서 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
+            showAlert("문서 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
         } finally {
             setExporting(false)
         }

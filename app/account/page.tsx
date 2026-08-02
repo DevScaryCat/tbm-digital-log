@@ -11,6 +11,7 @@ import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
 import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
+import { showConfirm } from "@/lib/uiDialog"
 
 interface Payment {
     payment_id: string
@@ -76,12 +77,11 @@ export default function AccountPage() {
     }, [])
 
     const handleCancel = async () => {
-        if (
-            !confirm(
-                "정말 구독을 해지하시겠어요?\n무료체험 중이면 남은 기간까지 이용할 수 있고, 유료 이용 중이면 사용하지 않은 잔여 기간을 일할 계산해 환불해 드립니다."
-            )
+        const ok = await showConfirm(
+            "무료체험 중이면 남은 기간까지 그대로 이용할 수 있고, 유료 이용 중이면 사용하지 않은 잔여 기간을 일할 계산해 환불해 드립니다.",
+            { title: "정말 구독을 해지할까요?", confirmText: "해지하기", danger: true }
         )
-            return
+        if (!ok) return
         setBusy(true)
         setMsg(null)
         try {

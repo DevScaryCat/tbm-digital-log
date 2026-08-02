@@ -17,6 +17,7 @@ import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
+import { showAlert } from "@/lib/uiDialog"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
 // 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
@@ -590,7 +591,7 @@ export default function MainPage() {
                   })
                   // 서버 안내(쿨다운·상한)를 그대로 보여준다 — 일반 실패 문구로 뭉개면 연타가 고장으로 읽힌다
                   const j = await res.json().catch(() => ({}))
-                  alert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : (j.error || "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요."))
+                  showAlert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : (j.error || "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요."))
                 }}
                 className="shrink-0 h-9 px-3 rounded-lg bg-cur-ink text-white text-[12px] font-bold"
               >

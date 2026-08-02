@@ -8,6 +8,7 @@ import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Printer, ArrowLeft, Loader2, Home, FileDown } from "lucide-react"
+import { showAlert, showConfirm } from "@/lib/uiDialog"
 
 // 원문에는 근로자 발화가 그대로 남아 원청 제출본에선 빼고 싶을 수 있다 — 선택을 기기에 기억
 const INCLUDE_TRANSCRIPT_KEY = "antok_export_include_transcript"
@@ -98,7 +99,7 @@ export default function MinutesReportPage() {
                     import("@/lib/exportDocx"),
                 ])
                 const { blob, imageFailures } = await buildMinutesHwpx(items)
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestHwpxFilename("minutes", minutes.date))
             } else if (exportFormat === "xlsx") {
                 // 엑셀 선택 시 서식 있는 .xlsx로 저장
@@ -107,17 +108,17 @@ export default function MinutesReportPage() {
                     import("@/lib/exportDocx"),
                 ])
                 const { blob, imageFailures } = await buildMinutesXlsx(items)
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestXlsxFilename("minutes", minutes.date))
             } else {
                 const { buildMinutesDocx, downloadBlob, suggestFilename } = await import("@/lib/exportDocx")
                 const { blob, imageFailures } = await buildMinutesDocx(items)
-                if (imageFailures > 0 && !confirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`)) return
+                if (imageFailures > 0 && !(await showConfirm(`서명·사진 ${imageFailures}건을 불러오지 못해 문서에서 빠졌습니다.\n페이지를 새로고침한 뒤 다시 시도하면 포함될 수 있어요. 그래도 저장할까요?`))) return
                 downloadBlob(blob, suggestFilename("minutes", minutes.date))
             }
         } catch (error) {
             console.error("문서 파일 생성 실패:", error)
-            alert("문서 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
+            showAlert("문서 파일 생성에 실패했습니다. 잠시 후 다시 시도해주세요.")
         } finally {
             setExporting(false)
         }
@@ -172,7 +173,7 @@ export default function MinutesReportPage() {
                 setParticipants(parts.map((p) => ({ ...p, signature: signed(sig, p.signature) })))
             } catch (error) {
                 console.error("데이터 로드 실패:", error)
-                alert("회의록 데이터를 불러오지 못했습니다.")
+                showAlert("회의록 데이터를 불러오지 못했습니다.")
             } finally {
                 setLoading(false)
             }

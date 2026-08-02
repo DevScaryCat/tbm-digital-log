@@ -197,8 +197,10 @@ export default function OrgStatsPage() {
 
     const hasWeekData = daily.some((d) => d.minutes + d.logs > 0)
     const maxDay = Math.max(1, ...daily.map((d) => d.minutes + d.logs))
-    // 막대가 한 달치(최대 31개)라 날짜 라벨은 5일 간격 + 마지막 날에만 — 전부 찍으면 뭉개진다
-    const labelDay = (n: number) => n === 1 || n % 5 === 0 || n === daily.length
+    // 막대 수에 따라 날짜 라벨 밀도를 바꾼다 — 한 달치(최대 31개)를 전부 찍으면 뭉개지고,
+    // 달 초의 7일짜리 창은 전부 찍어야 어느 날인지 읽힌다 (index 기준: 앞 달로 넘어가도 안전)
+    const labelDay = (i: number, dd: number) =>
+        daily.length <= 10 || i === 0 || i === daily.length - 1 || dd % 5 === 0
 
     // ── 법정 의무 교육 진행도 ── 홈·교육 진행도 화면과 같은 규칙(lib/educationHours)으로 계산한다
     const requiredHoursOf = (wt?: string) => (wt === "사무직 / 판매직" ? 6 : 12)
@@ -319,12 +321,12 @@ export default function OrgStatsPage() {
                             {hasWeekData ? (
                                 /* 한 달치 일별 막대 — 요일 대신 날짜로 읽는다(Chris) */
                                 <div className="flex items-end justify-between gap-[2px] h-20 pt-1" aria-label={`${monthLabel(data.month ?? month)} 일별 기록 수`}>
-                                    {daily.map((d) => {
+                                    {daily.map((d, i) => {
                                         const v = d.minutes + d.logs
                                         const dd = Number(d.date.slice(8, 10))
                                         const isToday = d.date === data.today
                                         return (
-                                            <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${dd}일 · ${v}건`}>
+                                            <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${Number(d.date.slice(5, 7))}월 ${dd}일 · ${v}건`}>
                                                 <span className={`text-[9px] leading-none font-mono tabular-nums ${v > 0 ? "text-cur-body font-semibold" : "text-transparent"}`}>{v > 0 ? v : "·"}</span>
                                                 <div className="w-full h-12 flex items-end">
                                                     <div
@@ -333,7 +335,7 @@ export default function OrgStatsPage() {
                                                     />
                                                 </div>
                                                 <span className={`text-[9px] leading-none tabular-nums ${isToday ? "font-bold text-cur-ink" : "text-cur-muted-soft"}`}>
-                                                    {isToday || labelDay(dd) ? dd : ""}
+                                                    {isToday || labelDay(i, dd) ? dd : ""}
                                                 </span>
                                             </div>
                                         )

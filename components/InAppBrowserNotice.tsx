@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { X, ExternalLink } from "lucide-react"
+import { showAlert } from "@/lib/uiDialog"
 
 // 카카오톡·네이버 등 '인앱 브라우저'는 앱을 닫으면 저장소(로그인 정보)를 지워서
 // 매번 다시 로그인해야 한다. 외부 브라우저(Safari/Chrome)로 유도해 로그인 유지되게 한다.
@@ -27,9 +28,9 @@ export function InAppBrowserNotice() {
     const copyUrl = async () => {
         try {
             await navigator.clipboard.writeText(window.location.href)
-            alert("주소를 복사했어요.\nSafari 또는 Chrome 주소창에 붙여넣어 열어주세요.")
+            showAlert("주소를 복사했어요.\nSafari 또는 Chrome 주소창에 붙여넣어 열어주세요.")
         } catch {
-            alert("우측 상단(⋮) 메뉴에서 'Safari/Chrome으로 열기'를 눌러주세요.")
+            showAlert("우측 상단(⋮) 메뉴에서 'Safari/Chrome으로 열기'를 눌러주세요.")
         }
     }
 

@@ -14,6 +14,7 @@ import {
     Save
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { showAlert } from "@/lib/uiDialog"
 
 export default function AdminDashboardPage() {
     const router = useRouter()
@@ -46,7 +47,7 @@ export default function AdminDashboardPage() {
         setIsLoading(true)
         setTimeout(() => {
             setIsLoading(false)
-            alert("현장 맞춤 설정이 저장되었습니다. 앱 전체에 적용됩니다.")
+            showAlert("현장 맞춤 설정이 저장되었습니다. 앱 전체에 적용됩니다.")
         }, 1000)
     }
 

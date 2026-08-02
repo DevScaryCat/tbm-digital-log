@@ -47,9 +47,22 @@ export async function GET(request: Request) {
   const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
   const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
   // 일별 차트 = 그 달의 날짜들. 이번 달이면 오늘까지만(빈 미래 막대는 기록이 없는 것처럼 읽힌다).
-  const lastDay = isCurrentMonth ? Number(today.slice(8, 10)) : daysInMonth;
-  const days: string[] = Array.from({ length: lastDay }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
-  const fetchStart = monthStart;
+  // 다만 **최소 7일**은 보여준다(Chris) — 8월 2일에 막대 2개만 서 있으면 흐름이 안 읽힌다.
+  // 달 초라 7일이 안 되면 앞 달 끝자락까지 거슬러 채운다. 타일·위험요인은 그대로 이 달만 센다.
+  const MIN_CHART_DAYS = 7;
+  const chartEnd = isCurrentMonth ? today : monthEnd;
+  const shiftDays = (ymd: string, delta: number): string => {
+    const d = new Date(`${ymd}T00:00:00+09:00`);
+    d.setDate(d.getDate() + delta);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  };
+  const chartStart = shiftDays(chartEnd, -(MIN_CHART_DAYS - 1)) < monthStart
+    ? shiftDays(chartEnd, -(MIN_CHART_DAYS - 1))
+    : monthStart;
+  const days: string[] = [];
+  for (let d = chartStart; d <= chartEnd; d = shiftDays(d, 1)) days.push(d);
+  // 조회 구간은 차트가 앞 달로 넘어가면 그만큼 넓힌다 (월 집계는 monthStart 가드로 분리됨)
+  const fetchStart = chartStart < monthStart ? chartStart : monthStart;
   const fetchEnd = monthEnd;
 
   // 활성 계정 id는 owner면 ctx(memberIds)만으로 확정된다 — 메타데이터 조회(listOrgMembers,

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Footer } from "@/components/Footer";
 import { ConsentGate } from "@/components/ConsentGate";
+import { DialogHost } from "@/components/DialogHost";
 import "./globals.css";
 
 const inter = Inter({
@@ -58,6 +59,8 @@ export default function RootLayout({
         {children}
         <Footer />
         <ConsentGate />
+        {/* 기본 alert()/confirm() 대체 — 전역에 하나만 */}
+        <DialogHost />
       </body>
     </html>
   );

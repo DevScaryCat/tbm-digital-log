@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } from "lucide-react"
+import { showAlert } from "@/lib/uiDialog"
 
 // 근로자 의견·제안 폼 — 서명 완료 화면의 suggest 단계에서 사용.
 // submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로 익명(anon) 그대로 호출한다.
@@ -33,7 +34,7 @@ function SuggestionForm({
     const submit = async () => {
         const text = content.trim()
         if (text.length < 5) {
-            alert("제안 내용을 5자 이상 입력해주세요.")
+            showAlert("제안 내용을 5자 이상 입력해주세요.")
             return
         }
         setSending(true)
@@ -51,7 +52,7 @@ function SuggestionForm({
                         : error.message.includes("NAME_TOO_LONG")
                             ? "이름이 너무 길어 실명으로 접수할 수 없습니다. 익명으로 보내주세요."
                             : "전송에 실패했습니다. 잠시 후 다시 시도해주세요."
-                alert(msg)
+                showAlert(msg)
                 return
             }
             setContent("")
@@ -156,12 +157,12 @@ export default function SignPage() {
 
     const handleSubmit = async () => {
         if (!name.trim()) {
-            alert("이름을 입력해주세요.")
+            showAlert("이름을 입력해주세요.")
             return
         }
 
         if (!sigCanvas.current || sigCanvas.current.isEmpty()) {
-            alert("서명을 진행해주세요.")
+            showAlert("서명을 진행해주세요.")
             return
         }
 
@@ -188,7 +189,7 @@ export default function SignPage() {
             setIsSuccess(true)
         } catch (error: any) {
             console.error(error)
-            alert("서명 제출에 실패했습니다: " + error.message)
+            showAlert("서명 제출에 실패했습니다: " + error.message)
         } finally {
             setIsSubmitting(false)
         }

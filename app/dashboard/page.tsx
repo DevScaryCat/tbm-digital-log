@@ -28,6 +28,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Printer, ChevronRight, Loader2, FileText, Building2, Sparkles } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
+import { showAlert, showConfirm } from "@/lib/uiDialog"
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -234,10 +235,10 @@ export default function DashboardPage() {
 
     const handleDelete = async (doc: any) => {
         const label = doc.type === 'minute' ? '회의록' : '교육일지'
-        if (!confirm(`이 ${label}을(를) 삭제할까요?\n참석자·서명도 함께 삭제되며 되돌릴 수 없습니다.`)) return
+        if (!(await showConfirm("참석자·서명도 함께 삭제되며 되돌릴 수 없습니다.", { title: `이 ${label}을(를) 삭제할까요?`, confirmText: "삭제", danger: true }))) return
         const table = doc.type === 'minute' ? 'tbm_minutes' : 'tbm_logs'
         const { error } = await supabase.from(table).delete().eq('id', doc.id)
-        if (error) { alert('삭제 실패: ' + error.message); return }
+        if (error) { showAlert('삭제 실패: ' + error.message); return }
         setLogs(prev => prev.filter(l => !(l.id === doc.id && l.type === doc.type)))
         setDayDocs(prev => prev.filter(l => !(l.id === doc.id && l.type === doc.type)))
     }
@@ -261,7 +262,7 @@ export default function DashboardPage() {
         if (!from) return
         const minuteIds = logs.filter(l => l.type === 'minute' && inRange(l)).map(l => l.id)
         const logIds = logs.filter(l => l.type !== 'minute' && inRange(l)).map(l => l.id)
-        if (minuteIds.length === 0 && logIds.length === 0) return alert("선택한 날짜에 문서가 없습니다.")
+        if (minuteIds.length === 0 && logIds.length === 0) return showAlert("선택한 날짜에 문서가 없습니다.")
         sessionStorage.setItem("dash_restore", JSON.stringify(rangeKeys()))
         localStorage.setItem("batch_minute_ids", JSON.stringify(minuteIds))
         localStorage.setItem("batch_print_ids", JSON.stringify(logIds))

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Loader2, CheckCircle, Send, Lock } from "lucide-react"
+import { showAlert } from "@/lib/uiDialog"
 
 export default function AdminPage() {
     // 인증 상태
@@ -28,7 +29,7 @@ export default function AdminPage() {
     // 2. 계정 생성 요청
     const handleCreate = async () => {
         if (!form.siteName || !form.managerEmail || !form.desiredId) {
-            alert("모든 정보를 입력해주세요.")
+            showAlert("모든 정보를 입력해주세요.")
             return
         }
 
@@ -62,7 +63,7 @@ export default function AdminPage() {
             const data = await res.json()
 
             if (res.status === 401) {
-                alert("관리자 비밀번호가 틀렸습니다.")
+                showAlert("관리자 비밀번호가 틀렸습니다.")
                 setIsAuthenticated(false)
                 return
             }
@@ -72,13 +73,13 @@ export default function AdminPage() {
                     userId: fullEmailId,
                     password: randomPassword
                 })
-                alert("계정이 생성되고 메일이 발송되었습니다! ✅")
+                showAlert("계정이 생성되고 메일이 발송되었습니다! ✅")
             } else {
-                alert("실패: " + (data.error || "알 수 없는 오류"))
+                showAlert("실패: " + (data.error || "알 수 없는 오류"))
             }
         } catch (e) {
             console.error(e)
-            alert("서버 통신 오류가 발생했습니다.")
+            showAlert("서버 통신 오류가 발생했습니다.")
         } finally {
             setLoading(false)
         }

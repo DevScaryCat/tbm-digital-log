@@ -10,6 +10,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Loader2, MessageSquareText, Trash2, FileText, ChevronRight } from "lucide-react"
+import { showAlert, showConfirm } from "@/lib/uiDialog"
 
 type Suggestion = {
     id: string; content: string; author_name: string | null; is_read: boolean; created_at: string
@@ -45,9 +46,9 @@ export default function SuggestionsPage() {
     }, [])
 
     const handleDelete = async (id: string) => {
-        if (!confirm("이 제안을 삭제할까요? 되돌릴 수 없습니다.")) return
+        if (!(await showConfirm("되돌릴 수 없습니다.", { title: "이 제안을 삭제할까요?", confirmText: "삭제", danger: true }))) return
         const { error } = await supabase.from("worker_suggestions").delete().eq("id", id)
-        if (error) { alert("삭제 실패: " + error.message); return }
+        if (error) { showAlert("삭제 실패: " + error.message); return }
         setItems(prev => prev.filter(i => i.id !== id))
     }
 

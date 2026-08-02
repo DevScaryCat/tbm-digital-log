@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy, Sparkles } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
+import { showAlert } from "@/lib/uiDialog"
 
 interface SpeechRecognitionEvent {
     resultIndex: number
@@ -189,7 +190,7 @@ export default function TBMPage() {
                         // 화면도 초기 상태로 돌아가, 인식된 내용이 있어도 저장 못 하는 것처럼 보인다.
                         setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
                         setRecordingCount(prev => prev + 1);
-                        alert("최대 녹음 시간(20분)에 도달해 녹음이 자동 종료되었습니다.\n지금까지 인식된 내용은 그대로 있으니, 아래 'AI 요약'을 눌러 일지를 만드세요.");
+                        showAlert("최대 녹음 시간(20분)에 도달해 녹음이 자동 종료되었습니다.\n지금까지 인식된 내용은 그대로 있으니, 아래 'AI 요약'을 눌러 일지를 만드세요.");
                     }
                 }
             }, 1000);
@@ -475,7 +476,7 @@ export default function TBMPage() {
 
     const handleNext = () => {
         const errorMsg = validateStep(step);
-        if (errorMsg) { alert(errorMsg); return; }
+        if (errorMsg) { showAlert(errorMsg); return; }
         setStep(prev => Math.min(S_DONE, prev + 1));
     }
 
@@ -506,7 +507,7 @@ export default function TBMPage() {
 
     const saveToDatabase = async (confirmationSigBase64: string) => {
         const errorMsg = validateStep(5);
-        if (errorMsg) { alert(errorMsg); return; }
+        if (errorMsg) { showAlert(errorMsg); return; }
 
         setIsSaving(true)
         try {
@@ -594,7 +595,7 @@ export default function TBMPage() {
                     : e && typeof e === "object" && "message" in e
                     ? String((e as { message: unknown }).message)
                     : "알 수 없는 오류"
-            alert("저장 실패: " + errorMessage)
+            showAlert("저장 실패: " + errorMessage)
         } finally {
             setIsSaving(false)
         }
@@ -640,11 +641,11 @@ export default function TBMPage() {
                     remarks
                 }))
             } else {
-                alert("AI 분석 오류: " + (data.error || "알 수 없는 오류"))
+                showAlert("AI 분석 오류: " + (data.error || "알 수 없는 오류"))
             }
         } catch (e) {
             console.error(e)
-            alert("AI 서버 연결 실패")
+            showAlert("AI 서버 연결 실패")
         } finally {
             setIsProcessingAI(false)
         }
@@ -665,12 +666,12 @@ export default function TBMPage() {
         setAutoPaused(false);
         const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
         if (/KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line|DaumApps/i.test(ua)) {
-            alert("카카오톡·네이버 등 인앱 브라우저에서는 음성 녹음이 동작하지 않습니다.\n우측 상단 메뉴에서 'Safari/Chrome으로 열기'를 눌러 외부 브라우저로 진행해주세요.");
+            showAlert("카카오톡·네이버 등 인앱 브라우저에서는 음성 녹음이 동작하지 않습니다.\n우측 상단 메뉴에서 'Safari/Chrome으로 열기'를 눌러 외부 브라우저로 진행해주세요.");
             return;
         }
         const SpeechRecognition = (window as unknown as CustomWindow).SpeechRecognition || (window as unknown as CustomWindow).webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            alert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
+            showAlert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
             return;
         }
 
@@ -698,13 +699,13 @@ export default function TBMPage() {
                 if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                     // 마이크 권한을 실수로 거부/차단한 경우 — 브라우저별 허용 방법 안내
                     stopRecording();
-                    alert("마이크 권한이 꺼져 있어 음성 인식을 시작할 수 없습니다.\n\n[마이크 허용 방법]\n· 아이폰(Safari): 주소창의 'AA' 버튼 → 웹사이트 설정 → 마이크 → 허용 (또는 설정 > Safari > 마이크)\n· PC·안드로이드(Chrome): 주소창 왼쪽 자물쇠 아이콘 → 마이크 → 허용\n\n허용으로 바꾼 뒤 다시 '녹음 시작'을 눌러주세요.");
+                    showAlert("마이크 권한이 꺼져 있어 음성 인식을 시작할 수 없습니다.\n\n[마이크 허용 방법]\n· 아이폰(Safari): 주소창의 'AA' 버튼 → 웹사이트 설정 → 마이크 → 허용 (또는 설정 > Safari > 마이크)\n· PC·안드로이드(Chrome): 주소창 왼쪽 자물쇠 아이콘 → 마이크 → 허용\n\n허용으로 바꾼 뒤 다시 '녹음 시작'을 눌러주세요.");
                 } else if (event.error === 'audio-capture') {
                     stopRecording();
-                    alert("마이크를 찾을 수 없습니다. 마이크가 연결·활성화돼 있는지 확인한 뒤 다시 시도해주세요.");
+                    showAlert("마이크를 찾을 수 없습니다. 마이크가 연결·활성화돼 있는지 확인한 뒤 다시 시도해주세요.");
                 } else if (event.error === 'network') {
                     stopRecording();
-                    alert("네트워크 문제로 음성 인식이 중단되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.");
+                    showAlert("네트워크 문제로 음성 인식이 중단되었습니다. 인터넷 연결을 확인한 뒤 다시 시도해주세요.");
                 }
                 // 'no-speech','aborted' 등 일시적 오류는 무시(onend에서 자동 재시작)
             };
@@ -730,12 +731,12 @@ export default function TBMPage() {
             setFormData(prev => ({ ...prev, startTime: recordingCount === 0 ? getCurrentTime() : prev.startTime }));
         } catch (err) {
             console.error(err);
-            alert("마이크 권한을 확인해주세요.\n브라우저에서 마이크 사용을 '허용'으로 바꾼 뒤 다시 시도해주세요.");
+            showAlert("마이크 권한을 확인해주세요.\n브라우저에서 마이크 사용을 '허용'으로 바꾼 뒤 다시 시도해주세요.");
         }
     }
 
     const submitRecording = async () => {
-        if (!accumulatedTranscript.trim()) { alert("인식된 음성이 없습니다."); return; }
+        if (!accumulatedTranscript.trim()) { showAlert("인식된 음성이 없습니다."); return; }
         
         setIsProcessingSTT(true)
         setStep(S_ROSTER)
@@ -755,7 +756,7 @@ export default function TBMPage() {
             window.location.hostname === "127.0.0.1"
         );
         if (!isLocal) {
-            alert("개발 환경에서만 사용 가능한 기능입니다.");
+            showAlert("개발 환경에서만 사용 가능한 기능입니다.");
             return;
         }
 
@@ -778,11 +779,11 @@ export default function TBMPage() {
                 setAccumulatedTranscript(data.transcript)
                 requestAISummary(data.transcript)
             } else {
-                alert("음성 인식 실패: " + (data.error || "알 수 없는 오류"))
+                showAlert("음성 인식 실패: " + (data.error || "알 수 없는 오류"))
             }
         } catch (err) {
             console.error(err)
-            alert("음성 인식 중 네트워크 오류 발생")
+            showAlert("음성 인식 중 네트워크 오류 발생")
         } finally {
             setIsProcessingSTT(false)
         }
@@ -804,11 +805,11 @@ export default function TBMPage() {
 
     const handleConfirmAndSave = async () => {
         if (!hasAgreedToDisclaimer) {
-            alert("법적 책임을 확인하고 동의란에 체크해주셔야 저장이 가능합니다.")
+            showAlert("법적 책임을 확인하고 동의란에 체크해주셔야 저장이 가능합니다.")
             return
         }
         if (!confirmationSigCanvas.current || confirmationSigCanvas.current.isEmpty()) {
-            alert("최종 확인 서명을 작성해주세요.")
+            showAlert("최종 확인 서명을 작성해주세요.")
             return
         }
         if (isSaving || savingRef.current) return
@@ -1172,7 +1173,7 @@ export default function TBMPage() {
                                     onClick={() => {
                                         if (typeof window !== "undefined" && sessionId) {
                                             navigator.clipboard.writeText(`${window.location.origin}/sign/${sessionId}`)
-                                            alert("서명 링크가 복사되었습니다.")
+                                            showAlert("서명 링크가 복사되었습니다.")
                                         }
                                     }}
                                     className="bg-cur-card border-cur-info/30 text-cur-info hover:bg-cur-info/10 h-10 rounded-[8px] font-semibold text-[13px] px-5"
