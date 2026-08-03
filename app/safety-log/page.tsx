@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
-import { appendSttFinals } from "@/lib/sttTranscript"
+import { appendSttFinals, collapseSttCascade } from "@/lib/sttTranscript"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
@@ -539,7 +539,8 @@ export default function TBMPage() {
                     photo_url: photoUrl,
                     confirmation_signature: confirmationSignatureUrl,
                     // 음성 인식 원문 보관(재가공용). 없으면 null. 개인정보 포함 가능 → 판매 전 별도 동의 필요.
-                    raw_transcript: accumulatedTranscript.trim() || null
+                    // 저장 직전 계단식 중복 최종 제거 — 수신 보정을 뚫고 온 팽창도 DB엔 못 들어간다
+                    raw_transcript: collapseSttCascade(accumulatedTranscript) || null
                 })
                 .select()
                 .single()
@@ -743,7 +744,7 @@ export default function TBMPage() {
         
         setTimeout(() => {
             setIsProcessingSTT(false)
-            requestAISummary(accumulatedTranscript)
+            requestAISummary(collapseSttCascade(accumulatedTranscript))
         }, 500)
     }
 

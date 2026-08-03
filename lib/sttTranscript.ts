@@ -40,3 +40,34 @@ export function appendSttFinals(prev: string, chunks: string[]): string {
     for (const c of chunks) acc = appendSttFinal(acc, c)
     return acc
 }
+
+/**
+ * 저장 직전 최종 방어선 — 이미 누적 팽창된 텍스트에서 계단식 중복을 걷어낸다.
+ *
+ * appendSttFinal(수신 시점 보정)이 1차 방어지만, 브라우저 구현 차이·재시작 경계 등
+ * 어떤 경로로든 팽창이 통과하면 DB에 그대로 박제된다(실데이터: 24초 발화가 9,605자).
+ * 그래서 원문을 저장하거나 AI에 넘기기 직전에 한 번 더 돌린다 — 멱등이라 몇 번 돌아도 같다.
+ *
+ * 원리: 팽창은 "지게차 | 지게차 탈 | 지게차 탈 때 …"처럼 직전 내용의 접두 재전송이므로,
+ * 단어 단위로 걸으며 "다음 구간이 지금까지 결과의 꼬리와 2단어 이상 일치"하면 그 겹침을 건너뛴다.
+ * 2단어 미만은 건드리지 않는다 — "안전, 안전, 안전" 같은 실제 반복 구호를 보존하기 위해.
+ */
+export function collapseSttCascade(text: string): string {
+    const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean)
+    const out: string[] = []
+    let i = 0
+    while (i < words.length) {
+        const maxK = Math.min(out.length, words.length - i, 60)
+        let k = 0
+        for (let cand = maxK; cand >= 2; cand--) {
+            let ok = true
+            for (let j = 0; j < cand; j++) {
+                if (out[out.length - cand + j] !== words[i + j]) { ok = false; break }
+            }
+            if (ok) { k = cand; break }
+        }
+        if (k > 0) i += k
+        else { out.push(words[i]); i++ }
+    }
+    return out.join(" ")
+}
