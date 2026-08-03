@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getUserAndSubscription, getAdminClient } from "@/lib/portone";
 import { resolveReportTarget } from "@/lib/org";
+import { STT_DOMAIN_HINT } from "@/lib/sttDomainHints";
 
 export const runtime = "nodejs";
 
@@ -142,7 +143,8 @@ export async function POST(request: Request) {
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2500,
       temperature: 0.2,
-      system: systemPrompt,
+      // 현장 STT 오인식 교정 지침 — 원문은 그대로 두고 해석 단계에서 복원한다
+      system: systemPrompt + STT_DOMAIN_HINT,
       tools: [
         {
           name: "format_risk_assessment",
