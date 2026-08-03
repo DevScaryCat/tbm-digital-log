@@ -69,5 +69,13 @@ export function collapseSttCascade(text: string): string {
         if (k > 0) i += k
         else { out.push(words[i]); i++ }
     }
-    return out.join(" ")
+    // 마지막으로 연속 동일 단어를 하나로 접는다 — 계단의 첫 단(한 단어씩 자란 구간)의 잔여
+    // "지게차 지게차 지게차"와 발화 더듬임 "문제가 문제가"가 남아 가독을 해쳤다(Chris).
+    // 실제 반복 구호("안전 안전 안전")도 접히지만, 의미("안전"이라고 말함)는 보존되고
+    // 발화 시간은 세션 시각으로 이미 기록돼 있어 증거 손실은 없다고 판단.
+    const folded: string[] = []
+    for (const w of out) {
+        if (folded[folded.length - 1] !== w) folded.push(w)
+    }
+    return folded.join(" ")
 }
