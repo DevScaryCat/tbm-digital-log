@@ -8,7 +8,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Sparkles, FileText, Mail } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
 import { resolveMyReportEmail } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
@@ -108,6 +108,46 @@ const RiskBadge = ({ level }: { level: "상" | "중" | "하" }) => (
     level === "상" ? "bg-cur-error/10 text-cur-error" : level === "중" ? "bg-amber-500/15 text-amber-600" : "bg-cur-elevated text-cur-body"
   }`}>{level}</span>
 )
+
+// 녹음 화면 목업 — 앱의 녹음 단계 느낌만 재현 (장식용, 인터랙션 없음)
+function RecordingCard() {
+  const bars = [5, 9, 14, 8, 16, 11, 18, 7, 13, 17, 9, 15, 6, 12, 18, 10, 14, 7, 16, 11, 8, 15, 12, 6, 13, 9]
+  const lines = [
+    "오늘 B동 앞 상차 작업 집중합니다",
+    "지게차 지나갈 때는 일단 멈추고, 기사님과 눈 마주치고 가세요",
+    "오후에 많이 덥습니다. 물 자주 드시고 이상하면 바로 얘기하세요",
+  ]
+  return (
+    <div className="relative bg-white border border-cur-hairline rounded-[14px] shadow-[0_16px_48px_rgba(38,37,30,0.10)] p-5 sm:p-6 text-cur-ink">
+      <span className="absolute top-3 right-3 text-[10px] font-semibold text-cur-muted bg-cur-canvas border border-cur-hairline rounded-[6px] px-1.5 py-0.5">예시 화면</span>
+      <div className="flex items-center gap-2">
+        <span className="relative flex w-2.5 h-2.5" aria-hidden>
+          <span className="absolute inline-flex w-full h-full rounded-full bg-cur-error opacity-60 animate-ping motion-reduce:animate-none" />
+          <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-cur-error" />
+        </span>
+        <span className="text-[14px] font-bold">녹음 중</span>
+        <span className="text-[13px] font-mono text-cur-body">07:42</span>
+        <span className="ml-auto mr-10 text-[11px] font-semibold text-cur-body bg-cur-elevated border border-cur-hairline rounded-[6px] px-1.5 py-0.5">1회차</span>
+      </div>
+      <div className="mt-4 flex items-end gap-[3px] h-8" aria-hidden>
+        {bars.map((h, i) => (
+          <span key={i} className="w-[5px] rounded-full bg-cur-primary/60" style={{ height: `${h * 2}px` }} />
+        ))}
+      </div>
+      <div className="mt-4 bg-cur-canvas border border-cur-hairline rounded-[10px] px-3.5 py-3 space-y-2">
+        {lines.map((l, i) => (
+          <p key={l} className={`text-[12.5px] leading-relaxed break-keep ${i === lines.length - 1 ? "text-cur-ink font-medium" : "text-cur-muted"}`}>{l}</p>
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2" aria-hidden>
+        <span className="h-10 rounded-[8px] border border-cur-hairline flex items-center justify-center text-[13px] font-semibold text-cur-body">일시정지</span>
+        <span className="h-10 rounded-[8px] bg-cur-primary text-cur-on-primary flex items-center justify-center gap-1.5 text-[13px] font-bold">
+          <Mic className="w-3.5 h-3.5" /> AI 요약
+        </span>
+      </div>
+    </div>
+  )
+}
 
 function DocMinutes() {
   const rows: { hazard: string; level: "상" | "중" | "하"; action: string }[] = [
@@ -661,12 +701,6 @@ export default function MainPage() {
     // 콜백 파라미터를 달고 세션 없이 착지 — 위 effect가 /login으로 보낸다. 그 사이 광고가 비치지 않게.
     if (oauthLanding) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-    // 과정 3단계 — 결과물이 주인공이라 과정은 한 줄 스트립으로만
-    const steps = [
-      { icon: Mic, t: "말한다", d: "아침 TBM에서 하던 말 그대로, 녹음 버튼 하나" },
-      { icon: Sparkles, t: "AI가 정리한다", d: "현장 용어를 알아듣고 위험요인·대책을 구조화" },
-      { icon: FileText, t: "서류가 나온다", d: "법정 서식으로 완성 — 서명까지 QR로" },
-    ]
     // 결과물 쇼케이스 — 문서 목업(예시 서식)과 짝지어 스크롤로 하나씩
     const showcases: { chip: string; title: string; desc: string; formats: string[]; doc: React.ReactNode }[] = [
       {
@@ -735,24 +769,32 @@ export default function MainPage() {
           </div>
         </section>
 
-        {/* 과정 — 한 줄 스트립 (결과물이 주인공, 과정은 짧게) */}
+        {/* 녹음 — 히어로 바로 아래 본문 시작: 입력이 얼마나 단순한지부터 보여준다 */}
         <section id="process" className="max-w-6xl mx-auto px-5 sm:px-8 pb-20 sm:pb-28">
-          <Reveal>
-            <div className="grid sm:grid-cols-3 gap-3 sm:gap-4">
-              {steps.map((s, i) => (
-                <div key={s.t} className="bg-cur-card border border-cur-hairline rounded-[16px] p-5 sm:p-6 flex items-start gap-4">
-                  <div className="w-10 h-10 shrink-0 rounded-[10px] bg-cur-primary/10 text-cur-primary flex items-center justify-center">
-                    <s.icon className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[16px] font-bold text-cur-ink leading-snug">{s.t}</p>
-                    <p className="text-[13px] text-cur-muted-soft leading-relaxed mt-1 break-keep">{s.d}</p>
-                  </div>
-                  {i < 2 && <ChevronRight className="hidden sm:block w-4 h-4 text-cur-muted-soft shrink-0 self-center -mr-1" />}
-                </div>
-              ))}
-            </div>
-          </Reveal>
+          <div className="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
+            <Reveal>
+              <span className="inline-block text-[12px] font-semibold text-cur-primary bg-cur-primary/10 px-2.5 py-1 rounded-full">
+                녹음
+              </span>
+              <h3 className="text-[24px] sm:text-[32px] font-bold text-cur-ink tracking-tight leading-[1.25] mt-4 whitespace-pre-line break-keep">
+                {"하던 TBM 그대로,\n녹음 버튼만 누르세요"}
+              </h3>
+              <p className="text-[15px] sm:text-[16px] text-cur-muted leading-relaxed mt-4 max-w-md break-keep">
+                따로 배울 것이 없습니다. 아침 조회에서 말하는 동안 안톡이 받아 적고,
+                끝나면 AI 요약 버튼 하나로 문서 작성이 시작됩니다.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-5">
+                {["실시간 음성 인식", "회차·시간 자동 기록"].map((f) => (
+                  <span key={f} className="text-[11px] font-mono font-semibold text-cur-body bg-cur-card border border-cur-hairline rounded-[6px] px-2 py-1">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </Reveal>
+            <Reveal delay={140} className="max-w-md w-full mx-auto md:mx-0 md:justify-self-end">
+              <RecordingCard />
+            </Reveal>
+          </div>
         </section>
 
         {/* 결과물 쇼케이스 — 스크롤 내리며 서류가 하나씩 나타난다 */}
