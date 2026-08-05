@@ -296,15 +296,16 @@ export default function MinutesReportPage() {
                             <td className="border border-black w-24">위험성</td>
                             <td className="border border-black">대책(※ 제거 → 대체 → 통제 순서 고려)</td>
                         </tr>
-                        {Array.from({ length: Math.max(3, minutes.hazards?.length || 0) }).map((_, i) => {
-                            const hazard = minutes.hazards?.[i];
+                        {/* 실데이터 행만 — 빈 패딩 행은 '상/중/하' 자리표시만 남아 미완성 문서로 보였다(Chris). 0건이면 형식 유지용 빈 1행 */}
+                        {Array.from({ length: Math.max(1, minutes.hazards?.filter(h => h?.factor?.trim()).length || 0) }).map((_, i) => {
+                            const hazard = minutes.hazards?.filter(h => h?.factor?.trim())[i];
                             return (
                                 <tr key={i} className="min-h-[40px]">
                                     <td colSpan={2} className="border border-black p-2 align-top text-xs break-all">
                                         □ {hazard?.factor}
                                     </td>
                                     <td className="border border-black p-2 text-center font-bold text-red-600">
-                                        {hazard?.level || '상/중/하'}
+                                        {hazard?.level || ''}
                                     </td>
                                     <td className="border border-black p-2 align-top text-xs break-all">
                                         □ {hazard?.measure}

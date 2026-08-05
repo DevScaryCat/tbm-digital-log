@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       [🚨 핵심 준수 사항]
       - 녹음 내용에 없는 사실(작업 구역, 사용 장비명, 날씨, 지시사항 등)을 절대로 임의로 지어내지 마세요.
       - 잡담, 안부 인사, 헛소리, 업무와 무관한 이야기 등은 배제하세요.
+      - 녹음에서 파악할 수 없는 항목은 빈 문자열("")로 두세요. "<UNKNOWN>", "알 수 없음", "N/A" 같은 자리표시 텍스트를 절대 쓰지 마세요 — 이 문서는 그대로 법정 서식에 인쇄됩니다.
 
       [세부 가이드]
       1. processName (공정명): 현장의 대표 공정 종류를 10자 이내 명사형으로. (예: "철골 공사", "배관 설비", "물류 상하차")
@@ -124,24 +125,32 @@ export async function POST(request: Request) {
 
     const str = (v: unknown, fallback = "") =>
       typeof v === "string" ? v : fallback;
+    // 모델이 파악 실패를 자리표시 텍스트로 채우는 경우가 있다("<UNKNOWN>" 실사례) —
+    // 법정 서식에 그대로 인쇄되므로 서버에서 빈 값으로 소독한다
+    const PLACEHOLDER_RE = /^[<([{\s]*(unknown|없음|알 수 없음|알수없음|파악 불가|파악불가|미상|해당 없음|해당없음|n\/?a|none|null|undefined)[>)\]}\s.]*$/i;
+    const clean = (v: unknown, fallback = "") => {
+      const s = str(v, fallback).trim();
+      return PLACEHOLDER_RE.test(s) ? "" : s;
+    };
 
     const hazards = Array.isArray(input.hazards)
       ? (input.hazards as unknown[])
           .filter((h): h is Record<string, unknown> => !!h && typeof h === "object")
           .map((h) => ({
-            factor: str(h.factor),
+            factor: clean(h.factor),
             level: ["상", "중", "하"].includes(str(h.level)) ? str(h.level) : "중",
-            measure: str(h.measure),
+            measure: clean(h.measure),
           }))
+          .filter((h) => h.factor) // 요인 없는 행은 문서에 빈 줄만 만든다
       : [];
 
     const result = {
-      processName: str(input.processName),
-      workName: str(input.workName),
-      workContent: str(input.workContent),
+      processName: clean(input.processName),
+      workName: clean(input.workName),
+      workContent: clean(input.workContent),
       hazards,
-      instructions: str(input.instructions),
-      safetyPhrase: str(input.safetyPhrase, "안전제일!"),
+      instructions: clean(input.instructions),
+      safetyPhrase: clean(input.safetyPhrase) || "안전제일!",
     };
 
     // 빈 결과는 캐시하지 않는다 — 재시도 여지를 남긴다

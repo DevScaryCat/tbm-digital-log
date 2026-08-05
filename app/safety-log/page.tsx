@@ -422,7 +422,8 @@ export default function TBMPage() {
                         setFormData(prev => {
                             if (newSignature.name === "OPEN_SESSION" || newSignature.name === "CLOSED_SESSION") return prev;
 
-                            const participants = [...prev.participants];
+                            // QR 서명이 들어오면 손대지 않은 빈 수동 행은 정리 (tbm-minutes와 동일 규칙)
+                            const participants = prev.participants.filter(p => p.name.trim() !== "" || p.signature);
 
                             const newParticipant = {
                                 id: Date.now() + Math.random(),

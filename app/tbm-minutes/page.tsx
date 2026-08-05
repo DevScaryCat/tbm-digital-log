@@ -403,7 +403,10 @@ export default function TBMMinutesPage() {
                         setFormData(prev => {
                             if (newSignature.name === "OPEN_SESSION" || newSignature.name === "CLOSED_SESSION") return prev;
 
-                            const participants = [...prev.participants];
+                            // QR 서명이 들어오기 시작하면 손대지 않은 빈 수동 행은 정리한다 —
+                            // 기본 1행이 빈 채로 남아 "이 칸을 채워야 하나?" 혼란을 만들었다(Chris).
+                            // 이름이나 서명을 조금이라도 채운 행은 작성 중일 수 있으니 남긴다.
+                            const participants = prev.participants.filter(p => p.name.trim() !== "" || p.signature);
                             participants.push({
                                 id: Date.now() + Math.random(),
                                 name: newSignature.name,
@@ -1141,11 +1144,17 @@ export default function TBMMinutesPage() {
                                 <div className="p-4 grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-1.5">
                                         <Label className={LABEL_CLS}>공정(종)명</Label>
-                                        <Input name="processName" value={formData.processName} onChange={handleChange} className={FIELD_CLS} />
+                                        <Input name="processName" value={formData.processName} onChange={handleChange} className={FIELD_CLS} placeholder="예: 물류 상하차" />
+                                        {!formData.processName.trim() && (
+                                            <p className="text-[12px] text-cur-muted leading-snug">녹음에서 파악되지 않았어요 — 직접 입력해주세요</p>
+                                        )}
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <Label className={LABEL_CLS}>작업명</Label>
-                                        <Input name="workName" value={formData.workName} onChange={handleChange} className={FIELD_CLS} />
+                                        <Input name="workName" value={formData.workName} onChange={handleChange} className={FIELD_CLS} placeholder="예: 상차 및 결속" />
+                                        {!formData.workName.trim() && (
+                                            <p className="text-[12px] text-cur-muted leading-snug">녹음에서 파악되지 않았어요 — 직접 입력해주세요</p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -1163,6 +1172,9 @@ export default function TBMMinutesPage() {
                                         className={AREA_CLS}
                                         placeholder="AI가 요약한 작업 내용을 확인하고 수정하세요."
                                     />
+                                    {!formData.workContent.trim() && (
+                                        <p className="text-[12px] text-cur-muted leading-snug mt-1.5">녹음에서 발췌할 내용을 찾지 못했어요 — 오늘 작업을 한 줄로 적어주세요</p>
+                                    )}
                                 </div>
                             </div>
 

@@ -365,14 +365,15 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
         cell({ fill: C.gray200, text: "대책(※ 제거 → 대체 → 통제 순서 고려)", bold: true, align: AlignmentType.CENTER }),
     ], 400))
 
-    const hazards = Array.isArray(m.hazards) ? m.hazards : []
-    const hazardRows = Math.max(3, hazards.length)
+    // 실데이터 행만 — 빈 패딩 행('상/중/하' 자리표시)은 미완성 문서로 보인다. 0건이면 형식 유지용 빈 1행
+    const hazards = (Array.isArray(m.hazards) ? m.hazards : []).filter((h) => h?.factor?.trim())
+    const hazardRows = Math.max(1, hazards.length)
     for (let i = 0; i < hazardRows; i++) {
         const h = hazards[i]
         // 빈도·강도가 있으면 "빈도×강도 · 등급", 없으면 등급만 — MinutesView와 동일
         const risk = h
             ? (h.frequency && h.severity ? `${h.frequency}×${h.severity} · ${h.level || ""}` : (h.level || ""))
-            : "상/중/하"
+            : ""
         rows.push(row([
             cell({ span: 2, valign: VerticalAlign.TOP, children: paras(`□ ${h?.factor ?? ""}`, { size: 18 }) }),
             cell({ text: risk, bold: true, color: C.red, align: AlignmentType.CENTER }),

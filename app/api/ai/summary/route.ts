@@ -107,9 +107,14 @@ export async function POST(request: Request) {
       remarks?: unknown;
     };
 
-    let educationContent =
-      typeof input.educationContent === "string" ? input.educationContent.trim() : "";
-    let remarks = typeof input.remarks === "string" ? input.remarks.trim() : "";
+    // 모델이 파악 실패를 자리표시 텍스트로 채우는 경우 대비("<UNKNOWN>" 실사례, minutes와 동일 방어)
+    const PLACEHOLDER_RE = /^[<([{\s]*(unknown|없음|알 수 없음|알수없음|파악 불가|파악불가|미상|해당 없음|해당없음|n\/?a|none|null|undefined)[>)\]}\s.]*$/i;
+    const clean = (v: unknown) => {
+      const s = typeof v === "string" ? v.trim() : "";
+      return PLACEHOLDER_RE.test(s) ? "" : s;
+    };
+    let educationContent = clean(input.educationContent);
+    let remarks = clean(input.remarks);
 
     if (!educationContent) {
       remarks =
