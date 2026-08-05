@@ -1,11 +1,28 @@
 // app/api/ai/stt/route.ts
 import { NextResponse } from "next/server";
-import { getUserAndSubscription } from "@/lib/portone";
+import { getUserAndSubscription, getAdminClient } from "@/lib/portone";
 import { checkAndRecordAiUsage, AI_LIMIT_MESSAGE } from "@/lib/aiUsage";
 
 export const runtime = "nodejs";
 
 const MAX_FILE_BYTES = 30 * 1024 * 1024; // 30MB
+
+// 계정당 월 전사 한도(초). 비용 폭주 방어선 — 넘으면 전사를 거절하고 클라이언트는
+// 브라우저 실시간 인식본으로 조용히 폴백한다(문서 작성 자체는 계속 가능).
+// 900분 ≈ 매일 30분씩 한 달. 정상 사용은 닿지 않는다.
+const MONTHLY_SECONDS_CAP = 900 * 60;
+
+/** 이번 달(KST) 누적 전사 초 */
+async function monthlySeconds(admin: ReturnType<typeof getAdminClient>, userId: string): Promise<number> {
+  const kstNow = new Date(Date.now() + 9 * 3600_000);
+  const startISO = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), 1) - 9 * 3600_000).toISOString();
+  const { data } = await admin
+    .from("stt_usage")
+    .select("seconds")
+    .eq("user_id", userId)
+    .gte("created_at", startISO);
+  return (data ?? []).reduce((sum, r: { seconds: number | string }) => sum + Number(r.seconds || 0), 0);
+}
 
 export async function POST(request: Request) {
   try {
@@ -35,6 +52,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Deepgram API key가 설정되지 않았습니다." }, { status: 500 });
     }
 
+    const admin = getAdminClient();
+    if ((await monthlySeconds(admin, user.id)) >= MONTHLY_SECONDS_CAP) {
+      return NextResponse.json(
+        { error: "이번 달 정밀 전사 한도를 초과했습니다.", capped: true },
+        { status: 429 },
+      );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -55,7 +80,15 @@ export async function POST(request: Request) {
     const data = await response.json();
     const transcript = data.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
 
-    return NextResponse.json({ transcript });
+    // 실제 과금 단위(오디오 길이)를 남긴다 — 한 달 뒤 요금 판단을 추정이 아니라 실측으로 하기 위해.
+    // 기록 실패가 전사를 막지는 않는다.
+    const seconds = Number(data.metadata?.duration ?? 0);
+    if (seconds > 0) {
+      const source = (formData.get("source") as string | null) === "app" ? "app" : "web";
+      await admin.from("stt_usage").insert({ user_id: user.id, seconds, source });
+    }
+
+    return NextResponse.json({ transcript, seconds });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
     return NextResponse.json({ error: errorMessage }, { status: 500 });

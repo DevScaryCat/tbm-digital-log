@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { appendSttFinals, collapseSttCascade } from "@/lib/sttTranscript"
+import { useAudioCapture, transcribeBlobs, SERVER_STT_ENABLED } from "@/lib/useAudioCapture"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
@@ -117,6 +118,8 @@ export default function TBMPage() {
     const isRecordingRef = useRef(false)
     const recognitionRef = useRef<SpeechRecognition | null>(null)
     const [accumulatedTranscript, setAccumulatedTranscript] = useState("")
+    // 브라우저 인식과 동시에 원음을 남겨 저장 직전 서버(정확) 전사로 교체 — 앱과 동일한 2계층
+    const audioCapture = useAudioCapture()
     const [recordingCount, setRecordingCount] = useState(0)
 
     const [recordingTime, setRecordingTime] = useState(0)
@@ -185,6 +188,7 @@ export default function TBMPage() {
                         if (recognitionRef.current) {
                             recognitionRef.current.stop();
                         }
+                        audioCapture.stop(); // 마이크 점유 해제 + 원음 조각 마감
                         // 수동 일시정지(stopRecording)와 동일한 종료 처리 필수 — 빠뜨리면 첫 녹음이
                         // 20분을 채웠을 때 recordingCount가 0에 머물러 'AI 요약' 버튼이 계속 잠기고
                         // 화면도 초기 상태로 돌아가, 인식된 내용이 있어도 저장 못 하는 것처럼 보인다.
@@ -213,6 +217,7 @@ export default function TBMPage() {
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 if (recognitionRef.current) recognitionRef.current.stop();
+                audioCapture.stop();
                 setFormData(prev => ({ ...prev, endTime: getCurrentTime() }));
                 setRecordingCount(prev => prev + 1);
                 setAutoPaused(true);
@@ -351,6 +356,7 @@ export default function TBMPage() {
             // 언마운트 시 음성인식 정리 (마이크 누수 / onend 재시작 루프 방지)
             isRecordingRef.current = false;
             try { recognitionRef.current?.stop(); } catch {}
+            audioCapture.reset(); // 마이크 트랙 해제 + 미전송 원음 폐기
             const currentSession = sessionIdRef.current;
             const currentStep = stepRef.current;
             if (currentSession && currentStep !== S_DONE) {
@@ -659,6 +665,7 @@ export default function TBMPage() {
         if (recognitionRef.current) {
             recognitionRef.current.stop()
         }
+        audioCapture.stop()
         // 종료시간 = 마지막 녹음 종료 시각
         setFormData(prev => ({ ...prev, endTime: getCurrentTime() }))
         setRecordingCount(prev => prev + 1)
@@ -727,6 +734,7 @@ export default function TBMPage() {
 
             recognition.start();
             recognitionRef.current = recognition;
+            audioCapture.start(); // 원음 병행 저장(실패해도 인식은 그대로 진행)
             setIsRecording(true);
             isRecordingRef.current = true;
             // 시작시간 = 첫 녹음 시작 시각 (여러 번 녹음해도 처음 것 유지)
@@ -739,14 +747,25 @@ export default function TBMPage() {
 
     const submitRecording = async () => {
         if (!accumulatedTranscript.trim()) { showAlert("인식된 음성이 없습니다."); return; }
-        
+
         setIsProcessingSTT(true)
         setStep(S_ROSTER)
-        
-        setTimeout(() => {
-            setIsProcessingSTT(false)
-            requestAISummary(collapseSttCascade(accumulatedTranscript))
-        }, 500)
+
+        // 원음이 있으면 서버(정확) 전사로 교체 — 실패·한도초과면 실시간본을 그대로 쓴다
+        let text = collapseSttCascade(accumulatedTranscript)
+        if (SERVER_STT_ENABLED) {
+            try {
+                const { data } = await supabase.auth.getSession()
+                const accurate = await transcribeBlobs(audioCapture.getBlobs(), data?.session?.access_token)
+                if (accurate.length >= 5) {
+                    text = accurate
+                    setAccumulatedTranscript(accurate)
+                }
+            } catch { /* 실시간본 폴백 */ }
+        }
+        audioCapture.reset()
+        setIsProcessingSTT(false)
+        requestAISummary(text)
     }
 
     const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
