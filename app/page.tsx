@@ -8,7 +8,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Sparkles, FileText, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
 import { resolveMyReportEmail } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
@@ -49,6 +49,164 @@ const RECIPIENT_HINT_HIDDEN_KEY = "antok_recipient_hint_hidden_at"
 const toLocalDateStr = (iso: string) => {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+// ── 랜딩 전용: 스크롤 리빌 + 결과물 서식 목업 ─────────────────────────────
+// 리빌은 IntersectionObserver 1회 관찰 후 해제. 모션 감소 설정에선 이동 없이 짧은 페이드만.
+function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setShown(true); io.disconnect() } },
+      { threshold: 0.15 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <div
+      ref={ref}
+      style={{ transitionDelay: shown ? `${delay}ms` : "0ms" }}
+      className={`transition-all duration-700 ease-out motion-reduce:duration-150 motion-reduce:translate-y-0 ${shown ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"} ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+// 손서명 흉내 — 서명란이 비어 있으면 '아직 안 쓴 서류'로 보인다
+const SignStroke = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 60 20" className={`h-4 w-auto ${className}`} aria-hidden>
+    <path d="M4 14 C 12 4, 18 18, 26 9 S 42 4, 48 12 S 55 10, 57 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+)
+
+// 문서 목업 공통 껍데기 — 종이 카드 + '예시 서식' 라벨 (내용 수치는 전부 예시)
+function PaperDoc({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+  return (
+    <div className="relative bg-white border border-cur-hairline rounded-[10px] shadow-[0_16px_48px_rgba(38,37,30,0.10)] px-5 py-5 sm:px-7 sm:py-6 text-cur-ink">
+      <span className="absolute top-3 right-3 text-[10px] font-semibold text-cur-muted bg-cur-canvas border border-cur-hairline rounded-[6px] px-1.5 py-0.5">예시 서식</span>
+      <p className="text-center text-[15px] sm:text-[16px] font-bold tracking-[0.12em]">{title}</p>
+      {badge && <p className="text-center text-[10px] text-cur-muted mt-0.5">{badge}</p>}
+      <div className="mt-4">{children}</div>
+    </div>
+  )
+}
+
+const DocMetaRow = ({ k, v }: { k: string; v: string }) => (
+  <div className="flex border-b border-cur-hairline last:border-b-0">
+    <span className="w-[72px] shrink-0 bg-cur-canvas px-2 py-1.5 text-[10px] font-semibold text-cur-body">{k}</span>
+    <span className="flex-1 px-2 py-1.5 text-[11px]">{v}</span>
+  </div>
+)
+
+const RiskBadge = ({ level }: { level: "상" | "중" | "하" }) => (
+  <span className={`inline-block rounded-[4px] px-1.5 py-px text-[9px] font-bold ${
+    level === "상" ? "bg-cur-error/10 text-cur-error" : level === "중" ? "bg-amber-500/15 text-amber-600" : "bg-cur-elevated text-cur-body"
+  }`}>{level}</span>
+)
+
+function DocMinutes() {
+  const rows: { hazard: string; level: "상" | "중" | "하"; action: string }[] = [
+    { hazard: "지게차·보행자 동선 교차", level: "상", action: "유도자 배치, 후진 경보 확인" },
+    { hazard: "중량물 상차 중 낙하", level: "중", action: "결속 상태 2인 교차 확인" },
+    { hazard: "여름철 온열질환", level: "중", action: "시간당 10분 그늘 휴식·수분" },
+  ]
+  return (
+    <PaperDoc title="T B M 회 의 록">
+      <div className="border border-cur-hairline rounded-[6px] overflow-hidden">
+        <DocMetaRow k="현장명" v="OO물류센터 A동 증축공사" />
+        <DocMetaRow k="일시" v="2026. 08. 04. (화) 07:30 ~ 07:45" />
+        <DocMetaRow k="참석" v="12명 (관리자 1, 근로자 11)" />
+      </div>
+      <p className="mt-3 text-[10px] font-bold text-cur-body">유해위험요인 및 감소대책</p>
+      <div className="mt-1 border border-cur-hairline rounded-[6px] overflow-hidden">
+        {rows.map((r) => (
+          <div key={r.hazard} className="flex items-center gap-2 px-2 py-1.5 border-b border-cur-hairline last:border-b-0">
+            <span className="flex-1 text-[10.5px] leading-snug">{r.hazard}</span>
+            <RiskBadge level={r.level} />
+            <span className="flex-1 text-[10px] text-cur-body leading-snug">{r.action}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[10px] font-bold text-cur-body">참석자 서명</p>
+      <div className="mt-1 grid grid-cols-4 gap-1.5">
+        {["김OO", "이OO", "박OO", "정OO"].map((n) => (
+          <div key={n} className="border border-cur-hairline rounded-[6px] px-1.5 py-1 flex flex-col items-center gap-0.5">
+            <span className="text-[9px] text-cur-muted">{n}</span>
+            <SignStroke className="text-cur-ink/70" />
+          </div>
+        ))}
+      </div>
+      <p className="mt-1 text-right text-[9px] text-cur-muted">외 8명 — QR로 각자 휴대폰에서 서명</p>
+    </PaperDoc>
+  )
+}
+
+function DocEduLog() {
+  return (
+    <PaperDoc title="안 전 보 건 교 육 일 지">
+      <div className="border border-cur-hairline rounded-[6px] overflow-hidden">
+        <DocMetaRow k="교육구분" v="정기교육 (TBM)" />
+        <DocMetaRow k="교육시간" v="07:30 ~ 07:45 (15분)" />
+        <DocMetaRow k="교육대상" v="12명" />
+      </div>
+      <p className="mt-3 text-[10px] font-bold text-cur-body">교육 내용</p>
+      <ul className="mt-1 border border-cur-hairline rounded-[6px] px-3 py-2 space-y-1 text-[10.5px] leading-relaxed list-disc list-inside">
+        <li>상차 작업 시 지게차 접근 반경 내 보행 금지</li>
+        <li>안전모·안전화 착용 상태 상호 점검</li>
+        <li>온열질환 증상 발생 시 즉시 작업 중지 및 보고</li>
+      </ul>
+      <div className="mt-3 flex items-center justify-between border border-cur-hairline rounded-[6px] px-3 py-2">
+        <span className="text-[10px] text-cur-body">교육 실시자</span>
+        <span className="flex items-center gap-2 text-[10.5px] font-semibold">현장담당자 <SignStroke className="text-cur-ink/70" /></span>
+      </div>
+      <p className="mt-2 text-[9px] text-cur-muted text-right">반기 법정 교육시간에 자동 합산됩니다</p>
+    </PaperDoc>
+  )
+}
+
+function DocMonthly() {
+  const tiles = [
+    { k: "총 회의록", v: "42건" },
+    { k: "언급된 위험", v: "31건" },
+    { k: "고위험", v: "6건" },
+    { k: "반복 언급", v: "4건" },
+  ]
+  const top = [
+    { k: "부딪힘", n: 9 }, { k: "떨어짐", n: 7 }, { k: "끼임", n: 5 }, { k: "물체에 맞음", n: 4 },
+  ]
+  return (
+    <PaperDoc title="월간 안전 보고서" badge="2026년 7월 · OO물류센터">
+      <div className="rounded-[6px] bg-cur-primary/8 border border-cur-primary/20 px-2.5 py-1.5 text-[9.5px] leading-snug text-cur-body">
+        본 보고서는 TBM 기록을 AI가 분석한 <b>참고자료</b>이며, 법정 위험성평가가 아닙니다.
+      </div>
+      <div className="mt-2.5 grid grid-cols-4 gap-1.5">
+        {tiles.map((t) => (
+          <div key={t.k} className="border border-cur-hairline rounded-[6px] px-1 py-2 text-center">
+            <p className="text-[9px] text-cur-muted">{t.k}</p>
+            <p className="text-[13px] font-bold font-mono mt-0.5">{t.v}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[10px] font-bold text-cur-body">재해유형 TOP</p>
+      <div className="mt-1 space-y-1">
+        {top.map((t) => (
+          <div key={t.k} className="flex items-center gap-2">
+            <span className="w-[64px] shrink-0 text-[10px] text-cur-body">{t.k}</span>
+            <span className="h-2 rounded-full bg-cur-primary/70" style={{ width: `${t.n * 9}%` }} />
+            <span className="text-[10px] font-mono text-cur-muted">{t.n}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 text-[9.5px] text-cur-muted">
+        <Mail className="w-3 h-3" /> 매월 1일, 등록한 수신처로 자동 발송
+      </div>
+    </PaperDoc>
+  )
 }
 
 export default function MainPage() {
@@ -503,10 +661,35 @@ export default function MainPage() {
     // 콜백 파라미터를 달고 세션 없이 착지 — 위 effect가 /login으로 보낸다. 그 사이 광고가 비치지 않게.
     if (oauthLanding) return <div className="min-h-screen flex items-center justify-center bg-cur-canvas"><Loader2 className="w-10 h-10 text-cur-primary animate-spin" /></div>
 
-    const features = [
-      { n: "01", t: "스마트 안전보건교육일지·회의록", d: "현장에서 말하면 AI가 안전보건교육일지·회의록으로 자동 정리합니다. 녹음·음성 입력 지원." },
-      { n: "02", t: "AI 분석 보고서 자동 생성", d: "기간만 고르면 그 기간 TBM을 분석해 유해위험요인·감소대책 평가표를 만들어줍니다." },
-      { n: "03", t: "월간 안전 보고서 자동 발송", d: "한 달 안전활동을 분석한 보고서를 사장·안전관리자에게 매달 자동으로 메일 발송." },
+    // 과정 3단계 — 결과물이 주인공이라 과정은 한 줄 스트립으로만
+    const steps = [
+      { icon: Mic, t: "말한다", d: "아침 TBM에서 하던 말 그대로, 녹음 버튼 하나" },
+      { icon: Sparkles, t: "AI가 정리한다", d: "현장 용어를 알아듣고 위험요인·대책을 구조화" },
+      { icon: FileText, t: "서류가 나온다", d: "법정 서식으로 완성 — 서명까지 QR로" },
+    ]
+    // 결과물 쇼케이스 — 문서 목업(예시 서식)과 짝지어 스크롤로 하나씩
+    const showcases: { chip: string; title: string; desc: string; formats: string[]; doc: React.ReactNode }[] = [
+      {
+        chip: "TBM 회의록",
+        title: "아침에 말한 그대로,\n회의록이 됩니다",
+        desc: "누가 참석했고 어떤 위험을 짚었는지, 감소대책까지 표로 정리됩니다. 참석자 서명은 각자 휴대폰에서 QR로 — 종이를 돌릴 필요가 없습니다.",
+        formats: ["hwpx", "docx", "pdf"],
+        doc: <DocMinutes />,
+      },
+      {
+        chip: "안전보건교육일지",
+        title: "교육일지는 쓰는 게 아니라\n쌓이는 겁니다",
+        desc: "TBM이 곧 법정 교육 기록입니다. 교육 내용과 시간이 자동 기록되고, 반기 법정 교육시간(사무직 6시간·비사무직 12시간)에 그대로 합산됩니다.",
+        formats: ["hwpx", "docx", "xlsx", "pdf"],
+        doc: <DocEduLog />,
+      },
+      {
+        chip: "월간 AI 분석 보고서",
+        title: "한 달 치 안전활동이\n보고서 한 장으로",
+        desc: "그달의 회의록을 AI가 분석해 자주 언급된 위험, 고위험 항목, 재해유형별 경향을 정리합니다. 매월 1일, 사장님·안전관리자 메일로 자동 발송됩니다.",
+        formats: ["이메일 자동 발송", "웹 링크"],
+        doc: <DocMonthly />,
+      },
     ]
     return (
       <div className="min-h-screen bg-cur-canvas font-sans text-cur-body">
@@ -532,12 +715,12 @@ export default function MainPage() {
             <span className="text-[12px] sm:text-[13px] font-semibold text-cur-primary bg-cur-primary/10 px-3 py-1.5 rounded-full">
               현장 안전관리 AI · 안톡
             </span>
-            <h1 className="text-[34px] sm:text-[56px] lg:text-[68px] font-bold text-cur-ink leading-[1.08] tracking-tight">
-              현장의 안전을<br className="hidden sm:block" /> 더 쉽고 똑똑하게
+            <h1 className="text-[38px] sm:text-[56px] lg:text-[68px] font-bold text-cur-ink leading-[1.08] tracking-tight">
+              말하면,<br className="sm:hidden" /> 서류가 됩니다
             </h1>
-            <p className="text-cur-muted text-[16px] sm:text-[19px] leading-relaxed max-w-2xl">
-              TBM 일지부터 AI 분석 보고서, 월간 안전 보고서까지 — AI로 한 번에.
-              더 많은 대화로 더 안전한 현장을 만드세요.
+            <p className="text-cur-muted text-[16px] sm:text-[19px] leading-relaxed max-w-2xl break-keep">
+              아침 TBM에서 말한 그대로 — TBM 회의록, 안전보건교육일지,
+              월간 AI 분석 보고서가 법정 서식으로 완성됩니다.
             </p>
             <div className="flex flex-col items-center gap-3 w-full sm:w-auto pt-2">
               {/* 옆에 있던 [로그인]은 헤더와 같은 목적지라 뺐다 — 히어로의 강조는 하나여야 눈이 안 갈린다 */}
@@ -552,23 +735,69 @@ export default function MainPage() {
           </div>
         </section>
 
-        {/* 기능 소개 */}
-        <section className="max-w-6xl mx-auto px-5 sm:px-8 pb-24 sm:pb-32">
-          <div className="grid gap-4 sm:gap-5 sm:grid-cols-3">
-            {features.map((f) => (
-              <div
-                key={f.n}
-                className="bg-cur-card border border-cur-hairline rounded-[16px] p-6 sm:p-7 flex flex-col gap-3 hover:border-cur-primary/40 transition-colors"
-              >
-                <span className="text-[13px] font-mono font-bold text-cur-primary">{f.n}</span>
-                <h3 className="font-bold text-[18px] sm:text-[19px] text-cur-ink leading-snug">{f.t}</h3>
-                <p className="text-[14px] sm:text-[15px] text-cur-muted-soft leading-relaxed">{f.d}</p>
+        {/* 과정 — 한 줄 스트립 (결과물이 주인공, 과정은 짧게) */}
+        <section id="process" className="max-w-6xl mx-auto px-5 sm:px-8 pb-20 sm:pb-28">
+          <Reveal>
+            <div className="grid sm:grid-cols-3 gap-3 sm:gap-4">
+              {steps.map((s, i) => (
+                <div key={s.t} className="bg-cur-card border border-cur-hairline rounded-[16px] p-5 sm:p-6 flex items-start gap-4">
+                  <div className="w-10 h-10 shrink-0 rounded-[10px] bg-cur-primary/10 text-cur-primary flex items-center justify-center">
+                    <s.icon className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[16px] font-bold text-cur-ink leading-snug">{s.t}</p>
+                    <p className="text-[13px] text-cur-muted-soft leading-relaxed mt-1 break-keep">{s.d}</p>
+                  </div>
+                  {i < 2 && <ChevronRight className="hidden sm:block w-4 h-4 text-cur-muted-soft shrink-0 self-center -mr-1" />}
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </section>
+
+        {/* 결과물 쇼케이스 — 스크롤 내리며 서류가 하나씩 나타난다 */}
+        <section id="results" className="max-w-6xl mx-auto px-5 sm:px-8 pb-8 sm:pb-12">
+          <Reveal className="text-center mb-12 sm:mb-16">
+            <h2 className="text-[26px] sm:text-[38px] font-bold text-cur-ink tracking-tight leading-tight break-keep">
+              가입 첫날부터, 이 서류들이 나옵니다
+            </h2>
+            <p className="text-cur-muted text-[15px] sm:text-[17px] mt-3 max-w-xl mx-auto leading-relaxed break-keep">
+              아래 서식은 실제 출력물과 같은 구성의 예시입니다.
+            </p>
+          </Reveal>
+
+          <div className="space-y-20 sm:space-y-28">
+            {showcases.map((s, i) => (
+              <div key={s.chip} className="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
+                <Reveal className={i % 2 === 1 ? "md:order-2" : ""}>
+                  <span className="inline-block text-[12px] font-semibold text-cur-primary bg-cur-primary/10 px-2.5 py-1 rounded-full">
+                    {s.chip}
+                  </span>
+                  <h3 className="text-[24px] sm:text-[32px] font-bold text-cur-ink tracking-tight leading-[1.25] mt-4 whitespace-pre-line break-keep">
+                    {s.title}
+                  </h3>
+                  <p className="text-[15px] sm:text-[16px] text-cur-muted leading-relaxed mt-4 max-w-md break-keep">
+                    {s.desc}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-5">
+                    {s.formats.map((f) => (
+                      <span key={f} className="text-[11px] font-mono font-semibold text-cur-body bg-cur-card border border-cur-hairline rounded-[6px] px-2 py-1">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </Reveal>
+                <Reveal delay={140} className={`${i % 2 === 1 ? "md:order-1" : ""} max-w-md w-full mx-auto md:mx-0 ${i % 2 === 1 ? "md:justify-self-start" : "md:justify-self-end"}`}>
+                  {s.doc}
+                </Reveal>
               </div>
             ))}
           </div>
+        </section>
 
+        <section className="max-w-6xl mx-auto px-5 sm:px-8 pb-24 sm:pb-32 pt-20 sm:pt-28">
           {/* 하단 CTA */}
-          <div className="mt-16 sm:mt-20 bg-cur-ink rounded-[20px] px-6 sm:px-12 py-12 sm:py-16 text-center flex flex-col items-center gap-5">
+          <div className="bg-cur-ink rounded-[20px] px-6 sm:px-12 py-12 sm:py-16 text-center flex flex-col items-center gap-5">
             <h2 className="text-[24px] sm:text-[34px] font-bold text-white leading-tight tracking-tight">
               첫 달 무료로 시작하세요
             </h2>
