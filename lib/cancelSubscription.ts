@@ -50,6 +50,8 @@ export interface CancelResult {
   alreadyCanceled?: boolean;
   notFound?: boolean;
   grandfather?: boolean;
+  /** 인앱결제 구독 — 해지·환불 주체가 구글이라 우리가 처리할 수 없다 */
+  storeManaged?: boolean;
   refunded: number;
   refundFailed: boolean;
 }
@@ -62,12 +64,17 @@ export async function cancelUserSubscription(
   const reason = opts.reason ?? "구독 중도 해지 - 잔여 기간 일할 환불";
   const { data: sub, error } = await admin
     .from("subscriptions")
-    .select("id, status, plan, amount, current_period_end, billing_key")
+    .select("id, status, plan, amount, current_period_end, billing_key, source")
     .eq("user_id", userId)
     .single();
 
   if (error || !sub) return { ok: false, notFound: true, refunded: 0, refundFailed: false };
   if (sub.plan === "grandfather") return { ok: false, grandfather: true, refunded: 0, refundFailed: false };
+  // 인앱결제는 구글이 청구·환불 주체다. 우리가 임의로 상태만 바꾸면 구글은 계속 청구하고
+  // 사용자는 "해지했는데 돈이 나간다"가 된다 — 구글 구독 관리로 보내는 것이 유일하게 옳다.
+  if (sub.source === "google_play") {
+    return { ok: false, storeManaged: true, refunded: 0, refundFailed: false };
+  }
   if (sub.status === "canceled") return { ok: true, alreadyCanceled: true, refunded: 0, refundFailed: false };
 
   const now = new Date();

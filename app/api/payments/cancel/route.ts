@@ -29,6 +29,15 @@ export async function POST(request: Request) {
     if (r.notFound) return NextResponse.json({ error: "구독을 찾을 수 없습니다." }, { status: 404 });
     if (r.grandfather)
       return NextResponse.json({ error: "해당 계정은 해지 대상이 아닙니다." }, { status: 400 });
+    if (r.storeManaged)
+      return NextResponse.json(
+        {
+          error:
+            "앱에서 결제한 구독이라 여기서 해지할 수 없어요. Google Play → 프로필 → 결제 및 구독 → 정기 결제에서 해지해주세요.",
+          storeManaged: true,
+        },
+        { status: 400 }
+      );
     if (r.alreadyCanceled) return NextResponse.json({ success: true, alreadyCanceled: true });
     if (!r.ok) return NextResponse.json({ error: "해지 처리 실패" }, { status: 500 });
 

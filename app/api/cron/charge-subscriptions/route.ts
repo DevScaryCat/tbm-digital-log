@@ -34,6 +34,9 @@ async function run(request: Request) {
       .in("status", ["trialing", "active", "past_due"])
       .lte("current_period_end", nowIso)
       .not("billing_key", "is", null)
+      // 인앱결제 구독은 구글이 청구·갱신한다 — 우리 크론까지 긁으면 같은 달에 이중청구가 된다.
+      // (billing_key null 조건으로도 걸러지지만, 출처를 명시해 실수로 되살아나지 않게 한다)
+      .eq("source", "portone")
       .order("current_period_end", { ascending: true })
       .limit(200);
 
