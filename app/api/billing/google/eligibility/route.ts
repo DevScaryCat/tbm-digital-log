@@ -14,6 +14,14 @@ export async function GET(request: Request) {
     if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 })
 
     const admin = getAdminClient()
+
+    // 감독자(조직 소유주)는 현장 수만큼 곱해 청구된다. 구글 인앱결제는 고정가 단일 구독이라
+    // 여기서 결제를 허용하면 현장 5개짜리 회사가 4,900원 하나로 열린다 — 앱에서 막는다.
+    const { count: ownedOrgs } = await admin
+        .from("organizations")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_user_id", user.id)
+
     const { data: sub } = await admin
         .from("subscriptions")
         .select("trial_used, status, source, current_period_end")
@@ -32,5 +40,7 @@ export async function GET(request: Request) {
         trialEligible: !sub?.trial_used,
         alreadySubscribed: activeNow,
         source: sub?.source ?? null,
+        // 여러 현장을 거느린 계정 — 앱 단일 구독으로는 커버할 수 없다
+        orgOwner: (ownedOrgs ?? 0) > 0,
     })
 }

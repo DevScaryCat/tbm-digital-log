@@ -129,7 +129,27 @@ export async function acknowledge(productId: string, purchaseToken: string): Pro
     }
 }
 
-/** 구글 구독 상태 → 우리 subscriptions.status (isAllowed/subscriptionAllows와 같은 어휘) */
+/**
+ * 이용 권한을 즉시 회수해야 하는 상태인가.
+ * 만료·보류(결제 실패 최종)·일시정지·미완료 결제가 여기 해당한다.
+ */
+export function isRevokedState(subscriptionState: string): boolean {
+    return ![
+        "SUBSCRIPTION_STATE_ACTIVE",
+        "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+        "SUBSCRIPTION_STATE_CANCELED",
+    ].includes(subscriptionState)
+}
+
+/**
+ * 구글 구독 상태 → 우리 subscriptions.status.
+ *
+ * ⚠️ DB의 status 체크 제약은 trialing/active/past_due/canceled 넷만 허용한다.
+ * 'expired' 같은 값을 쓰면 UPDATE가 조용히 실패해 **해지·환불이 반영되지 않는다**
+ * (권한이 영원히 안 끊김). 그래서 회수 상태는 전부 'canceled'로 매핑하고,
+ * 이용 종료는 호출부가 current_period_end를 과거로 박아 판정하게 한다
+ * — subscriptionAllows/isAllowed가 "canceled + 기간 만료 = 불허"로 이미 판정한다.
+ */
 export function toLocalStatus(p: GooglePurchase): string {
     switch (p.subscriptionState) {
         case "SUBSCRIPTION_STATE_ACTIVE":
@@ -137,14 +157,9 @@ export function toLocalStatus(p: GooglePurchase): string {
         case "SUBSCRIPTION_STATE_IN_GRACE_PERIOD":
             // 결제 실패 재시도 중 — 아직 이용은 허용(PortOne past_due와 동일 취급)
             return "past_due"
-        case "SUBSCRIPTION_STATE_CANCELED":
-            // 해지 예약: 남은 기간까지는 이용 가능(만료일은 current_period_end가 판정)
-            return "canceled"
-        case "SUBSCRIPTION_STATE_ON_HOLD":
-        case "SUBSCRIPTION_STATE_PAUSED":
-        case "SUBSCRIPTION_STATE_EXPIRED":
-        case "SUBSCRIPTION_STATE_PENDING":
         default:
-            return "expired"
+            // 해지 예약(CANCELED)은 남은 기간까지 이용 가능, 그 외 회수 상태도 같은 status를 쓰되
+            // 기간을 과거로 두어 즉시 차단된다.
+            return "canceled"
     }
 }

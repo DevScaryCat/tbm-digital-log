@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
-import { getSubscription, acknowledge, toLocalStatus } from "@/lib/googlePlay"
+import { getSubscription, acknowledge, toLocalStatus, isRevokedState } from "@/lib/googlePlay"
 
 export const runtime = "nodejs"
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         }
 
         const status = toLocalStatus(purchase)
-        if (status === "expired") {
+        if (isRevokedState(purchase.subscriptionState)) {
             return NextResponse.json(
                 { error: "이미 만료되었거나 사용할 수 없는 결제입니다.", status },
                 { status: 409 }

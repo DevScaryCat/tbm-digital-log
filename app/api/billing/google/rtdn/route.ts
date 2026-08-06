@@ -9,7 +9,7 @@
 
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
-import { getSubscription, toLocalStatus, ANDROID_PACKAGE } from "@/lib/googlePlay"
+import { getSubscription, toLocalStatus, isRevokedState, ANDROID_PACKAGE } from "@/lib/googlePlay"
 
 export const runtime = "nodejs"
 
@@ -51,7 +51,10 @@ export async function POST(request: Request) {
             await admin
                 .from("subscriptions")
                 .update({
-                    status: "expired",
+                    // status 체크 제약이 허용하는 값만 쓴다 — 'expired'를 쓰면 UPDATE가 실패해
+                    // 환불했는데 권한이 살아 있는 상태가 된다. 기간을 과거로 박아 즉시 차단.
+                    status: "canceled",
+                    current_period_end: new Date().toISOString(),
                     canceled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                 })
@@ -73,19 +76,29 @@ export async function POST(request: Request) {
         const purchase = await getSubscription(purchaseToken)
         const status = toLocalStatus(purchase)
 
-        await admin
+        // 회수 상태(만료·보류·일시정지·미결제)는 남은 기간을 인정하지 않고 지금으로 끊는다.
+        // 해지 예약(CANCELED)은 구글이 준 만료일까지 이용을 허용한다(이미 낸 돈이므로).
+        const revoked = isRevokedState(purchase.subscriptionState)
+        const periodEnd = revoked ? new Date().toISOString() : purchase.expiryTime
+
+        const { error: upErr } = await admin
             .from("subscriptions")
             .update({
                 status,
-                current_period_end: purchase.expiryTime,
+                current_period_end: periodEnd,
                 store_product_id: purchase.productId,
-                canceled_at:
-                    status === "canceled" || status === "expired" ? new Date().toISOString() : null,
+                canceled_at: status === "canceled" ? new Date().toISOString() : null,
                 updated_at: new Date().toISOString(),
             })
             .eq("id", row.id)
+        // 갱신 실패를 삼키면 해지·환불이 반영되지 않은 채 200을 돌려주고 구글은 재전송을 멈춘다.
+        // 500을 줘서 Pub/Sub가 다시 보내게 한다.
+        if (upErr) {
+            console.error("RTDN update error:", upErr)
+            return NextResponse.json({ error: "구독 갱신 실패" }, { status: 500 })
+        }
 
-        return NextResponse.json({ ok: true, status })
+        return NextResponse.json({ ok: true, status, revoked })
     } catch (error) {
         console.error("RTDN error:", error)
         // 5xx면 Pub/Sub가 재전송한다 — 일시 장애는 재시도로 복구되는 게 맞다
