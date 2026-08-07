@@ -41,6 +41,22 @@ async function alreadySent(admin: SupabaseClient, email: string, year: number, m
 async function recordSent(admin: SupabaseClient, email: string, year: number, month: number, kind: Kind, count: number) {
   await admin.from("consolidated_report_sends").insert({ recipient_email: email, period_year: year, period_month: month, kind, account_count: count });
 }
+/**
+ * 발송 실패를 기록한다. 지금까지 실패는 콘솔 로그로만 남아 한 달 뒤 원인을 추적할 수 없었다
+ * (2026-08-01: 승인 수신처 5건 중 1건만 발송됐는데 나머지가 왜 빠졌는지 확인 불가).
+ * 기록 자체가 실패해도 발송 흐름을 막지 않는다.
+ */
+async function recordFailure(
+  admin: SupabaseClient, email: string, year: number, month: number,
+  kind: string, path: "solo" | "org", error?: string,
+) {
+  try {
+    await admin.from("report_send_failures").insert({
+      recipient_email: email, period_year: year, period_month: month,
+      kind, path, error: (error ?? "").slice(0, 500),
+    });
+  } catch (e) { console.error("recordFailure error:", e); }
+}
 
 async function run(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -185,7 +201,7 @@ async function run(request: Request) {
                     attachments,
                   });
                   if (sent.ok) { await recordSent(admin, email, year, month, kMinutes, accounts.length); orgResults.ownerSent++; }
-                  else orgResults.failed++;
+                  else { await recordFailure(admin, email, year, month, kMinutes, "org", sent.error); orgResults.failed++; }
                 }
                 if (mergedEdu && !(await alreadySent(admin, email, year, month, kEdu))) {
                   const html = renderEducationReportHtml(mergedEdu);
@@ -197,7 +213,7 @@ async function run(request: Request) {
                     attachments,
                   });
                   if (sent.ok) { await recordSent(admin, email, year, month, kEdu, accounts.length); orgResults.ownerSent++; }
-                  else orgResults.failed++;
+                  else { await recordFailure(admin, email, year, month, kEdu, "org", sent.error); orgResults.failed++; }
                 }
               }
             } catch (e) {
@@ -243,7 +259,7 @@ async function run(request: Request) {
                     attachments,
                   });
                   if (sent.ok) { await recordSent(admin, email, year, month, kMemberMinutes, 1); anySent = true; }
-                  else orgResults.failed++;
+                  else { await recordFailure(admin, email, year, month, kMemberMinutes, "org", sent.error); orgResults.failed++; }
                 }
                 if (edu) {
                   const html = renderEducationReportHtml(edu);
@@ -255,7 +271,7 @@ async function run(request: Request) {
                     attachments,
                   });
                   if (sent.ok) { await recordSent(admin, email, year, month, kMemberEdu, 1); anySent = true; }
-                  else orgResults.failed++;
+                  else { await recordFailure(admin, email, year, month, kMemberEdu, "org", sent.error); orgResults.failed++; }
                 }
                 if (anySent) orgResults.memberSent++;
               } catch (e) {
@@ -409,7 +425,7 @@ async function run(request: Request) {
               attachments,
             });
             if (sent.ok) { await recordSent(admin, email, year, month, "minutes", accounts.length); results.minutesSent++; }
-            else results.failed++;
+            else { await recordFailure(admin, email, year, month, "minutes", "solo", sent.error); results.failed++; }
           }
 
           // ② 안전보건교육일지 종합
@@ -424,10 +440,11 @@ async function run(request: Request) {
               attachments,
             });
             if (sent.ok) { await recordSent(admin, email, year, month, "education", accounts.length); results.eduSent++; }
-            else results.failed++;
+            else { await recordFailure(admin, email, year, month, "education", "solo", sent.error); results.failed++; }
           }
         } catch (e) {
           console.error("solo monthly send error:", email, e);
+          await recordFailure(admin, email, year, month, "exception", "solo", e instanceof Error ? e.message : String(e));
           results.failed++;
         }
       });
