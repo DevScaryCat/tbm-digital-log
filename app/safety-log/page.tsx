@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { appendSttFinals, collapseSttCascade } from "@/lib/sttTranscript"
-import { useAudioCapture, transcribeBlobs, SERVER_STT_ENABLED } from "@/lib/useAudioCapture"
+import { useAudioCapture, transcribeBlobs, SERVER_STT_ENABLED, SERVER_STT_ONLY } from "@/lib/useAudioCapture"
 import { TBMHeader } from "@/components/TBMHeader"
 import SignatureCanvas from "react-signature-canvas"
 import { format } from "date-fns"
@@ -678,6 +678,20 @@ export default function TBMPage() {
             showAlert("카카오톡·네이버 등 인앱 브라우저에서는 음성 녹음이 동작하지 않습니다.\n우측 상단 메뉴에서 'Safari/Chrome으로 열기'를 눌러 외부 브라우저로 진행해주세요.");
             return;
         }
+        // iOS는 인식기와 녹음이 마이크를 두고 충돌해 원음이 빈 채로 저장된다(실측: 26초 → 0.1초).
+        // 인식기를 켜지 않고 원음만 남겨, 원문은 서버(Deepgram) 전사로 만든다.
+        if (SERVER_STT_ONLY) {
+            const ok = await audioCapture.start();
+            if (!ok) {
+                showAlert("마이크를 사용할 수 없습니다.\n브라우저에서 마이크 사용을 '허용'으로 바꾼 뒤 다시 시도해주세요.\n(사파리: 주소창 'AA' → 웹사이트 설정 → 마이크 → 허용)");
+                return;
+            }
+            setIsRecording(true);
+            isRecordingRef.current = true;
+            setFormData(prev => ({ ...prev, startTime: recordingCount === 0 ? getCurrentTime() : prev.startTime }));
+            return;
+        }
+
         const SpeechRecognition = (window as unknown as CustomWindow).SpeechRecognition || (window as unknown as CustomWindow).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             showAlert("현재 브라우저가 무료 음성 인식을 지원하지 않습니다. (Chrome, Safari 최신 버전 권장)");
@@ -732,9 +746,11 @@ export default function TBMPage() {
                 }
             };
 
+            // 원음을 먼저 확보한 뒤 인식기를 켠다 — 순서가 반대면 인식기가 마이크를 선점해
+            // 일부 브라우저에서 녹음 스트림이 빈 채로 열린다.
+            await audioCapture.start();
             recognition.start();
             recognitionRef.current = recognition;
-            audioCapture.start(); // 원음 병행 저장(실패해도 인식은 그대로 진행)
             setIsRecording(true);
             isRecordingRef.current = true;
             // 시작시간 = 첫 녹음 시작 시각 (여러 번 녹음해도 처음 것 유지)
@@ -746,7 +762,9 @@ export default function TBMPage() {
     }
 
     const submitRecording = async () => {
-        if (!accumulatedTranscript.trim()) { showAlert("인식된 음성이 없습니다."); return; }
+        // iOS는 실시간 인식본이 아예 없다(원음만 있다) — 원음이 있으면 진행시킨다
+        const hasAudio = audioCapture.getBlobs().length > 0
+        if (!accumulatedTranscript.trim() && !hasAudio) { showAlert("인식된 음성이 없습니다."); return; }
 
         setIsProcessingSTT(true)
         setStep(S_ROSTER)
@@ -763,6 +781,15 @@ export default function TBMPage() {
                 }
             } catch { /* 실시간본 폴백 */ }
         }
+        // 서버 전사도 실시간 인식본도 비었으면 저장을 막는다 — 빈 원문으로 문서를 만들면
+        // AI가 지어낸 내용만 남고 증거로 쓸 원문이 사라진다. 원음은 남겨둬 재시도 시 다시 전사한다.
+        if (!text.trim()) {
+            setIsProcessingSTT(false)
+            setStep(S_RECORD)
+            showAlert("음성을 인식하지 못했어요.\n마이크(휴대폰 아래쪽)에 조금 더 가까이서 다시 녹음해주세요.")
+            return
+        }
+
         audioCapture.reset()
         setIsProcessingSTT(false)
         requestAISummary(text)

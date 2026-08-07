@@ -15,6 +15,24 @@ import { useCallback, useRef } from "react"
 /** 명시적으로 끄지 않는 한 사용 — 한시 운영 후 요금 판단이 서면 조정한다 */
 export const SERVER_STT_ENABLED = process.env.NEXT_PUBLIC_SERVER_STT !== "off"
 
+/** iPhone·iPad (iPadOS 13+는 UA가 Macintosh로 나와 터치포인트로 구분) */
+function detectIOS(): boolean {
+    if (typeof navigator === "undefined") return false
+    const ua = navigator.userAgent
+    if (/iPad|iPhone|iPod/.test(ua)) return true
+    return /Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1
+}
+
+/**
+ * iOS는 브라우저 음성인식을 쓰지 않고 **서버 전사만** 쓴다.
+ *
+ * 근거(실데이터): iOS 사파리에서 인식기와 녹음이 마이크를 동시에 잡으면 녹음 쪽이 빈 채로 열린다
+ * — 26초를 녹음했는데 원음이 0.1초만 담겼고(2026-08-06 이현로지스), 결국 부정확한 실시간본이 그대로
+ * 저장됐다. 게다가 iOS 인식기는 확정 결과를 누적 재전송하는 버그까지 있어 원문 품질이 가장 나쁘다.
+ * 인식기를 아예 켜지 않으면 마이크 충돌이 사라지고, 원문은 Deepgram이 만든다.
+ */
+export const SERVER_STT_ONLY = SERVER_STT_ENABLED && detectIOS()
+
 /** 브라우저가 지원하는 오디오 컨테이너 중 하나 고르기 (Chrome=webm/opus, Safari=mp4/aac) */
 function pickMimeType(): string | undefined {
     if (typeof MediaRecorder === "undefined") return undefined
@@ -29,13 +47,17 @@ export function useAudioCapture() {
     // 회차별 완성 원음 — 녹음/일시정지를 반복해도 순서대로 쌓인다
     const blobsRef = useRef<Blob[]>([])
 
-    /** 녹음 시작과 함께 호출. 실패해도 throw하지 않는다(원음 없이 진행). */
-    const start = useCallback(async () => {
-        if (!SERVER_STT_ENABLED) return
-        if (recorderRef.current) return // 이미 녹음 중
+    /**
+     * 녹음 시작. throw하지 않고 성공 여부를 boolean으로 돌려준다 —
+     * 인식기를 병행하는 환경에선 실패해도 진행하지만, iOS(서버 전사 전용)에선
+     * 이게 실패하면 원문 소스가 아예 없으므로 호출부가 시작 자체를 막아야 한다.
+     */
+    const start = useCallback(async (): Promise<boolean> => {
+        if (!SERVER_STT_ENABLED) return false
+        if (recorderRef.current) return true // 이미 녹음 중
         try {
             const mimeType = pickMimeType()
-            if (!mimeType || !navigator.mediaDevices?.getUserMedia) return
+            if (!mimeType || !navigator.mediaDevices?.getUserMedia) return false
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 // 현장 소음 대비 — 브라우저 기본 전처리를 켜둔다
@@ -56,10 +78,12 @@ export function useAudioCapture() {
             recorder.start(1000)
             recorderRef.current = recorder
             streamRef.current = stream
+            return true
         } catch {
-            // 권한 거부·장치 없음 등 — 원음 없이 계속 진행
+            // 권한 거부·장치 없음 등
             recorderRef.current = null
             streamRef.current = null
+            return false
         }
     }, [])
 
