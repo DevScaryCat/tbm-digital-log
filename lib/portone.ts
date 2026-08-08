@@ -80,6 +80,13 @@ export function isProPlan(planId?: string | null): boolean {
   return getPlan(planId).pro;
 }
 
+/** 주간·월간 보고서 생성·발송 자격 — 유료 자격(isProPlan)과 분리된 기준.
+ *  grandfather(영구 무료)가 isProPlan=false라 실고객(이현로지스)이 월간 보고서에서
+ *  통째로 빠져 있었다 → 2026-08-08 결정으로 grandfather 포함. 구 베이직(monthly_basic)은 계속 제외. */
+export function reportEligiblePlan(planId?: string | null): boolean {
+  return planId === "grandfather" || isProPlan(planId);
+}
+
 /** 기본 플랜(하위 호환용 별칭) */
 export const PLAN = PLANS.monthly_pro;
 

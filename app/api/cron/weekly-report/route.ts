@@ -3,7 +3,7 @@
 // 감독자는 본인+소속 현장 병합(월간 회사경로와 동일 기준), 단독은 본인만.
 // 멱등 키(kind)에 ISO 발송일을 넣어 같은 주 재실행(?force=1) 중복을 막는다.
 import { NextResponse } from "next/server";
-import { getAdminClient, subscriptionAllows, isProPlan } from "@/lib/portone";
+import { getAdminClient, subscriptionAllows, reportEligiblePlan } from "@/lib/portone";
 import { buildMergedMinutesForRange, renderReportHtml, buildReportAttachments } from "@/lib/monthlyReport";
 import { buildMergedEducationForRange, renderEducationReportHtml, buildEducationAttachments } from "@/lib/educationReport";
 import { mailerConfigured, sendMail } from "@/lib/mailer";
@@ -72,7 +72,8 @@ async function run(request: Request) {
 
     for (const s of (subs as any[]) || []) {
       if (!force && (s.report_weekday ?? 1) !== kstWeekday) continue;
-      if (!isProPlan(s.plan) || !subscriptionAllows(s)) continue;
+      // grandfather 포함(2026-08-08 결정, 월간과 동일 기준)
+      if (!reportEligiblePlan(s.plan) || !subscriptionAllows(s)) continue;
       // 소속 현장(member) 계정은 제외 — 발송 주체는 감독자/단독뿐. 멤버가 켜져 있어도
       // 감독자 병합본에 이미 포함되므로 개별 발송하면 이중이 된다(월간 orgLinked와 같은 취지).
       const { data: asMember } = await admin.from("org_members").select("member_user_id").eq("member_user_id", s.user_id).eq("status", "active").maybeSingle();
