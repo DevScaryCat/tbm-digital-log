@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getAdminClient, subscriptionAllows, isProPlan, reportEligiblePlan } from "@/lib/portone";
-import { buildMergedMinutesContent, renderReportHtml, buildReportAttachments } from "@/lib/monthlyReport";
+import { buildMergedMinutesContent, renderReportHtml, buildReportAttachments, type StoredMonthlyContent } from "@/lib/monthlyReport";
 import { buildMergedEducationContent, renderEducationReportHtml, buildEducationAttachments } from "@/lib/educationReport";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { AiBatch } from "@/lib/aiBatch";
@@ -164,8 +164,10 @@ async function run(request: Request) {
 
           postJobs.push(async () => {
             try {
-              // (a) 안전관리자 웹 열람 저장 (monthly_reports, user_id=owner) — AI 총평 반영본
-              if (mergedContent.stats.total > 0) {
+              // (a) 안전관리자 웹·앱 열람 저장 (monthly_reports, user_id=owner) — AI 총평 반영본.
+              // 회의록 종합 + 교육일지 종합을 한 행에 담는다. 예전엔 회의록만 저장해서, 교육일지만 쓰는
+              // 회사는 회의록 0건 → 저장 자체를 건너뛰어 앱·웹 열람 보고서가 영영 안 생겼다.
+              if (mergedContent.stats.total > 0 || mergedEdu) {
                 const { data: existing } = await admin
                   .from("monthly_reports")
                   .select("token")
@@ -174,13 +176,15 @@ async function run(request: Request) {
                   .eq("period_month", month)
                   .maybeSingle();
                 const token = existing?.token || randomUUID();
+                // 배치 flush 이후(=postJobs 실행 시점)에 스프레드해야 AI 총평·교육 요약이 반영된다.
+                const stored: StoredMonthlyContent = { ...mergedContent, ...(mergedEdu ? { education: mergedEdu } : {}) };
                 const { error: upErr } = await admin.from("monthly_reports").upsert(
                   {
                     user_id: org.owner_user_id,
                     period_year: year,
                     period_month: month,
                     token,
-                    content: mergedContent as any,
+                    content: stored as any,
                     recipients: [],
                     sent_at: new Date().toISOString(),
                   },
@@ -322,15 +326,22 @@ async function run(request: Request) {
             label = String(meta.site_name ?? "").trim() || String(meta.company_name ?? "").trim() || "현장";
           } catch { /* 라벨만 기본값 */ }
           const own = await buildMergedMinutesContent(admin, [{ userId: s.user_id, siteName: label }], year, month, label, aiBatch);
-          if (own.stats.total === 0) continue; // 기록 없는 달은 저장할 것도 없다
+          // 교육일지 종합도 같이 담는다 — 회의록 0건이라는 이유로 저장을 건너뛰면 교육일지만 쓰는 계정은
+          // 앱·웹 열람 보고서가 영영 안 생긴다(실고객 안성센터: 2026-07 교육일지 26건 / 회의록 0건 → 0행).
+          // 교육 기록이 없으면 null이 돌아오고 AI 호출·배치 예약도 일어나지 않는다.
+          const edu = await buildMergedEducationContent(admin, [s.user_id], year, month, label, aiBatch);
+          // 회의록·교육 둘 다 0건인 달은 저장할 것도 없다. (0건이면 위 두 빌드 모두 AI를 예약하지 않는다)
+          if (own.stats.total === 0 && !edu) continue;
           postJobs.push(async () => {
+            // 배치 flush 이후 시점에 스프레드 — AI 총평·날짜별 교육 요약이 반영된 상태로 저장된다.
+            const stored: StoredMonthlyContent = { ...own, ...(edu ? { education: edu } : {}) };
             const { error: upErr } = await admin.from("monthly_reports").upsert(
               {
                 user_id: s.user_id,
                 period_year: year,
                 period_month: month,
                 token: randomUUID(),
-                content: own as any,
+                content: stored as any,
                 recipients: [],
                 sent_at: new Date().toISOString(),
               },

@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { formatRangeLabelKo } from "@/lib/utils";
 import type { AiBatch } from "@/lib/aiBatch";
+import type { EducationReportContent } from "@/lib/educationReport";
 
 export interface ReportSubscription {
   id: string;
@@ -71,6 +72,17 @@ export interface ReportContent {
   improvements?: { label: string; detail: string }[];
 }
 
+/**
+ * monthly_reports.content 에 저장되는 형태 — 회의록 종합(ReportContent) + 선택적 교육일지 종합.
+ *
+ * ReportContent를 그대로 넓힌 것이라 **기존 행이 그대로 유효하다**: education이 없는 행은
+ * 예전과 똑같이 회의록 보고서로만 렌더된다. 반대로 교육일지만 쓰는 계정은 stats.total === 0 이고
+ * education만 채워진다 — 회의록이 0건이라는 이유로 행 자체가 안 생기던 공백을 메우기 위함
+ * (실고객 이현로지스 안성센터: 2026-07 교육일지 26건인데 monthly_reports 0행).
+ * 뷰어는 "회의록 0건이면 회의록 섹션을 생략"하는 규칙으로 두 경우를 모두 처리한다.
+ */
+export type StoredMonthlyContent = ReportContent & { education?: EducationReportContent | null };
+
 import { accidentTypeTop, agentTop } from "./koshaTaxonomy";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -132,7 +144,8 @@ async function buildMinutesContent(
   // 같은 문구가 2회 이상 나온 것 = 반복 지적된 위험 (우선 관리 대상)
   const recurringCount = [...freq.values()].filter((c) => c > 1).length;
   const stats: ReportStats = { total: minuteRows.length, high, mid, low, mentioned: items.length, recurring: recurringCount };
-  const aiSummary = await generateAISummary(companyName, periodLabel, stats, keywords);
+  // 회의록 0건이면 총평의 근거가 없다 — 호출 자체를 하지 않는다(AI는 유료). 호출자는 어차피 no_data로 끝낸다.
+  const aiSummary = stats.total > 0 ? await generateAISummary(companyName, periodLabel, stats, keywords) : "";
 
   return { companyName, periodLabel, stats, keywords, hazards, aiSummary };
 }
@@ -218,6 +231,9 @@ export async function buildMergedMinutesForRange(
     : [];
 
   const content: ReportContent = { companyName, periodLabel, stats, keywords, hazards, aiSummary: "", sites, improvements };
+  // 회의록 0건이면 총평을 만들 근거가 없다 — 배치 예약조차 하지 않는다. 예약만 해도 요금이 나가는데,
+  // 크론의 단독 경로는 0건 계정에도 이 함수를 호출한다(교육일지만 쓰는 계정).
+  if (stats.total === 0) return content;
   if (aiBatch && process.env.ANTHROPIC_API_KEY) {
     // 크론 경로: 총평 생성을 배치로 미룬다 — flush()가 content.aiSummary를 채운 뒤 렌더된다
     aiBatch.defer({

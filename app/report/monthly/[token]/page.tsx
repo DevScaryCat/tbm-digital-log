@@ -1,5 +1,6 @@
 import { getAdminClient } from "@/lib/portone";
-import { renderReportHtml, ReportContent } from "@/lib/monthlyReport";
+import { renderReportHtml, type StoredMonthlyContent } from "@/lib/monthlyReport";
+import { renderEducationReportHtml } from "@/lib/educationReport";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,11 +45,22 @@ export default async function MonthlyReportPublicPage({
       .eq("id", report.id);
   } catch {}
 
-  const html = renderReportHtml(report.content as ReportContent);
+  // 한 달치 보고서는 '회의록 종합'과 '교육일지 종합' 두 섹션으로 이뤄진다.
+  // 하위 호환: education이 없는 기존 행은 회의록 섹션 하나만 나와 예전 화면과 완전히 동일하다.
+  // 회의록이 0건인 행(교육일지만 쓰는 계정)은 빈 회의록 표 대신 교육 섹션만 보여준다.
+  const content = report.content as StoredMonthlyContent;
+  const sections = [
+    (content?.stats?.total ?? 0) > 0 ? renderReportHtml(content) : "",
+    content?.education ? renderEducationReportHtml(content.education) : "",
+  ].filter(Boolean);
+  // 어느 쪽도 없는 예외적인 행(구버전·손상)은 예전처럼 회의록 템플릿으로 렌더해 빈 화면을 피한다.
+  if (sections.length === 0) sections.push(renderReportHtml(content));
 
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f4", padding: "24px 12px" }}>
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+      {sections.map((html, i) => (
+        <div key={i} style={i === 0 ? undefined : { marginTop: 20 }} dangerouslySetInnerHTML={{ __html: html }} />
+      ))}
     </div>
   );
 }
