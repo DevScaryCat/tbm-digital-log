@@ -114,10 +114,20 @@ export function useAudioCapture() {
  * 원음 조각들을 서버로 보내 정확본을 받는다.
  * 실패·한도초과는 빈 문자열을 돌려주고, 호출부가 실시간 인식본을 그대로 쓰게 한다.
  */
+// 저장 재시도(AI 실패 후 재제출 등) 때 이미 전사한 조각을 다시 올리면 Deepgram에
+// 그대로 이중 과금된다(실측 17.3초 녹음에 38.9초 청구). 성공 응답은 Blob 단위로
+// 기억해 재호출 시 업로드 없이 재사용한다 — 실패한 조각만 다시 시도된다.
+const transcriptCache = new WeakMap<Blob, string>()
+
 export async function transcribeBlobs(blobs: Blob[], accessToken?: string): Promise<string> {
     if (!blobs.length) return ""
     const texts: string[] = []
     for (const [i, blob] of blobs.entries()) {
+        const cached = transcriptCache.get(blob)
+        if (cached !== undefined) {
+            if (cached) texts.push(cached)
+            continue
+        }
         try {
             const ext = blob.type.includes("mp4") ? "mp4" : blob.type.includes("aac") ? "aac" : "webm"
             const form = new FormData()
@@ -130,7 +140,10 @@ export async function transcribeBlobs(blobs: Blob[], accessToken?: string): Prom
             })
             if (!res.ok) continue // 한 조각 실패로 전체를 버리지 않는다
             const j = (await res.json()) as { transcript?: string }
-            if (j.transcript?.trim()) texts.push(j.transcript.trim())
+            const t = j.transcript?.trim() ?? ""
+            // 무음 조각(빈 전사)도 성공 응답이면 기억 — 재시도마다 다시 과금되는 것을 막는다
+            transcriptCache.set(blob, t)
+            if (t) texts.push(t)
         } catch {
             /* 이 조각은 건너뛴다 */
         }
