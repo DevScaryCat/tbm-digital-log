@@ -19,6 +19,7 @@ import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
 import { OnboardingModal } from "@/components/OnboardingModal"
+import { Antoki } from "@/components/Antoki"
 import { showAlert } from "@/lib/uiDialog"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
@@ -790,6 +791,11 @@ export default function MainPage() {
                   </span>
                 ))}
               </div>
+              {/* 안톡이 — 이 랜딩에서 마스코트는 여기 한 곳뿐이다.
+                  '듣고 있다'가 이 섹션의 주장이라 listen 포즈만 의미가 맞는다.
+                  옆 목업의 빨간 점(animate-ping)이 이미 '지금 진행 중'을 맡고 있어서
+                  마스코트는 조용한 쪽(breathe)으로 둔다. 장식이라 aria-hidden. */}
+              <Antoki pose="listen" size="xl" motion="breathe" className="mt-7" />
             </Reveal>
             <Reveal delay={140} className="max-w-md w-full mx-auto md:mx-0 md:justify-self-end">
               <RecordingCard />

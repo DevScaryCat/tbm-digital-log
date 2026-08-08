@@ -9,8 +9,9 @@ import { supabase } from "@/lib/supabaseClient"
 import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { TBMHeader } from "@/components/TBMHeader"
-import { Loader2, MessageSquareText, Trash2, FileText, ChevronRight } from "lucide-react"
+import { Loader2, Trash2, FileText, ChevronRight } from "lucide-react"
 import { showAlert, showConfirm } from "@/lib/uiDialog"
+import { Antoki } from "@/components/Antoki"
 
 type Suggestion = {
     id: string; content: string; author_name: string | null; is_read: boolean; created_at: string
@@ -73,7 +74,9 @@ export default function SuggestionsPage() {
                         <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 text-cur-muted animate-spin" /></div>
                     ) : items.length === 0 ? (
                         <div className="flex flex-col items-center py-16 text-cur-muted">
-                            <MessageSquareText className="w-12 h-12 mb-3 opacity-20" />
+                            {/* 빈 제안함 = 기다리는 상태. 회색 아이콘보다 '귀 기울이는 중'이 더 정확하다 */}
+                            {/* 바로 아래 문구가 상태를 말하고 있으니 마스코트는 장식으로 둔다(중복 낭독 방지) */}
+                            <Antoki pose="listen" size="md" motion="breathe" className="mb-3" />
                             <p className="text-[14px]">아직 접수된 제안이 없습니다.</p>
                             <p className="text-[12px] text-cur-muted-soft mt-1">서명 QR을 공유하면 참석자가 의견을 남길 수 있어요.</p>
                         </div>
