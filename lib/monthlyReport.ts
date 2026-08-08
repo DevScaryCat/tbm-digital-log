@@ -740,7 +740,7 @@ export async function generateAndSendReport(
 
   const { data: existing } = await admin
     .from("monthly_reports")
-    .select("id, token, sent_at")
+    .select("id, token, sent_at, content")
     .eq("user_id", sub.user_id)
     .eq("period_year", year)
     .eq("period_month", month)
@@ -753,6 +753,10 @@ export async function generateAndSendReport(
   if (content.stats.total === 0) return { status: "no_data" };
 
   const token = existing?.token || randomUUID();
+  // 같은 행(user_id, year, month)은 크론이 '회의록 종합 + 교육일지 종합'을 함께 담는다.
+  // 여기서 회의록만 통째로 덮어쓰면 뷰어의 교육 섹션이 조용히 사라진다 — 기존 education을 보존한다.
+  const prevEdu = (existing?.content as StoredMonthlyContent | null)?.education;
+  const stored: StoredMonthlyContent = prevEdu ? { ...content, education: prevEdu } : content;
 
   const { error: upErr } = await admin.from("monthly_reports").upsert(
     {
@@ -760,7 +764,7 @@ export async function generateAndSendReport(
       period_year: year,
       period_month: month,
       token,
-      content: content as any,
+      content: stored as any,
       recipients,
     },
     { onConflict: "user_id,period_year,period_month" }

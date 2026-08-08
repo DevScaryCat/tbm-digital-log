@@ -333,22 +333,29 @@ async function run(request: Request) {
           // 회의록·교육 둘 다 0건인 달은 저장할 것도 없다. (0건이면 위 두 빌드 모두 AI를 예약하지 않는다)
           if (own.stats.total === 0 && !edu) continue;
           postJobs.push(async () => {
-            // 배치 flush 이후 시점에 스프레드 — AI 총평·날짜별 교육 요약이 반영된 상태로 저장된다.
-            const stored: StoredMonthlyContent = { ...own, ...(edu ? { education: edu } : {}) };
-            const { error: upErr } = await admin.from("monthly_reports").upsert(
-              {
-                user_id: s.user_id,
-                period_year: year,
-                period_month: month,
-                token: randomUUID(),
-                content: stored as any,
-                recipients: [],
-                sent_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id,period_year,period_month" }
-            );
-            if (upErr) { soloStored.failed++; console.error("solo report store error:", s.user_id, upErr); }
-            else soloStored.stored++;
+            // 저장 하나가 throw하면 뒤에 줄 선 발송 job이 통째로 날아간다(월 1회 크론 = 그 달 미발송).
+            // 다른 postJob들과 동일하게 여기서 가둔다.
+            try {
+              // 배치 flush 이후 시점에 스프레드 — AI 총평·날짜별 교육 요약이 반영된 상태로 저장된다.
+              const stored: StoredMonthlyContent = { ...own, ...(edu ? { education: edu } : {}) };
+              const { error: upErr } = await admin.from("monthly_reports").upsert(
+                {
+                  user_id: s.user_id,
+                  period_year: year,
+                  period_month: month,
+                  token: randomUUID(),
+                  content: stored as any,
+                  recipients: [],
+                  sent_at: new Date().toISOString(),
+                },
+                { onConflict: "user_id,period_year,period_month" }
+              );
+              if (upErr) { soloStored.failed++; console.error("solo report store error:", s.user_id, upErr); }
+              else soloStored.stored++;
+            } catch (e) {
+              soloStored.failed++;
+              console.error("solo report store error:", s.user_id, e);
+            }
           });
         } catch (e) {
           soloStored.failed++;
