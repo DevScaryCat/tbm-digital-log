@@ -655,7 +655,11 @@ export default function RiskAssessmentPage() {
                                 {myEmail ? (
                                     <div className="rounded-[8px] border border-cur-hairline bg-cur-elevated px-3 py-2.5 min-w-0">
                                         <p className="text-[11px] font-semibold text-cur-muted mb-0.5">받는 사람</p>
-                                        <p className="text-[13px] font-semibold text-cur-ink truncate">{myEmail}</p>
+                                        {/* 첫 줄이 내 주소인 걸 명시 — 주소만 있으면 "이건 누구 메일이지?"가 된다(Chris) */}
+                                        <p className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-[13px] font-semibold text-cur-ink truncate">{myEmail}</span>
+                                            <span className="shrink-0 text-[10px] font-semibold text-cur-primary bg-cur-primary/10 rounded-[4px] px-1.5 py-0.5">내 이메일</span>
+                                        </p>
                                         {extraEmails.map((e) => (
                                             <p key={e} className="text-[13px] font-semibold text-cur-ink truncate">{e}</p>
                                         ))}
