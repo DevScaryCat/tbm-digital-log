@@ -76,7 +76,7 @@ export default function SuggestionsPage() {
                         <div className="flex flex-col items-center py-16 text-cur-muted">
                             {/* 빈 제안함 = 기다리는 상태. 회색 아이콘보다 '귀 기울이는 중'이 더 정확하다 */}
                             {/* 바로 아래 문구가 상태를 말하고 있으니 마스코트는 장식으로 둔다(중복 낭독 방지) */}
-                            <Antoki pose="listen" size="md" motion="breathe" className="mb-3" />
+                            <Antoki pose="listen" size="md" motion="sway" className="mb-3" />
                             <p className="text-[14px]">아직 접수된 제안이 없습니다.</p>
                             <p className="text-[12px] text-cur-muted-soft mt-1">서명 QR을 공유하면 참석자가 의견을 남길 수 있어요.</p>
                         </div>

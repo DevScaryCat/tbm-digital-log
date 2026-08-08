@@ -141,9 +141,12 @@ html {
 /* ── 마스코트 '안톡이' 모션 프리미티브 (components/Antoki.tsx 전용) ──
    딱 셋만 둔다. 늘리면 화면마다 다른 리듬이 생겨서 금방 질린다.
    transform·opacity만 건드린다 — 레이아웃 속성은 애니메이트하지 않는다. */
-@keyframes antoki-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.03); }
+/* sway = 몸을 기울인다. 예전의 scale 호흡은 "그냥 커졌다 작아졌다"로 읽혀 버렸다 —
+   캐릭터는 부피가 변하는 게 아니라 무게중심이 움직여야 살아 있어 보인다.
+   회전축은 발밑(bottom)이라 서 있는 채로 갸웃거린다. */
+@keyframes antoki-sway {
+  0%, 100% { transform: rotate(-1.8deg) translateY(0); }
+  50% { transform: rotate(1.8deg) translateY(-3px); }
 }
 @keyframes antoki-bob {
   0%, 100% { transform: translateY(0); }
@@ -154,21 +157,41 @@ html {
   60% { transform: scale(1.06); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
 }
+/* listen 포즈 전용 — 손끝 음파가 바깥으로 번졌다 사라진다. 두 겹을 시차로 돌려
+   소리가 퍼져 나가는 방향(왼→오른쪽)을 만든다. 다른 포즈에는 쓰지 않는다. */
+@keyframes antoki-wave {
+  0% { opacity: 0; transform: translateX(-5%) scale(0.86); }
+  35% { opacity: 1; }
+  70% { opacity: 0.5; }
+  100% { opacity: 0; transform: translateX(4%) scale(1.08); }
+}
 @keyframes antoki-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-.antoki-breathe { animation: antoki-breathe 2600ms ease-in-out infinite; }
+.antoki-sway { animation: antoki-sway 3400ms ease-in-out infinite; }
 .antoki-bob { animation: antoki-bob 1600ms ease-in-out infinite; }
 .antoki-pop { animation: antoki-pop 420ms ease-out 1 both; }
+.antoki-wave-1,
+.antoki-wave-2 {
+  transform-origin: left center;
+  animation: antoki-wave 1900ms ease-out infinite;
+}
+.antoki-wave-2 { animation-delay: 340ms; }
 
-/* 모션 감축 설정에서는 무한 루프를 세우고 150ms 페이드인 하나로 붕괴시킨다 */
+/* 모션 감축 설정에서는 무한 루프를 세우고 150ms 페이드인 하나로 붕괴시킨다.
+   음파도 애니메이션을 끄되 보이게는 둔다(그림의 일부라 사라지면 손짓이 어색해진다) */
 @media (prefers-reduced-motion: reduce) {
-  .antoki-breathe,
+  .antoki-sway,
   .antoki-bob,
   .antoki-pop {
     animation: antoki-fade 150ms ease-out 1 both;
+  }
+  .antoki-wave-1,
+  .antoki-wave-2 {
+    animation: none;
+    opacity: 1;
   }
 }
 

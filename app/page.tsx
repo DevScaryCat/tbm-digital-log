@@ -771,7 +771,8 @@ export default function MainPage() {
         </section>
 
         {/* 녹음 — 히어로 바로 아래 본문 시작: 입력이 얼마나 단순한지부터 보여준다 */}
-        <section id="process" className="max-w-6xl mx-auto px-5 sm:px-8 pb-20 sm:pb-28">
+        {/* overflow-x-clip — 마스코트가 카드 왼쪽으로 삐져나오므로 좁은 화면에서 가로 스크롤이 생기지 않게 */}
+        <section id="process" className="max-w-6xl mx-auto px-5 sm:px-8 pb-20 sm:pb-28 overflow-x-clip">
           <div className="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
             <Reveal>
               <span className="inline-block text-[12px] font-semibold text-cur-primary bg-cur-primary/10 px-2.5 py-1 rounded-full">
@@ -791,14 +792,26 @@ export default function MainPage() {
                   </span>
                 ))}
               </div>
-              {/* 안톡이 — 이 랜딩에서 마스코트는 여기 한 곳뿐이다.
-                  '듣고 있다'가 이 섹션의 주장이라 listen 포즈만 의미가 맞는다.
-                  옆 목업의 빨간 점(animate-ping)이 이미 '지금 진행 중'을 맡고 있어서
-                  마스코트는 조용한 쪽(breathe)으로 둔다. 장식이라 aria-hidden. */}
-              <Antoki pose="listen" size="xl" motion="breathe" className="mt-7" />
             </Reveal>
             <Reveal delay={140} className="max-w-md w-full mx-auto md:mx-0 md:justify-self-end">
-              <RecordingCard />
+              {/* 안톡이 — 이 랜딩에서 마스코트는 여기 한 곳뿐이다.
+                  녹음 카드 왼쪽 아래 모서리에 겹쳐 세운다: 떼어 놓으면 그냥 붙여둔 스티커로
+                  읽히고, 카드에 붙여야 '이 소리를 듣고 있다'는 관계가 생긴다.
+                  음파가 오른쪽으로 퍼지므로 반드시 카드의 왼편이어야 방향이 맞는다. */}
+              <div className="relative">
+                <Antoki
+                  pose="listen"
+                  size="xl"
+                  motion="sway"
+                  /* 카드 '뒤'에 세운다 — 앞에 두면 카드의 일시정지 버튼을 덮는다(실측).
+                     뒤에서 왼쪽으로 기대어 서면 가리는 것 없이 관계만 생긴다.
+                     모바일은 카드 옆에 세울 폭이 없어 생략한다(억지로 겹치면 목업을 가린다). */
+                  className="pointer-events-none absolute -bottom-5 -left-24 hidden sm:block"
+                />
+                <div className="relative z-10">
+                  <RecordingCard />
+                </div>
+              </div>
             </Reveal>
           </div>
         </section>
