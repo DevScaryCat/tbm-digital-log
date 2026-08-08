@@ -475,7 +475,9 @@ export default function RiskAssessmentPage() {
     // 이미 렌더된 이메일 HTML을 새 탭 전체 화면으로 — 팝업 차단을 피하려면 반드시 클릭 핸들러 안에서 연다.
     // Blob URL은 새 탭이 로드되기 전에 revoke하면 빈 화면이 되므로 넉넉히 늦춰 누수만 막는다.
     const openPreviewTab = (html: string) => {
-        const url = URL.createObjectURL(new Blob([html], { type: "text/html" }))
+        // charset을 명시하지 않으면 브라우저가 인코딩을 추측해 한글이 전부 깨진다(실측).
+        // 보고서 HTML은 <meta charset>이 없는 조각이라 MIME 타입이 유일한 단서다.
+        const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }))
         window.open(url, "_blank", "noopener")
         setTimeout(() => URL.revokeObjectURL(url), 60_000)
     }
