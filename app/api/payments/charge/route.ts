@@ -19,12 +19,20 @@ export async function POST(request: Request) {
     const admin = getAdminClient();
     const { data: sub, error } = await admin
       .from("subscriptions")
-      .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts")
+      .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts, source")
       .eq("user_id", user.id)
       .single();
 
     if (error || !sub) {
       return NextResponse.json({ error: "구독을 찾을 수 없습니다." }, { status: 404 });
+    }
+    // 구글 결제 구독은 본인 몫을 구글이 청구·갱신한다 — 이 라우트가 좌석 카드로 전액을
+    // 청구하고 current_period_end를 전진시키면 구글 미러가 오염된다(본인 몫 이중청구).
+    if ((sub as { source?: string | null }).source === "google_play") {
+      return NextResponse.json(
+        { error: "Google Play 구독은 스토어에서 결제가 관리됩니다." },
+        { status: 403 }
+      );
     }
     // 조직 하위 미러(0원, 빌링키 없음)는 과금 대상이 아니다 — 이 라우트를 반복 호출해
     // 실패 카운트를 쌓아 미러를 셀프 강등(→개인결제 가드 우회)하는 경로 차단 (리뷰 N)

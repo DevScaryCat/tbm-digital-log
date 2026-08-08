@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/portone";
-import { chargeSubscription, SubscriptionRow } from "@/lib/billing";
+import {
+  chargeSubscription,
+  chargeGoogleOwnerSeats,
+  MAX_FAILED_ATTEMPTS,
+  SubscriptionRow,
+} from "@/lib/billing";
 
 export const runtime = "nodejs";
 // 청구 건이 몰리는 날 기본 타임아웃에 걸려 뒤쪽 구독이 누락되지 않도록 명시(월간 보고서 cron과 동일).
@@ -34,8 +39,8 @@ async function run(request: Request) {
       .in("status", ["trialing", "active", "past_due"])
       .lte("current_period_end", nowIso)
       .not("billing_key", "is", null)
-      // 인앱결제 구독은 구글이 청구·갱신한다 — 우리 크론까지 긁으면 같은 달에 이중청구가 된다.
-      // (billing_key null 조건으로도 걸러지지만, 출처를 명시해 실수로 되살아나지 않게 한다)
+      // 인앱결제 구독의 **본인 몫**은 구글이 청구·갱신한다 — 우리 크론까지 긁으면 같은 달에 이중청구가 된다.
+      // 구글 소유주의 **좌석 몫**(등록 카드 청구)은 아래 별도 분기(chargeGoogleOwnerSeats)가 담당한다.
       .eq("source", "portone")
       .order("current_period_end", { ascending: true })
       .limit(200);
@@ -45,12 +50,57 @@ async function run(request: Request) {
       return NextResponse.json({ error: "조회 실패" }, { status: 500 });
     }
 
-    const results = { processed: 0, paid: 0, failed: 0, mirrorsDemoted: 0 };
+    const results = {
+      processed: 0,
+      paid: 0,
+      failed: 0,
+      mirrorsDemoted: 0,
+      googleSeatPaid: 0,
+      googleSeatFailed: 0,
+    };
     for (const sub of (due || []) as SubscriptionRow[]) {
       results.processed++;
       const r = await chargeSubscription(admin, sub);
       if (r.ok) results.paid++;
       else results.failed++;
+    }
+
+    // ── 구글 인앱 구독 소유주의 좌석 몫 청구 ─────────────────────────────
+    // 본인 몫(4,900)은 구글이 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
+    // 위 portone 쿼리(.eq source portone)가 이들을 건너뛰므로, 여기가 없으면 좌석이 무과금 누수.
+    // 결제일 도래(lte current_period_end) 조건을 쓸 수 없다 — 그 필드는 구글이 갱신 때마다
+    // 미래로 밀어주는 값이라, 대신 매일 전체를 훑고 주기 키(gseat_…) 멱등으로 1회/주기를 보장한다.
+    {
+      const { data: googleDue, error: gErr } = await admin
+        .from("subscriptions")
+        .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts, source")
+        .eq("source", "google_play")
+        .not("billing_key", "is", null)
+        // trialing 제외: 체험 중 좌석 무료(포트원 관례와 동일) — 체험 종료로 구글이 첫 정규 주기를
+        // 열면(만료일 전진→새 주기 키) 그때 온전히 청구된다. canceled 제외: 끊긴 구독에 청구 금지.
+        // past_due(구글 grace) 제외(검수 발견): grace 중 구글은 만료일을 grace 종료일로 연장해
+        // 주는데(RTDN이 그대로 미러), 그 날짜 키로 좌석 전액을 청구한 뒤 결제가 회복되면
+        // 만료일이 또 전진해 새 키로 전액이 **다시** 청구된다 — grace 회복마다 좌석 이중청구.
+        // grace 창의 좌석 몫은 포기하고(≤수일), 회복 후 새 주기부터 청구하는 쪽이 안전하다.
+        .eq("status", "active")
+        // 만료가 지난 주기 정보로는 청구하지 않는다(RTDN 누락 등 갱신 미반영 방어)
+        .gt("current_period_end", nowIso)
+        // 3회 실패 후에는 중단 — 복구 스위치는 카드 재등록(/api/billing/card)의 카운터 리셋
+        .lt("failed_attempts", MAX_FAILED_ATTEMPTS)
+        .order("current_period_end", { ascending: true })
+        .limit(200);
+      if (gErr) {
+        console.error("cron google-seat query error:", gErr);
+      } else {
+        for (const sub of (googleDue || []) as SubscriptionRow[]) {
+          // 좌석 청구 실패가 소유주의 구글 구독 상태를 건드리지 않는 것은
+          // chargeGoogleOwnerSeats가 보장한다(강등은 좌석 미러에만).
+          const r = await chargeGoogleOwnerSeats(admin, sub);
+          if (r.status === "paid") results.googleSeatPaid++;
+          else if (r.status === "failed") results.googleSeatFailed++;
+          // skipped(이미 결제·좌석 없음·키 검증 대기)는 집계하지 않는다 — 매일 대부분이 스킵이다
+        }
+      }
     }
 
     // ── 강등 reconciliation 스윕 (§2, 검증 F6) ─────────────────────────

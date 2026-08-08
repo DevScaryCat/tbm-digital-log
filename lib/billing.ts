@@ -9,7 +9,7 @@ import {
   newPaymentId,
   SEAT_PRICE,
 } from "@/lib/portone";
-import { cancelOrgSeatMirrors } from "@/lib/org";
+import { cancelOrgSeatMirrors, restoreOrgSeatMirrors } from "@/lib/org";
 
 export const MAX_FAILED_ATTEMPTS = 3;
 
@@ -26,6 +26,9 @@ export interface SubscriptionRow {
   status: string;
   current_period_end: string | null;
   failed_attempts?: number;
+  /** 청구 주체: 'portone'(웹 카드 정기결제) | 'google_play'(앱 인앱결제).
+   *  구글이면 본인 몫(4,900)은 구글이 받으므로 우리 카드 청구는 좌석 몫만이어야 한다. */
+  source?: string | null;
 }
 
 /**
@@ -104,6 +107,10 @@ export async function resolveBillableAmount(
   admin: SupabaseClient,
   sub: SubscriptionRow
 ): Promise<{ amount: number; orderName: string; org: BillableOrg | null }> {
+  // 구글 인앱 구독 소유주: 본인 몫(4,900)은 구글이 이미 받는다.
+  // 등록 카드(PortOne 빌링키)로는 좌석(활성 소속 현장) 몫만 청구한다 — 본인까지 세면 이중청구.
+  const googleOwner = sub.source === "google_play";
+
   const { data: orgRow } = await admin
     .from("organizations")
     .select("id")
@@ -116,12 +123,25 @@ export async function resolveBillableAmount(
       .select("member_user_id", { count: "exact", head: true })
       .eq("org_id", (orgRow as any).id)
       .eq("status", "active");
-    const accountCount = 1 + (count ?? 0); // 감독자 본인도 한 계정(=현장 하나)으로 센다
+    const seatCount = count ?? 0;
+    const accountCount = 1 + seatCount; // 감독자 본인도 한 계정(=현장 하나)으로 센다 (표시용 seat_count 기준)
+    if (googleOwner) {
+      return {
+        amount: seatCount * SEAT_PRICE, // 좌석 0이면 0 — 청구할 것이 없다
+        orderName: `안톡 현장 계정 ${seatCount}개 (감독자 앱 구독 별도)`,
+        org: { id: (orgRow as any).id, accountCount },
+      };
+    }
     return {
       amount: accountCount * SEAT_PRICE,
       orderName: `안톡 월간구독 (계정 ${accountCount}개)`,
       org: { id: (orgRow as any).id, accountCount },
     };
+  }
+
+  if (googleOwner) {
+    // 회사가 없으면 좌석도 없다 — 본인 몫은 구글 것이므로 우리 쪽 청구액은 0.
+    return { amount: 0, orderName: "안톡 현장 계정 0개 (감독자 앱 구독 별도)", org: null };
   }
 
   // legacy 요금 유지: 구 베이직(1,900)은 카드사 정기결제 동의 금액이 그때 값이라 올리지 않는다.
@@ -152,6 +172,7 @@ export async function chargeProratedAccount(
     status?: string;
     billing_key: string | null;
     current_period_end: string | null;
+    source?: string | null;
   },
   opts: { count?: number; customerEmail?: string } = {}
 ): Promise<{ ok: boolean; charged: number; error?: string }> {
@@ -159,12 +180,33 @@ export async function chargeProratedAccount(
   const now = new Date();
   const end = sub.current_period_end ? new Date(sub.current_period_end) : null;
 
+  // 호출부가 source를 안 넘겼으면(구 셀렉트) 직접 조회 — 구글 소유주 분기가 조용히 빠지면
+  // 아래 gseat 멱등 키 선점이 안 돼 cron 월청구와 같은 주기 이중청구가 된다.
+  let source = sub.source;
+  if (source === undefined) {
+    const { data: srcRow } = await admin
+      .from("subscriptions")
+      .select("source")
+      .eq("id", sub.id)
+      .maybeSingle();
+    source = ((srcRow as any)?.source as string | null) ?? null;
+  }
+
   // 무료체험 중에는 일할 청구를 하지 않는다.
   // '첫 달 무료'라고 안내해 놓고 현장을 추가했다는 이유로 당일 3,900원을 긁으면 약속 위반이고,
   // 카드 없는 휴대폰 인증 체험 계정은 아예 결제수단이 없어 여기서 막히면 현장을 하나도
   // 못 만든다(가입 직후 안내되는 첫 화면이 바로 '현장 계정 만들기'다).
   // 체험이 끝나는 날 cron이 늘어난 계정 수로 온전히 청구한다.
-  if (sub.status === "trialing") return { ok: true, charged: 0 };
+  if (sub.status === "trialing") {
+    // 단, 구글 인앱 체험 소유주는 카드부터 받는다 — 포트원 체험은 기간이 끝나면 구독 자체가
+    // 잠겨 무과금 좌석도 같이 잠기지만, 구글 소유주는 본인 몫을 구글이 계속 받아 구독이
+    // 살아 있으므로 카드 없이 만든 좌석이 영원히 무과금으로 남는다. 청구는 체험 종료 후
+    // 첫 정규 주기부터 cron이 한다(체험 중 좌석 무료 관례는 유지).
+    if (source === "google_play" && !sub.billing_key) {
+      return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
+    }
+    return { ok: true, charged: 0 };
+  }
 
   if (!sub.billing_key) return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
 
@@ -185,12 +227,54 @@ export async function chargeProratedAccount(
   const remaining = Math.min(total, Math.max(0, end.getTime() - now.getTime()));
   const prorated = Math.max(100, Math.floor((SEAT_PRICE * count * remaining) / total)); // PG 최소금액 100원
 
-  const paymentId = newPaymentId("seat");
+  // 구글 소유주의 좌석 일할결제는 이번 구글 주기의 정기 좌석청구 키(gseat_…)를 선점한다.
+  // cron(chargeGoogleOwnerSeats)은 이 키가 paid면 그 주기를 건너뛰므로,
+  // "발급 당일 일할 + 같은 주기 월청구 전액"이라는 이중청구가 멱등 키 하나로 막힌다.
+  // 키가 이미 paid면(이번 주기 두 번째 증설 등) 일회성 id로 청구한다.
+  let paymentId = newPaymentId("seat");
+  // 키를 선점할 때 함께 청구할 '기존 활성 좌석'의 이번 주기 몫 (구글 소유주 전용).
+  // 추가분 일할만으로 키를 paid로 만들면 cron이 이 주기를 통째로 건너뛰어, 갱신 직후~그날
+  // cron 사이에 증설한 경우 **기존 좌석의 한 달치가 무과금**이 된다(검수 발견). 기존 좌석은
+  // 지난 주기까지만 결제된 상태이므로 이번 주기 전액을 여기서 같이 받는다.
+  // 단 grace(past_due) 중에는 받지 않는다 — 회복 시 만료일이 전진해 새 키로 전액이 다시
+  // 청구되므로, grace 창에서 전액을 선청구하면 그게 이중청구가 된다.
+  let periodBase = 0;
+  if (source === "google_play") {
+    const gseatId = seatPeriodPaymentId(sub);
+    const { data: taken } = await admin
+      .from("payments")
+      .select("payment_id, status")
+      .eq("payment_id", gseatId)
+      .maybeSingle();
+    if (!taken || taken.status !== "paid") {
+      paymentId = gseatId; // failed 잔재는 재사용(포트원 재시도 관례)
+      if (sub.status === "active") {
+        const { data: orgRow } = await admin
+          .from("organizations")
+          .select("id")
+          .eq("owner_user_id", sub.user_id)
+          .maybeSingle();
+        if (orgRow) {
+          const { count: activeSeats } = await admin
+            .from("org_members")
+            .select("member_user_id", { count: "exact", head: true })
+            .eq("org_id", (orgRow as any).id)
+            .eq("status", "active");
+          // 지금 발급분(count)은 좌석 점유(claim)가 청구보다 먼저라 이미 active에 포함돼 있다
+          periodBase = Math.max(0, (activeSeats ?? 0) - count) * SEAT_PRICE;
+        }
+      }
+    }
+  }
+  const amount = prorated + periodBase;
   const res = await chargeWithBillingKey({
     paymentId,
     billingKey: sub.billing_key,
-    orderName: `안톡 현장 계정 추가 ${count}개 (잔여기간 일할)`,
-    amount: prorated,
+    orderName:
+      periodBase > 0
+        ? `안톡 현장 계정 추가 ${count}개 일할 + 기존 좌석 이번 주기분`
+        : `안톡 현장 계정 추가 ${count}개 (잔여기간 일할)`,
+    amount,
     customer: { id: sub.user_id, email: opts.customerEmail },
   });
   const body: any = res.body || {};
@@ -202,7 +286,7 @@ export async function chargeProratedAccount(
       subscription_id: sub.id,
       user_id: sub.user_id,
       payment_id: paymentId,
-      amount: prorated,
+      amount,
       status: paid ? "paid" : "failed",
       pg_raw: body,
       paid_at: paid ? now.toISOString() : null,
@@ -211,17 +295,27 @@ export async function chargeProratedAccount(
   );
 
   return paid
-    ? { ok: true, charged: prorated }
+    ? { ok: true, charged: amount }
     : { ok: false, charged: 0, error: "현장 계정 추가 결제에 실패했습니다. 카드를 확인해주세요." };
+}
+
+/** 결제 대상 기간의 결정적 날짜 키 (YYYYMMDD, current_period_end 기준) */
+function periodKey(currentPeriodEnd: string | null): string {
+  const base = currentPeriodEnd ? new Date(currentPeriodEnd) : new Date(0);
+  return `${base.getUTCFullYear()}${String(base.getUTCMonth() + 1).padStart(2, "0")}${String(
+    base.getUTCDate()
+  ).padStart(2, "0")}`;
 }
 
 /** 결제 대상 기간을 식별하는 결정적 키 (같은 기간 재시도 시 동일 paymentId → 중복결제 방지) */
 function periodPaymentId(sub: SubscriptionRow): string {
-  const base = sub.current_period_end ? new Date(sub.current_period_end) : new Date(0);
-  const key = `${base.getUTCFullYear()}${String(base.getUTCMonth() + 1).padStart(2, "0")}${String(
-    base.getUTCDate()
-  ).padStart(2, "0")}`;
-  return `sub_${sub.id}_${key}`;
+  return `sub_${sub.id}_${periodKey(sub.current_period_end)}`;
+}
+
+/** 구글 소유주 좌석 몫의 주기 결제 키 — 구글 주기(현재 만료일)당 1회 청구를 보장한다.
+ *  구글이 갱신하면 current_period_end가 전진해 키가 바뀌고, 새 주기의 청구가 열린다. */
+function seatPeriodPaymentId(sub: { id: string; current_period_end: string | null }): string {
+  return `gseat_${sub.id}_${periodKey(sub.current_period_end)}`;
 }
 
 /**
@@ -371,6 +465,183 @@ export async function chargeSubscription(
         (members ?? []).map((m: any) => m.member_user_id as string),
         admin
       );
+    }
+  }
+
+  return { ok: paid, paymentId, status: paid ? "paid" : "failed", detail: body };
+}
+
+/**
+ * 구글 인앱 구독 소유주의 좌석 몫 월 청구. (cron 전용)
+ *
+ * 본인 몫(4,900)은 구글이 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
+ * chargeSubscription을 재사용하지 않는 이유: 그 함수는 성공 시 current_period_end를 전진시키고
+ * 실패 시 status를 past_due/canceled로 바꾸는데, 구글 소유주의 그 두 필드는 **구글 구독 상태의
+ * 미러**(verify/RTDN이 관리)라서 좌석 카드 문제로 건드리면 본인 구독까지 망가진다.
+ *
+ * - 멱등: 주기 키 gseat_{subId}_{만료일}. 같은 구글 주기에 1회만 청구.
+ *   (좌석 증설 일할결제 chargeProratedAccount가 이 키를 먼저 선점했으면 그 주기는 스킵)
+ * - 실패: failed_attempts만 증가. MAX_FAILED_ATTEMPTS 도달 시 좌석 미러(org_seat)만 강등 —
+ *   소유주 status/기간은 불변. 복구는 카드 재등록(/api/billing/card, 카운터 리셋) 후 다음 cron.
+ * - 성공: 카운터 리셋 + 접혀 있던 미러 복원(돈은 받는데 현장이 잠긴 상태 방지).
+ */
+export async function chargeGoogleOwnerSeats(
+  admin: SupabaseClient,
+  sub: SubscriptionRow,
+  opts: { customerEmail?: string } = {}
+): Promise<ChargeResult> {
+  const paymentId = seatPeriodPaymentId(sub);
+  const now = new Date();
+
+  if (!sub.billing_key) {
+    return { ok: false, paymentId, status: "failed", detail: "빌링키 없음" };
+  }
+
+  // 멱등성: 이 구글 주기의 좌석 몫이 이미 결제됐으면(월청구 또는 일할 선점) 재청구하지 않음
+  const { data: existing } = await admin
+    .from("payments")
+    .select("status")
+    .eq("payment_id", paymentId)
+    .maybeSingle();
+  if (existing?.status === "paid") {
+    return { ok: true, paymentId, status: "skipped", detail: "이미 결제됨" };
+  }
+
+  const billable = await resolveBillableAmount(admin, sub);
+  if (!billable.org || billable.amount <= 0) {
+    return { ok: true, paymentId, status: "skipped", detail: "청구할 좌석 없음" };
+  }
+  const org = billable.org;
+
+  // 낙관수용(미검증) 키 재검증 — ensureBillingKeyVerified는 소유권 불일치 시 status를 past_due로
+  // 바꾸므로 여기서는 못 쓴다(구글 소유주의 status는 구글 것). 구글-안전 버전으로 직접 처리.
+  if (sub.billing_key_verified === false) {
+    const info = await getBillingKeyInfo(sub.billing_key);
+    if (info.ok) {
+      const customerId = (info.body as { customer?: { id?: string } })?.customer?.id;
+      if (customerId && customerId !== sub.user_id) {
+        console.error("google-seat re-verify: billing-key ownership mismatch — clearing key", {
+          subId: sub.id,
+          keyCustomerId: customerId,
+          userId: sub.user_id,
+        });
+        await admin
+          .from("subscriptions")
+          .update({
+            billing_key: null,
+            card_info: null,
+            billing_key_verified: true,
+            updated_at: now.toISOString(),
+          })
+          .eq("id", sub.id);
+        // 키가 비면 이 구독은 cron 대상(billing_key not null)에서 빠진다 — 여기서 미러를
+        // 접지 않으면 남의 키로 만든 좌석이 무기한 무과금으로 산다(검수 발견). 멤버십은
+        // 남겨두므로, 정상 카드 재등록(카운터 리셋) 후 첫 청구 성공 시 자동 복원된다.
+        const { data: mm } = await admin
+          .from("org_members")
+          .select("member_user_id")
+          .eq("org_id", org.id)
+          .eq("status", "active");
+        await cancelOrgSeatMirrors(
+          ((mm ?? []) as any[]).map((m) => m.member_user_id as string),
+          admin
+        );
+        return { ok: false, paymentId, status: "failed", detail: "ownership mismatch — key cleared" };
+      }
+      await admin.from("subscriptions").update({ billing_key_verified: true }).eq("id", sub.id);
+    } else {
+      // 아직 조회 불가(전파 지연) → 이번 회차 스킵, 실패 카운트도 올리지 않는다
+      console.warn("google-seat re-verify: billing-key still not readable — skipping this run", {
+        subId: sub.id,
+        status: info.status,
+      });
+      return { ok: false, paymentId, status: "skipped", detail: "awaiting billing-key verification" };
+    }
+  }
+
+  const res = await chargeWithBillingKey({
+    paymentId,
+    billingKey: sub.billing_key,
+    orderName: billable.orderName,
+    amount: billable.amount,
+    customer: { id: sub.user_id, email: opts.customerEmail },
+  });
+
+  const body: any = res.body || {};
+  const pgStatus = String(body?.payment?.status ?? body?.status ?? "").toUpperCase();
+  let paid = res.ok && (pgStatus === "" || pgStatus === "PAID");
+  let recordBody: any = body;
+
+  // 재조정: 결제는 됐는데 기록이 실패했던 재시도가 ALREADY_PAID로 거절되는 경우 (portone 경로와 동일)
+  if (!paid) {
+    const errCode = String(body?.type ?? body?.code ?? body?.pgCode ?? "").toUpperCase();
+    if (res.status === 409 || errCode.includes("ALREADY_PAID")) {
+      const chk = await getPayment(paymentId);
+      const chkStatus = String(chk.body?.status ?? chk.body?.payment?.status ?? "").toUpperCase();
+      if (chk.ok && chkStatus === "PAID") {
+        paid = true;
+        recordBody = chk.body;
+      }
+    }
+  }
+
+  const { error: payErr } = await admin.from("payments").upsert(
+    {
+      subscription_id: sub.id,
+      user_id: sub.user_id,
+      payment_id: paymentId,
+      amount: billable.amount,
+      status: paid ? "paid" : "failed",
+      pg_raw: recordBody,
+      paid_at: paid ? now.toISOString() : null,
+    },
+    { onConflict: "payment_id" }
+  );
+  if (payErr) {
+    // 기록 실패 시 상태를 진행시키지 않음 — 다음 실행의 멱등 체크(ALREADY_PAID 재조정)가 수습한다
+    console.error("google-seat payment insert error:", payErr);
+    return { ok: false, paymentId, status: "failed", detail: payErr };
+  }
+
+  // 좌석 강등/복원 대상 = 활성 소속 현장 (소유주 본인 제외)
+  const { data: members } = await admin
+    .from("org_members")
+    .select("member_user_id")
+    .eq("org_id", org.id)
+    .eq("status", "active");
+  const memberIds = ((members ?? []) as any[]).map((m) => m.member_user_id as string);
+
+  if (paid) {
+    // 구글 소유 필드(status/current_period_end/amount)는 불변 — 좌석 관련 필드만 만진다
+    await admin
+      .from("subscriptions")
+      .update({ failed_attempts: 0, updated_at: now.toISOString() })
+      .eq("id", sub.id);
+    await admin
+      .from("organizations")
+      .update({ seat_count: org.accountCount, pending_seat_count: null })
+      .eq("id", org.id);
+    // 이전 실패(3회 강등)로 접힌 미러가 있으면 되살린다 — 청구액과 사용 가능 계정 수 일치
+    if (memberIds.length > 0) {
+      const { data: folded } = await admin
+        .from("subscriptions")
+        .select("user_id")
+        .in("user_id", memberIds)
+        .eq("plan", "org_seat")
+        .neq("status", "active");
+      const foldedIds = ((folded ?? []) as any[]).map((f) => f.user_id as string);
+      if (foldedIds.length > 0) await restoreOrgSeatMirrors(foldedIds, admin);
+    }
+  } else {
+    const attempts = (sub.failed_attempts ?? 0) + 1;
+    // 소유주 status는 절대 건드리지 않는다 — 좌석 카드 실패가 구글 구독(본인 몫)을 끊으면 안 된다
+    await admin
+      .from("subscriptions")
+      .update({ failed_attempts: attempts, updated_at: now.toISOString() })
+      .eq("id", sub.id);
+    if (attempts >= MAX_FAILED_ATTEMPTS && memberIds.length > 0) {
+      // 강등은 좌석 미러(org_seat)에만. 멤버십은 남겨 카드 재등록 시 복구 가능하게 한다
+      await cancelOrgSeatMirrors(memberIds, admin);
     }
   }
 

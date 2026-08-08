@@ -32,11 +32,14 @@ async function requireOwner(
   // 순서가 반대면 legacy(구 베이직 1,900·영구무료) 계정이 '현장 계정 만들기'를 누르는
   // 것만으로 organizations 행이 남고, resolveBillableAmount가 legacy 분기 앞에서
   // org 분기를 타 버려 재동의 없이 요금이 3,900으로 올라간다.
-  let sub: { id: string; user_id: string; status: string; billing_key: string | null; current_period_end: string | null } | null = null;
+  let sub: { id: string; user_id: string; status: string; billing_key: string | null; current_period_end: string | null; source: string | null } | null = null;
   if (opts.requireValidSub) {
+    // source 포함: 구글 인앱 소유주(source=google_play)는 좌석 일할청구가 구글 주기 키(gseat)를
+    // 선점해야 cron 월청구와 이중청구가 안 된다 — chargeProratedAccount가 이 값으로 분기한다.
+    // (subscriptionAllows·isProPlan은 source 무관이라 구글 구독자도 그대로 통과한다)
     const { data } = await admin
       .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key")
+      .select("id, user_id, status, plan, current_period_end, billing_key, source")
       .eq("user_id", user.id)
       .maybeSingle();
     if (!data || !subscriptionAllows(data) || !isProPlan((data as any).plan)) {
@@ -146,6 +149,10 @@ export async function POST(request: Request) {
     // 결제가 실패하면 방금 만든 계정을 되돌린다(청구 없이 남는 무료 계정 방지).
     const charge = await chargeProratedAccount(admin, r.sub!, { customerEmail: user.email ?? undefined });
     if (!charge.ok) {
+      // 롤백은 좌석(org_members)까지 — auth 계정만 지우면 claim_org_seat가 만든 active 행이
+      // 유령 좌석으로 남아 resolveBillableAmount가 다음 청구부터 존재하지 않는 계정 몫을
+      // 과금한다(검수 발견). bulk 라우트의 rollback과 동일하게 맞춘다.
+      await admin.from("org_members").delete().eq("member_user_id", created.user.id);
       await admin.auth.admin.deleteUser(created.user.id);
       return NextResponse.json({ error: charge.error ?? "결제에 실패했습니다." }, { status: 402 });
     }

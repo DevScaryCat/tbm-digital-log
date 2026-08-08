@@ -178,6 +178,10 @@ export async function POST(request: Request) {
             user_id: user.id,
             plan: selectedPlan.id,
             status: "trialing",
+            // 이 upsert는 '우리 크론이 청구하는 정기결제'를 개통하는 것 — 출처를 명시해야
+            // 과거 인앱결제(google_play) 이력이 남은 계정이 크론의 source=portone 필터에서
+            // 빠져 영영 무과금이 되는 구멍이 없다.
+            source: "portone",
             billing_key: billingKey,
             card_info: cardInfo,
             billing_key_verified: !acceptedUnverified,
@@ -227,6 +231,8 @@ export async function POST(request: Request) {
           user_id: user.id,
           plan: selectedPlan.id,
           status: "active",
+          // 재구독도 우리 크론 청구로 개통 — 인앱결제에서 웹 결제로 돌아온 계정의 출처 원복
+          source: "portone",
           billing_key: billingKey,
           card_info: cardInfo,
           amount: selectedPlan.amount,
