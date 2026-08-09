@@ -13,6 +13,7 @@ import { showAlert } from "@/lib/uiDialog"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
+import { isKakaoUser } from "@/lib/myEmail"
 
 export default function ProfilePage() {
     const router = useRouter()
@@ -27,6 +28,12 @@ export default function ProfilePage() {
     const [emailBusy, setEmailBusy] = useState(false)
     const [emailMsg, setEmailMsg] = useState<string | null>(null)
     const [emailLoaded, setEmailLoaded] = useState(false)
+    // 서버 기준 '복구 가능' 판정 — 메타데이터의 real_email_verified_at은 온보딩이 링크 인증
+    // 없이도 찍어서 못 믿는다. 실제 재설정 메일 발송 조건(recoveryReady)과 같은 기준으로만
+    // '인증됨'을 말한다. null=조회 전/실패 → 근거 없이 경고하지 않고 기존 판정을 따른다.
+    const [recoveryReady, setRecoveryReady] = useState<boolean | null>(null)
+    // 카카오 계정은 비밀번호가 없어(로그인=카카오) 복구 대상이 아니다 — 인증을 조르지 않는다
+    const [isKakao, setIsKakao] = useState(false)
 
     const authHeaders = async () => {
         const { data } = await supabase.auth.getSession()
@@ -39,6 +46,7 @@ export default function ProfilePage() {
             const j = await res.json()
             setReportEmail(j.email ?? null)
             setPendingEmail(j.pending ?? null)
+            setRecoveryReady(typeof j.recoveryReady === "boolean" ? j.recoveryReady : null)
             setEmailInput(j.email ?? j.pending ?? "")
             setEmailLoaded(true)
         } catch { /* 이 카드만 비어 보인다 */ }
@@ -93,6 +101,7 @@ export default function ProfilePage() {
                 return
             }
             const meta = session.user.user_metadata ?? {}
+            setIsKakao(isKakaoUser(session.user as never))
             setFullName(meta.full_name ?? "")
             setCompanyName(meta.company_name ?? "")
             setWorkerType(meta.worker_type ?? "현장 근로자 (비사무직)")
@@ -331,13 +340,15 @@ export default function ProfilePage() {
                     <div className="flex items-center gap-2">
                         <Mail className="w-4 h-4 text-cur-muted shrink-0" />
                         <Label className="text-[13px] font-medium text-cur-body">복구용 이메일</Label>
-                        {/* 조회 전에는 아무 배지도 띄우지 않는다 — 인증된 계정에 '미등록'이 한 번 번쩍이면 거짓말이 된다 */}
+                        {/* 조회 전에는 아무 배지도 띄우지 않는다 — 인증된 계정에 '미등록'이 한 번 번쩍이면 거짓말이 된다.
+                            '인증됨'은 서버의 recoveryReady(실제 복구 메일 발송 조건) 기준 — 메타데이터만 믿으면
+                            온보딩 자기신고 주소가 '인증됨'으로 보이는 거짓 안심이 된다. 카카오는 복구 대상이 아니라 예외. */}
                         {emailLoaded && (
-                            reportEmail ? (
+                            reportEmail && (isKakao || recoveryReady !== false) ? (
                                 <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-cur-success shrink-0">
                                     <CheckCircle2 className="w-3.5 h-3.5" /> 인증됨
                                 </span>
-                            ) : pendingEmail ? (
+                            ) : reportEmail || pendingEmail ? (
                                 <span className="ml-auto text-[11px] font-semibold text-cur-primary shrink-0">인증 대기</span>
                             ) : (
                                 <span className="ml-auto text-[11px] font-semibold text-cur-error shrink-0">미등록</span>
@@ -357,7 +368,7 @@ export default function ProfilePage() {
                         />
                         <Button
                             onClick={sendEmailVerify}
-                            disabled={emailBusy || !emailInput.trim() || emailInput.trim() === reportEmail}
+                            disabled={emailBusy || !emailInput.trim() || (emailInput.trim() === reportEmail && (isKakao || recoveryReady !== false))}
                             className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0 disabled:opacity-40"
                         >
                             {emailBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "인증 메일"}
@@ -366,6 +377,13 @@ export default function ProfilePage() {
                     {pendingEmail && pendingEmail !== reportEmail && (
                         <p className="text-[12px] text-cur-primary leading-relaxed">
                             <b>{pendingEmail}</b> 인증 대기 중 — 메일함의 링크를 눌러야 바뀝니다.
+                        </p>
+                    )}
+                    {/* 온보딩에서 자기신고만 하고 링크 인증이 없는 주소 — '인증 메일'로 인증을 마쳐야 복구에 쓸 수 있다 */}
+                    {!isKakao && recoveryReady === false && reportEmail && !pendingEmail && (
+                        <p className="text-[12px] text-cur-primary leading-relaxed">
+                            <b>{reportEmail}</b> 은(는) 아직 인증이 끝나지 않았어요. &lsquo;인증 메일&rsquo;을 눌러
+                            메일함의 링크로 인증을 마쳐야 계정 복구에 쓸 수 있습니다.
                         </p>
                     )}
                     <p className="text-[12px] text-cur-muted-soft leading-relaxed">

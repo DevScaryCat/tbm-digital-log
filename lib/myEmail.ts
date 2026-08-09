@@ -9,7 +9,7 @@ export interface MyEmailSource {
   identities?: { provider: string }[] | null
 }
 
-function isKakaoUser(u: MyEmailSource): boolean {
+export function isKakaoUser(u: MyEmailSource): boolean {
   return (
     (u.app_metadata ?? {})["provider"] === "kakao" ||
     (u.identities ?? []).some((i) => i.provider === "kakao")
@@ -19,21 +19,25 @@ function isKakaoUser(u: MyEmailSource): boolean {
 /**
  * 비밀번호를 잃었을 때 계정을 되찾을 수 있는가 — 등록 유도 화면의 단일 판정.
  *
- * 서버(lib/accountRecovery.ts)가 복구 메일을 보내는 조건과 같은 기준이어야 한다:
- * 인증까지 끝난 real_email이 있을 때만 실제로 메일이 나간다. 미인증 주소는 "등록했다"고
- * 보면 안 된다 — 그 주소로는 아무것도 보내지 않기 때문이다.
- * (accountRecovery.ts는 node:crypto를 쓰는 서버 전용 모듈이라 클라이언트에서 import할 수 없다.
- *  판정만 이 순수 모듈에 둔다.)
+ * 서버(lib/accountRecovery.ts)가 복구 메일을 보내는 조건과 같은 기준이어야 한다.
+ * user_metadata.real_email_verified_at만 보면 안 된다 — 온보딩(app/api/onboarding)이
+ * 링크 인증 없이도 그 시각을 찍기 때문에, 메타데이터만 믿으면 실제로는 복구 메일이
+ * 안 나가는 계정을 '복구 가능'으로 표시하게 된다(잠긴 뒤에야 드러나는 거짓 안심).
+ * 그래서 판정 근거는 서버가 내려주는 recoveryReady(GET /api/auth/email —
+ * 재설정 메일 발송 조건인 hasLinkVerifiedRecoveryEmail과 동일 기준) 하나다.
  *
  * 카카오 계정은 비밀번호 자체가 없어(로그인=카카오) 잃을 것도 없다 → 조르지 않는다.
- * 판정 불가(u가 없음)도 true — 근거 없이 경고부터 띄우지 않는다.
+ * 판정 불가(u가 없음, recoveryReady 조회 전/실패=null·undefined)도 true —
+ * 근거 없이 경고부터 띄우지 않는다.
  */
-export function canRecoverAccount(u: MyEmailSource | null | undefined): boolean {
+export function canRecoverAccount(
+  u: MyEmailSource | null | undefined,
+  recoveryReady: boolean | null | undefined,
+): boolean {
   if (!u) return true
-  const meta = u.user_metadata ?? {}
-  const realEmail = meta["real_email"]
-  if (typeof realEmail === "string" && realEmail.trim() && meta["real_email_verified_at"]) return true
-  return isKakaoUser(u)
+  if (isKakaoUser(u)) return true
+  if (recoveryReady == null) return true
+  return recoveryReady
 }
 
 /** 보고서를 받을 수 있는 "내 이메일". 인증된 real_email > 카카오 계정 이메일 > null */

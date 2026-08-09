@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
-import { resolveMyReportEmail, canRecoverAccount } from "@/lib/myEmail"
+import { resolveMyReportEmail, canRecoverAccount, isKakaoUser } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
@@ -294,6 +294,21 @@ export default function MainPage() {
   const [recipientGap, setRecipientGap] = useState<{ pending: number; noEmail: boolean } | null>(null)
   // 복구용 이메일 안내를 닫아뒀는지 — 첫 렌더에는 '숨김'으로 시작해 배너가 깜빡였다 사라지지 않게 한다
   const [recoveryHintHidden, setRecoveryHintHidden] = useState(true)
+  // 서버 기준 '복구 가능' 판정 — 메타데이터(real_email_verified_at)는 온보딩이 링크 인증 없이도
+  // 찍기 때문에 못 믿는다. GET /api/auth/email의 recoveryReady(실제 재설정 메일 발송 조건과
+  // 동일 기준)만 근거로 쓰고, 조회 전/실패(null)에는 경고를 띄우지 않는다.
+  const [recoveryReady, setRecoveryReady] = useState<boolean | null>(null)
+  const refreshRecoveryReady = async () => {
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data?.session?.access_token
+      if (!token) return
+      const res = await fetch("/api/auth/email", { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) return
+      const j = await res.json().catch(() => null)
+      if (typeof j?.recoveryReady === "boolean") setRecoveryReady(j.recoveryReady)
+    } catch { /* 조회 실패 — null 유지(근거 없이 조르지 않는다) */ }
+  }
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
     try {
@@ -402,10 +417,20 @@ export default function MainPage() {
       if (now - last < 30_000) return
       last = now
       refreshUserFromServer()
+      // 메일 링크 인증은 다른 탭/앱에서 끝난다 — 복귀 시 서버 판정도 다시 물어 배너가 스스로 내려가게
+      refreshRecoveryReady()
     }
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [])
+
+  // 복구 가능 판정 조회 — 배너를 닫아뒀거나(30일 스누즈) 카카오 계정(비밀번호 없음=대상 아님)이면
+  // 조회조차 하지 않는다. 판정이 오기 전에는 배너가 뜨지 않는다(recoveryReady=null).
+  useEffect(() => {
+    if (!user || recoveryHintHidden || isKakaoUser(user)) return
+    refreshRecoveryReady()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, recoveryHintHidden])
 
   // 수신처 공백 점검 — 승인된 수신자가 0명이면 보고서는 만들어지고도 아무 데도 안 간다.
   // 현장 계정(member)은 수신처 개념이 없고(API가 403), 비Pro는 등록 자체가 막혀 있어 대상이 아니다.
@@ -913,7 +938,7 @@ export default function MainPage() {
           {/* 복구용 이메일 미등록 — 아이디 계정은 이 주소가 없으면 비밀번호를 잃는 순간 계정이 통째로 잠긴다.
               등록 창구는 '내 정보 수정' 한 곳뿐이라 여기서는 안내와 이동만 한다(입력창을 또 만들지 않는다).
               한 번 닫으면 30일간 다시 뜨지 않는다. */}
-          {user && !recoveryHintHidden && !canRecoverAccount(user) && (
+          {user && !recoveryHintHidden && !canRecoverAccount(user, recoveryReady) && (
             <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25">
               <span className="text-[18px] shrink-0" aria-hidden>📮</span>
               <button
@@ -921,12 +946,24 @@ export default function MainPage() {
                 onClick={() => router.push("/profile#recovery-email")}
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
-                <span className="block text-[14px] font-semibold text-cur-ink">복구용 이메일을 등록해주세요</span>
-                <span className="block text-[12px] text-cur-body mt-0.5">
-                  {orgCtx?.kind === "member"
-                    ? "비밀번호를 잊으면 되찾을 방법이 없어요. 등록하면 월간 보고서도 함께 받아요."
-                    : "비밀번호를 잊으면 되찾을 방법이 없어요. 보고서 받을 주소로도 함께 쓰여요."}
-                </span>
+                {/* 주소는 입력했지만 링크 인증이 안 끝난 계정(온보딩 자기신고 포함) — '등록'이 아니라 '인증'을 청한다 */}
+                {typeof user.user_metadata?.real_email === "string" && user.user_metadata.real_email.trim() ? (
+                  <>
+                    <span className="block text-[14px] font-semibold text-cur-ink">복구용 이메일 인증을 마쳐주세요</span>
+                    <span className="block text-[12px] text-cur-body mt-0.5">
+                      입력하신 주소는 메일함의 인증 링크를 눌러야 계정 복구에 쓸 수 있어요.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block text-[14px] font-semibold text-cur-ink">복구용 이메일을 등록해주세요</span>
+                    <span className="block text-[12px] text-cur-body mt-0.5">
+                      {orgCtx?.kind === "member"
+                        ? "비밀번호를 잊으면 되찾을 방법이 없어요. 등록하면 월간 보고서도 함께 받아요."
+                        : "비밀번호를 잊으면 되찾을 방법이 없어요. 보고서 받을 주소로도 함께 쓰여요."}
+                    </span>
+                  </>
+                )}
               </button>
               <button
                 type="button"
