@@ -26,14 +26,15 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Printer, ChevronRight, Loader2, FileText, Building2 } from "lucide-react"
+import { Printer, ChevronRight, Loader2, FileText, Building2 } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { showAlert, showConfirm } from "@/lib/uiDialog"
 
 export default function DashboardPage() {
     const router = useRouter()
     // 열람 등급 A(출력·달력) — 만료자도 기존 문서 확인·인쇄는 하게 열어둔다.
-    // 대신 '작성'·'AI 분석'류 CTA는 expired일 때 /pricing으로 돌린다(아래 goCompose/goAnalysisReport).
+    // 대신 'AI 분석' CTA는 expired일 때 /pricing으로 돌린다(goAnalysisReport). 작성 버튼은 이 화면에서
+    // 제거됨(Chris 2026-08-10) — 달력 아래 작성 버튼은 '고른 날짜로 작성'처럼 읽힌다(실제는 오늘 고정).
     const { expired } = useRequireSubscription({ allowExpired: true })
     const { ctx, loading: ctxLoading } = useOrgContext()
     const [logs, setLogs] = useState<any[]>([])
@@ -275,11 +276,6 @@ export default function DashboardPage() {
         router.push("/report/batch")
     }
 
-    // 새 문서 작성 진입 — 만료자는 작성이 막혀 있으니 위저드까지 갔다 튕기게 두지 않고 바로 결제 유도
-    const goCompose = (path: string) => {
-        router.push(expired ? "/pricing" : path)
-    }
-
     // 선택 구간을 위험성평가 페이지의 기존 규약(ra_range)으로 넘겨 재선택 없이 바로 분석
     const goAnalysisReport = () => {
         if (!from) return
@@ -374,15 +370,6 @@ export default function DashboardPage() {
                                 날짜를 누르면 그 날 문서가 보이고,
                                 <br />한 번 더 누르면 그 사이 기간으로 잡혀요.
                             </p>
-                            {/* 홈을 경유시키지 않는다 — 작성 화면은 둘뿐이라 여기서 바로 고른다 */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button onClick={() => goCompose('/tbm-minutes')} className="h-12 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold rounded-[8px]">
-                                    <Plus className="mr-1.5 w-4 h-4" /> TBM 작성
-                                </Button>
-                                <Button onClick={() => goCompose('/safety-log')} variant="outline" className="h-12 border-cur-hairline text-cur-ink text-[14px] font-bold rounded-[8px] hover:bg-cur-elevated">
-                                    <Plus className="mr-1.5 w-4 h-4" /> 교육일지 작성
-                                </Button>
-                            </div>
                         </div>
                     ) : (
                         <div className="bg-cur-card border border-cur-hairline p-4 rounded-[12px] space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
@@ -486,17 +473,6 @@ export default function DashboardPage() {
                                             </button>
                                         )}
                                     </div>
-                                ) : todaySelected ? (
-                                    /* 작성은 항상 오늘 문서 — 오늘을 보고 있을 때만 작성으로 이어준다.
-                                       과거·미래 날짜에선 버튼을 그리지 않는다(날짜가 오늘로 고정이라 그 날짜 작성은 불가능). */
-                                    <div className="grid grid-cols-2 gap-2">
-                                <Button onClick={() => goCompose('/tbm-minutes')} className="h-12 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[14px] font-bold rounded-[8px]">
-                                    <Plus className="mr-1.5 w-4 h-4" /> TBM 작성
-                                </Button>
-                                <Button onClick={() => goCompose('/safety-log')} variant="outline" className="h-12 border-cur-hairline text-cur-ink text-[14px] font-bold rounded-[8px] hover:bg-cur-elevated">
-                                    <Plus className="mr-1.5 w-4 h-4" /> 교육일지 작성
-                                </Button>
-                            </div>
                                 ) : null
                             ) : (
                                 /* 다른 현장 문서의 일괄 PDF는 서버 문서 뷰가 없어 아직 미지원 — 건수 확인용 */
