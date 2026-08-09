@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
 import { cancelUserSubscription } from "@/lib/cancelSubscription";
 import { isStoreSource } from "@/lib/billing";
+import { markGrandfatherForRestore } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
 
@@ -122,10 +123,9 @@ export async function POST(request: Request) {
       .eq("user_id", user.id)
       .maybeSingle();
     if (sub?.plan === "grandfather") {
-      try {
-        const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-        await admin.auth.admin.updateUserById(user.id, { user_metadata: { ...meta, prev_plan: "grandfather" } });
-      } catch { /* 비치명 */ }
+      // 표식은 서버 전용 자리(app_metadata)에 남긴다 — user_metadata는 클라이언트가 직접 쓸 수 있어
+      // 영구 무료 자가 발급 통로가 된다(lib/grandfather.ts와 같은 규율). 헬퍼가 두 자리를 함께 관리한다.
+      await markGrandfatherForRestore(admin, user.id);
     } else if (sub && ["active", "trialing", "past_due"].includes(sub.status)) {
       const r = await cancelUserSubscription(admin, user.id, {
         reason: "조직 편입에 따른 개인 구독 정산",

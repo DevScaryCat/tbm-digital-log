@@ -164,7 +164,10 @@ export async function cancelOrgSeatMirrors(
     let prevPlan: string | null = null;
     try {
       const { data: u } = await admin.auth.admin.getUserById(id);
-      prevPlan = String((u?.user?.user_metadata as any)?.prev_plan ?? "") || null;
+      // ⚠️ app_metadata만 믿는다 — user_metadata는 클라이언트가 supabase.auth.updateUser({data})로
+      //    직접 쓸 수 있어, 아무나 prev_plan='grandfather'를 심고 편입→해제만 하면 영구 무료를
+      //    자가 발급할 수 있다(2026-08-10 적대적 검수 발견, lib/grandfather.ts와 같은 규율).
+      prevPlan = String((u?.user?.app_metadata as any)?.prev_plan ?? "") || null;
     } catch { /* 메타데이터 조회 실패 → 일반 강등 */ }
     if (prevPlan === "grandfather") {
       await admin
@@ -204,7 +207,10 @@ export async function restoreOrgSeatMirrors(
     let prevPlan: string | null = null;
     try {
       const { data: u } = await admin.auth.admin.getUserById(id);
-      prevPlan = String((u?.user?.user_metadata as any)?.prev_plan ?? "") || null;
+      // ⚠️ app_metadata만 믿는다 — user_metadata는 클라이언트가 supabase.auth.updateUser({data})로
+      //    직접 쓸 수 있어, 아무나 prev_plan='grandfather'를 심고 편입→해제만 하면 영구 무료를
+      //    자가 발급할 수 있다(2026-08-10 적대적 검수 발견, lib/grandfather.ts와 같은 규율).
+      prevPlan = String((u?.user?.app_metadata as any)?.prev_plan ?? "") || null;
     } catch { /* 메타데이터 조회 실패 → 일반 미러로 복원 */ }
     if (prevPlan === "grandfather") continue;
     const { error } = await admin
