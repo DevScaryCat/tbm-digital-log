@@ -105,8 +105,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     // 미리 조회하지 않고 메뉴를 처음 열 때 1회 조회한다(페이지당 불필요한 count 쿼리 제거).
     const loadUsage = async () => {
         // 유료 단일 티어(200/30/20)는 실사용이 닿지 않는 한도라 미터가 불안만 만든다 —
-        // 한도가 실재하는 legacy(구 베이직 80/10/0·영구무료)에게만 보여준다.
-        if (plan !== "monthly_basic" && plan !== "grandfather") return
+        // 한도가 실재하는 구 베이직(monthly_basic 80/10/0)에게만 보여준다.
+        // grandfather는 2026-08-10부터 유료와 같은 200/30/20이라 여기서 뺐다(Chris: "그냥 유료 얘들처럼 똑같이").
+        if (plan !== "monthly_basic") return
         if (usage) return
         // KST 달력월 시작 — DB 트리거와 동일 규칙
         const kstYmd = new Intl.DateTimeFormat("en-CA", {

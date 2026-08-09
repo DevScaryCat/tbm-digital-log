@@ -175,8 +175,17 @@ export async function resolveBillableAmount(
     return { amount: 0, orderName: "안톡 현장 계정 0개 (감독자 앱 구독 별도)", org: null };
   }
 
+  // 영구 무료(grandfather)는 **무조건 0원**이다. sub.amount에 기대면 안 된다 —
+  // getPlan('grandfather')는 PLANS에 없어 monthly_pro(3,900)로 폴백하므로, amount가 어쩌다
+  // NULL이 되는 순간 청구액이 3,900으로 계산된다("영원히 0원" 약속이 깨진다).
+  // 지금은 chargeSubscription의 billing_key 가드가 PG 호출을 막아 도달 불가지만,
+  // 금액 계산 자체를 0으로 못박아 그 가드에 의존하지 않게 한다(2026-08-10 검수 지적).
+  if (sub.plan === "grandfather") {
+    return { amount: 0, orderName: "안톡 영구 무료", org: null };
+  }
+
   // legacy 요금 유지: 구 베이직(1,900)은 카드사 정기결제 동의 금액이 그때 값이라 올리지 않는다.
-  if (sub.plan === "monthly_basic" || sub.plan === "grandfather") {
+  if (sub.plan === "monthly_basic") {
     return {
       amount: sub.amount ?? getPlan(sub.plan).amount,
       orderName: getPlan(sub.plan).name,
