@@ -649,7 +649,7 @@ export default function MainPage() {
         </div>
         <div className="space-y-1 flex-1">
           <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 교육일지 작성</h3>
-          <p className="text-cur-muted text-[12px] leading-snug">같은 방식으로 교육일지도 자동 작성</p>
+          <p className="text-cur-muted text-[12px] leading-snug">같은 방식으로 교육일지도 자동 작성돼요</p>
         </div>
         <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
       </div>
