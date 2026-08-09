@@ -6,11 +6,11 @@ import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
-import { fetchSubscription, isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
+import { isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
-import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ArrowLeftRight } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ExternalLink } from "lucide-react"
 import { showConfirm } from "@/lib/uiDialog"
 
 interface Payment {
@@ -35,16 +35,27 @@ const PAY_STATUS_LABEL: Record<string, string> = {
     partial_canceled: "부분환불",
 }
 
+// 스토어(인앱) 구독 판별을 위해 source까지 읽는다 — 공용 fetchSubscription은 source를
+// 조회하지 않으므로 이 화면만 직접 select한다 (앱 lib/subscription.ts와 같은 컬럼 셋).
+type AccountSub = SubscriptionRow & { source?: string | null }
+
+// 모바일 스토어 구독 단가(본인 몫) — 구글/애플 인앱 상품 가격. 웹 단가(3,900)와 다르다.
+// 서버 resolveBillableAmount의 스토어 소유주 셈법: 본인 4,900은 스토어가, 좌석 N×3,900은 등록 카드가 청구.
+const STORE_PRICE = 4900
+
 export default function AccountPage() {
     const router = useRouter()
     const [loading, setLoading] = useState(true)
-    const [sub, setSub] = useState<SubscriptionRow | null>(null)
+    const [sub, setSub] = useState<AccountSub | null>(null)
     const [payments, setPayments] = useState<Payment[]>([])
     const [busy, setBusy] = useState(false)
     const [changingMethod, setChangingMethod] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 과금 계정 수(감독자 본인 1 + 활성 현장) — 여기가 '회사 전체 결제'라는 걸 명시하기 위한 값
     const [accountCount, setAccountCount] = useState<number>(1)
+    // '여러 현장' 사용 형태(usage_type=multi) — 스토어 구독자의 좌석 청구용 카드 섹션 노출 판정에 쓴다
+    // (현장 계정이 아직 0개여도 곧 만들 사람이면 카드를 미리 등록해 둘 수 있어야 한다)
+    const [multiSite, setMultiSite] = useState(false)
 
 
     const load = async () => {
@@ -55,6 +66,7 @@ export default function AccountPage() {
             router.replace("/login")
             return
         }
+        setMultiSite(user.user_metadata?.usage_type === "multi")
         // 소속 현장 계정은 결제 주체가 아니다 — 헤더 잠금을 뚫고 들어와도(역할 로딩 틈) 홈으로
         const ctx = await fetchOrgContext()
         if (ctx?.kind === "member") {
@@ -62,8 +74,11 @@ export default function AccountPage() {
             return
         }
         setAccountCount(ctx?.kind === "owner" ? 1 + (ctx.memberIds?.length ?? 0) : 1)
-        const s = await fetchSubscription()
-        setSub(s)
+        const { data: subRow } = await supabase
+            .from("subscriptions")
+            .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used, amount, source")
+            .maybeSingle()
+        setSub((subRow as AccountSub) || null)
         const { data } = await supabase
             .from("payments")
             .select("payment_id, amount, status, paid_at, created_at")
@@ -108,6 +123,12 @@ export default function AccountPage() {
     }
 
     const isGrandfather = sub?.plan === "grandfather"
+    // 스토어(인앱) 구독 — 본인 몫(월 4,900)은 스토어가 청구·갱신한다. 해지·결제수단 변경도
+    // 결제한 스토어에서만 가능(앱 account.tsx의 storeManaged 분기와 동일 판정·워딩).
+    const playManaged = sub?.source === "google_play"
+    const appStoreManaged = sub?.source === "app_store"
+    const storeManaged = playManaged || appStoreManaged
+    const storeName = playManaged ? "Google Play" : "App Store"
     const active = isAllowed(sub)
     const pro = isProActive(sub)
     // 카드 없는 무료체험(휴대폰인증 가입): card_info 없음 + 상태 trialing.
@@ -190,6 +211,8 @@ export default function AccountPage() {
                                 <h2 className="text-[18px] font-bold text-cur-ink">
                                     {isGrandfather
                                         ? "영구 무료"
+                                        : storeManaged
+                                        ? `${STATUS_LABEL[sub?.status ?? ""] ?? "구독 중"} · ${storeName} 결제`
                                         : cardlessTrialExpired
                                         ? "무료체험 종료"
                                         : committedTrial
@@ -212,7 +235,31 @@ export default function AccountPage() {
                             ) : (
                                 <div className="space-y-2 text-[14px]">
                                     {/* 요금 구성 — 계정이 곧 청구 항목이라는 걸 표로 보여준다. 설명 문단보다 행 두 줄이 낫다 */}
-                                    {seatBilled ? (
+                                    {storeManaged ? (
+                                        // 스토어 구독: 본인 몫은 스토어 가격(4,900). 웹 단가(3,900) 표시는 거짓이 된다.
+                                        // 좌석이 있으면 서버 셈법(본인 4,900 스토어 + 좌석 N×3,900 카드)대로 분해해 보여준다.
+                                        accountCount > 1 ? (
+                                            <>
+                                                <div className="flex justify-between">
+                                                    <span className="text-cur-muted">내 계정 ({storeName} 구독)</span>
+                                                    <span className="text-cur-ink font-medium">{STORE_PRICE.toLocaleString()}원</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
+                                                    <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
+                                                </div>
+                                                <div className="flex justify-between pt-2 border-t border-cur-hairline">
+                                                    <span className="text-cur-ink font-bold">월 합계</span>
+                                                    <span className="text-cur-ink font-bold">{(STORE_PRICE + (accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">월 사용료</span>
+                                                <span className="text-cur-ink font-medium">{STORE_PRICE.toLocaleString()}원</span>
+                                            </div>
+                                        )
+                                    ) : seatBilled ? (
                                         cardlessTrial ? (
                                             // 체험 중엔 아직 청구 전 — 상세 내역은 결제수단 등록 카드로 옮기고, 요약도 비활성 톤으로
                                             <div className="flex justify-between">
@@ -251,7 +298,8 @@ export default function AccountPage() {
                                         (구버전 해지 데이터에 card_info가 남아 있어도 여기서 걸러짐) */}
                                     {methodLabel && sub?.status !== "canceled" && (
                                         <div className="flex justify-between">
-                                            <span className="text-cur-muted">결제수단</span>
+                                            {/* 스토어 구독의 등록 카드는 본인 몫이 아니라 좌석(현장 계정) 몫 청구용 */}
+                                            <span className="text-cur-muted">{storeManaged ? "현장 계정 청구용 카드" : "결제수단"}</span>
                                             <span className="text-cur-ink font-medium">{methodLabel}</span>
                                         </div>
                                     )}
@@ -298,7 +346,9 @@ export default function AccountPage() {
                             )}
                         </div>
 
-                        {!isGrandfather && !cardlessTrial && active && sub?.status !== "canceled" && (
+                        {/* PortOne(웹 카드) 구독 관리 — 스토어 구독엔 이 UI가 거짓 약속("결제수단만 변경되며")이
+                            되므로 숨기고, 아래 스토어 안내 블록으로 대체한다 */}
+                        {!isGrandfather && !storeManaged && !cardlessTrial && active && sub?.status !== "canceled" && (
                             (
                                 changingMethod ? (
                                     // 결제수단 변경 진행 — 패딩 카드로 인라인 폼 표시
@@ -350,6 +400,82 @@ export default function AccountPage() {
                                     </div>
                                 )
                             )
+                        )}
+
+                        {/* 스토어(인앱) 구독 관리 — 해지·결제수단 변경은 결제한 스토어에서만 가능하다.
+                            7일 전액환불 안내(PortOne 정책)도 스토어 결제엔 부적용이라 노출하지 않는다.
+                            (앱 account.tsx의 storeManaged 분기와 동일 워딩) */}
+                        {!isGrandfather && storeManaged && active && sub?.status !== "canceled" && (
+                            <>
+                                <SettingsCard>
+                                    <SettingsRow
+                                        icon={<ExternalLink className="w-[18px] h-[18px]" />}
+                                        label="구독 관리 · 해지"
+                                        sublabel={
+                                            playManaged
+                                                ? "해지·결제수단 변경은 Google Play → 정기 결제에서 하세요."
+                                                : "해지·결제수단 변경은 설정 > Apple 계정 > 구독에서 할 수 있습니다."
+                                        }
+                                        onClick={() =>
+                                            window.open(
+                                                playManaged
+                                                    ? "https://play.google.com/store/account/subscriptions"
+                                                    : "https://apps.apple.com/account/subscriptions",
+                                                "_blank",
+                                                "noopener"
+                                            )
+                                        }
+                                        chevron
+                                    />
+                                </SettingsCard>
+
+                                {/* 현장 계정 청구용 카드 — 좌석 몫(계정당 월 3,900원)은 스토어가 아니라 이 카드로
+                                    청구된다(서버 chargeGoogleOwnerSeats). 조직 소유이거나 '여러 현장' 사용 형태면
+                                    좌석이 0개여도 미리 등록해 둘 수 있게 남긴다. */}
+                                {(accountCount > 1 || multiSite) &&
+                                    (changingMethod ? (
+                                        <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                            <p className="text-[15px] font-bold text-cur-ink">현장 계정 청구용 카드</p>
+                                            {methodLabel && (
+                                                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
+                                                    <span className="text-[13px] text-cur-muted">현재 카드</span>
+                                                    <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
+                                                </div>
+                                            )}
+                                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                                이 카드는 현장 계정 몫(계정당 월 3,900원)에만 청구돼요. 내 구독(월 {STORE_PRICE.toLocaleString()}원)은 {storeName}에서 결제돼요.
+                                            </p>
+                                            <SubscribeButtons
+                                                mode="update"
+                                                currentMethod={currentMethodKey}
+                                                onSuccess={async () => {
+                                                    setChangingMethod(false)
+                                                    await load()
+                                                }}
+                                                ctaSuffix={methodLabel ? "로 변경" : "로 등록"}
+                                                successText="현장 계정 청구용 카드가 등록되었습니다."
+                                            />
+                                            <Button
+                                                variant="ghost"
+                                                onClick={() => setChangingMethod(false)}
+                                                className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                            >
+                                                취소
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <SettingsCard>
+                                            <SettingsRow
+                                                icon={<CreditCard className="w-[18px] h-[18px]" />}
+                                                label={methodLabel ? "현장 계정 청구용 카드" : "현장 계정 청구용 카드 등록"}
+                                                sublabel="현장 계정 몫(계정당 월 3,900원)에만 청구돼요"
+                                                value={methodLabel ?? undefined}
+                                                onClick={() => setChangingMethod(true)}
+                                                chevron
+                                            />
+                                        </SettingsCard>
+                                    ))}
+                            </>
                         )}
 
                         {/* 월간 보고서 수신처·발송주기 설정은 /report-settings 로 이관 (중복 제거) */}
