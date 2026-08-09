@@ -79,6 +79,10 @@ export default function PricingPage() {
         : null
     // 카드 없는 무료체험(휴대폰인증 가입): 결제가 아니라 '결제수단 등록'으로 유도해야 한다.
     const cardlessTrial = sub?.status === "trialing" && !sub?.card_info
+    // 만료된 카드 없는 체험 — 홈·위저드가 이리로 축출하는 착지점이라, "무료체험 중"이라는
+    // 현재형은 거짓이 된다(qa 실측: 이틀 지난 종료일을 '체험 중'으로 표기). 문구만 분기.
+    const cardlessTrialExpired =
+        cardlessTrial && !!sub?.current_period_end && new Date(sub.current_period_end).getTime() < Date.now()
     const committedTrial = sub?.status === "trialing" && !!sub?.card_info
     const statusLabel = committedTrial ? "이용 중" : STATUS_LABEL[sub?.status ?? ""] ?? "이용 중"
 
@@ -132,11 +136,13 @@ export default function PricingPage() {
                 <div className="space-y-3">
                     <div className="rounded-[12px] bg-cur-primary/[0.06] border border-cur-primary/30 p-4 text-[13px] leading-relaxed">
                         <p className="font-bold text-cur-ink flex items-center gap-1.5">
-                            <Sparkles className="w-4 h-4 text-cur-primary" /> 무료체험 중{nextDate ? ` · 체험 종료일 ${nextDate}` : ""}
+                            <Sparkles className="w-4 h-4 text-cur-primary" />{" "}
+                            {cardlessTrialExpired ? "무료체험 종료" : "무료체험 중"}
+                            {nextDate ? ` · ${cardlessTrialExpired ? "종료일" : "체험 종료일"} ${nextDate}` : ""}
                         </p>
                         <p className="mt-1 text-cur-muted">
                             {/* 금액은 계정 수 반영 — 고정 3,900원 표기는 다계정 감독자에게 거짓말이 된다 */}
-                            계속 쓰려면 결제수단을 등록하세요 — 체험 종료일부터{" "}
+                            {cardlessTrialExpired ? "결제수단을 등록하면 바로 이어서 쓸 수 있어요 — 등록 시 " : "계속 쓰려면 결제수단을 등록하세요 — 체험 종료일부터 "}
                             <b className="text-cur-ink">월 {(accountCount * SEAT_PRICE).toLocaleString()}원 자동 결제</b>, 등록 전에는 결제되지 않아요.
                         </p>
                     </div>
