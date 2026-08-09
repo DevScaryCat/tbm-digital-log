@@ -6,6 +6,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { cancelPayment, deleteBillingKey } from "@/lib/portone";
 import { isStoreSource } from "@/lib/billing";
+import { restoreGrandfatherIfEligible } from "@/lib/grandfather";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -198,6 +199,15 @@ export async function cancelUserSubscription(
   if (updErr) {
     console.error("해지 상태 갱신 실패:", updErr);
     return { ok: false, refunded, refundFailed };
+  }
+
+  // 결제 전 grandfather(영구 무료)였다면 이용권이 **실제로 끝난** 그 순간에만 되돌린다.
+  //  · 환불이 나갔다 → 위에서 current_period_end를 now로 박았으므로 지금 끝났다
+  //  · 기간이 없거나 이미 지났다 → 지금이 곧 만료 시점이다
+  // 잔여 유료 기간이 남은 해지 **예약**은 여기서 제외한다(되돌리면 이미 낸 기간을 뺏는다) —
+  // 그 건은 기간이 지난 뒤 charge-subscriptions 크론의 소진 스윕이 잡는다.
+  if (refunded > 0 || !end || end.getTime() <= now.getTime()) {
+    await restoreGrandfatherIfEligible(admin, userId);
   }
 
   return { ok: true, refunded, refundFailed };

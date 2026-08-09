@@ -19,6 +19,7 @@ import {
     type AppleNotification,
     type AppleTransactionInfo,
 } from "@/lib/appStore"
+import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 
 export const runtime = "nodejs"
 
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
         // 우리가 모르는 거래(다른 앱·미검증 구매)는 조용히 무시 — 조회 비용도 아낀다
         const { data: row } = await admin
             .from("subscriptions")
-            .select("id")
+            .select("id, user_id")
             .eq("store_purchase_token", token)
             .maybeSingle()
         if (!row) return NextResponse.json({ ok: true, skipped: "unknown-token" })
@@ -95,6 +96,10 @@ export async function POST(request: Request) {
             console.error("apple notification update error:", upErr)
             return NextResponse.json({ error: "구독 갱신 실패" }, { status: 500 })
         }
+
+        // 회수 확정(환불·만료·청구재시도 실패)일 때만 영구 무료 복원 —
+        // 해지 예약(자동갱신 해제, 만료일 미래)에 걸면 이미 낸 유료 기간을 뺏는다.
+        if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
 
         return NextResponse.json({
             ok: true,

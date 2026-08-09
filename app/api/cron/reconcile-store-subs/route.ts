@@ -15,6 +15,7 @@ import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
 import { STORE_SOURCES } from "@/lib/billing"
 import { storeSyncPatch, type StoreSyncRow } from "@/lib/storeSync"
+import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 import {
     getSubscription as getAppleSubscription,
     toLocalStatus as appleToLocalStatus,
@@ -40,6 +41,7 @@ export async function GET(request: Request) {
 
 interface StoreRow extends StoreSyncRow {
     id: string
+    user_id: string
     source: string | null
     store_purchase_token: string | null
 }
@@ -62,7 +64,7 @@ async function run(request: Request) {
         const { data: rows, error } = await admin
             .from("subscriptions")
             .select(
-                "id, source, status, current_period_end, store_purchase_token, store_product_id, canceled_at"
+                "id, user_id, source, status, current_period_end, store_purchase_token, store_product_id, canceled_at"
             )
             .in("source", STORE_SOURCES as unknown as string[])
             .not("store_purchase_token", "is", null)
@@ -113,16 +115,24 @@ async function run(request: Request) {
                     { status, revoked, storeEnd, productId },
                     now
                 )
+                if (changed) {
+                    const { error: upErr } = await admin
+                        .from("subscriptions")
+                        .update(patch)
+                        .eq("id", row.id)
+                    if (upErr) throw new Error(`저장 실패: ${upErr.message}`)
+                }
+
+                // 회수 확정 → 결제 전 grandfather였다면 영구 무료로 되돌린다.
+                // changed 여부와 무관하게 시도한다: 알림이 이미 회수를 반영해 둔 뒤라
+                // (changed=false) 복원만 남은 경우가 있고, 한 번 실패해도 다음 스윕이 다시 잡는다.
+                // 복원되면 행이 portone/토큰 없음으로 바뀌어 이 쿼리 대상에서 영구히 빠진다.
+                if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
+
                 if (!changed) {
                     summary.unchanged++
                     continue
                 }
-
-                const { error: upErr } = await admin
-                    .from("subscriptions")
-                    .update(patch)
-                    .eq("id", row.id)
-                if (upErr) throw new Error(`저장 실패: ${upErr.message}`)
 
                 if (revoked) summary.revoked++
                 else summary.renewed++

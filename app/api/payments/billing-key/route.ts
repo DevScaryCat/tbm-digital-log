@@ -168,6 +168,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, attachedToTrial: true });
     }
 
+    // grandfather(영구 무료)가 카드 구독을 하면 아래 upsert가 plan을 덮어써 그 지위가 사라진다 —
+    // 인앱결제(구글·애플 verify)와 같은 자리에 남겨야 해지·만료 확정 시점에 되돌릴 수 있다
+    // (복원은 lib/grandfather.ts restoreGrandfatherIfEligible). 비치명 — 결제를 막지는 않는다.
+    if (existing?.plan === "grandfather") {
+      try {
+        const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+        await admin.auth.admin.updateUserById(user.id, {
+          user_metadata: { ...meta, prev_plan: "grandfather" },
+        });
+      } catch { /* 비치명 */ }
+    }
+
     if (!trialUsed) {
       // --- 최초 구독: 첫 달 무료 체험 ---
       const nextChargeAt = addOneMonth(now);

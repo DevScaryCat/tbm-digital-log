@@ -7,6 +7,7 @@ import {
   STORE_SOURCES,
   SubscriptionRow,
 } from "@/lib/billing";
+import { restoreGrandfatherIfEligible } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
 // 청구 건이 몰리는 날 기본 타임아웃에 걸려 뒤쪽 구독이 누락되지 않도록 명시(월간 보고서 cron과 동일).
@@ -60,6 +61,7 @@ async function run(request: Request) {
       mirrorsDemoted: 0,
       googleSeatPaid: 0,
       googleSeatFailed: 0,
+      grandfatherRestored: 0,
     };
     for (const sub of (due || []) as SubscriptionRow[]) {
       results.processed++;
@@ -147,6 +149,30 @@ async function run(request: Request) {
           .neq("status", "canceled")
           .select("user_id");
         results.mirrorsDemoted += (demoted ?? []).length;
+      }
+    }
+
+    // ── grandfather(영구 무료) 복원 스윕 ────────────────────────────────
+    // 결제 전 grandfather였던 계정이 카드 구독을 해지하면, 잔여 유료 기간 동안은 그대로 두고
+    // (해지 예약 시점에 되돌리면 이미 낸 기간을 뺏는다) **기간이 지난 뒤** 여기서 되돌린다.
+    // 3회 결제 실패 해지(chargeSubscription)도 canceled + 지난 기간으로 남으므로 같은 그물에 걸린다.
+    // 스토어(구글·애플) 구독은 이 스윕 대상이 아니다 — 회수 확정은 알림·reconcile 크론이 판정한다.
+    {
+      const { data: expired } = await admin
+        .from("subscriptions")
+        .select("user_id")
+        .eq("status", "canceled")
+        .eq("source", "portone")
+        .not("plan", "in", "(grandfather,org_seat)")
+        // 기간이 없는 행도 포함 — lte만 쓰면 NULL이 조용히 빠져(해지 시점 인라인 복원이 실패한
+        // 계정이 여기) 어떤 그물에도 걸리지 않는다
+        .or(`current_period_end.is.null,current_period_end.lte.${nowIso}`)
+        .limit(100);
+      for (const row of ((expired as any[]) || [])) {
+        // 대상이 아니면(prev_plan 없음) 조회 한 번으로 끝난다 — 대부분의 행이 여기서 즉시 빠진다
+        if (await restoreGrandfatherIfEligible(admin, row.user_id as string)) {
+          results.grandfatherRestored++;
+        }
       }
     }
 

@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
 import { getSubscription, toLocalStatus, isRevokedState, ANDROID_PACKAGE } from "@/lib/googlePlay"
+import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 
 export const runtime = "nodejs"
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
         // 환불·차지백: 구글이 돈을 돌려줬으므로 이용 권한도 즉시 회수한다
         const voidedToken = payload.voidedPurchaseNotification?.purchaseToken
         if (voidedToken) {
-            await admin
+            const { data: voidedRows } = await admin
                 .from("subscriptions")
                 .update({
                     // status 체크 제약이 허용하는 값만 쓴다 — 'expired'를 쓰면 UPDATE가 실패해
@@ -59,6 +60,11 @@ export async function POST(request: Request) {
                     updated_at: new Date().toISOString(),
                 })
                 .eq("store_purchase_token", voidedToken)
+                .select("user_id")
+            // 환불·차지백 = 이용권 즉시 종료 확정 → 결제 전 grandfather였다면 영구 무료로 되돌린다
+            for (const r of (voidedRows ?? []) as { user_id: string }[]) {
+                await restoreGrandfatherIfEligible(admin, r.user_id)
+            }
             return NextResponse.json({ ok: true, voided: true })
         }
 
@@ -68,7 +74,7 @@ export async function POST(request: Request) {
         // 우리가 모르는 토큰(다른 앱·이전 설치)은 조용히 무시 — 조회 비용도 아낀다
         const { data: row } = await admin
             .from("subscriptions")
-            .select("id")
+            .select("id, user_id")
             .eq("store_purchase_token", purchaseToken)
             .maybeSingle()
         if (!row) return NextResponse.json({ ok: true, skipped: "unknown-token" })
@@ -97,6 +103,10 @@ export async function POST(request: Request) {
             console.error("RTDN update error:", upErr)
             return NextResponse.json({ error: "구독 갱신 실패" }, { status: 500 })
         }
+
+        // 회수 확정(만료·보류·일시정지·미결제)일 때만 영구 무료 복원 —
+        // 해지 예약(CANCELED, 만료일 미래)에 걸면 이미 낸 유료 기간을 뺏는다.
+        if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
 
         return NextResponse.json({ ok: true, status, revoked })
     } catch (error) {
