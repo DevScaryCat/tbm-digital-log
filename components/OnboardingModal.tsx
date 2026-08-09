@@ -161,9 +161,10 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                 {step === 3 && (
                     <div className="space-y-4">
                         <div>
-                            <h2 className="text-[18px] font-bold text-cur-ink">보고서 받을 이메일을 적어주세요</h2>
+                            <h2 className="text-[18px] font-bold text-cur-ink">이메일 주소를 적어주세요</h2>
                             <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
-                                주간·월간 안전 보고서가 <b className="text-cur-ink">이 주소로 바로 발송</b>돼요.
+                                주간·월간 안전 보고서가 이 주소로 발송되고,
+                                <b className="text-cur-ink"> 비밀번호를 잊었을 때 계정을 되찾는 수단</b>도 이 주소예요.
                                 별도 인증 절차가 없으니 <b className="text-cur-ink">정확하게</b> 적어주세요.
                             </p>
                         </div>

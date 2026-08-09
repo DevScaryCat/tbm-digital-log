@@ -26,6 +26,7 @@ export default function ProfilePage() {
     const [emailInput, setEmailInput] = useState("")
     const [emailBusy, setEmailBusy] = useState(false)
     const [emailMsg, setEmailMsg] = useState<string | null>(null)
+    const [emailLoaded, setEmailLoaded] = useState(false)
 
     const authHeaders = async () => {
         const { data } = await supabase.auth.getSession()
@@ -39,6 +40,7 @@ export default function ProfilePage() {
             setReportEmail(j.email ?? null)
             setPendingEmail(j.pending ?? null)
             setEmailInput(j.email ?? j.pending ?? "")
+            setEmailLoaded(true)
         } catch { /* 이 카드만 비어 보인다 */ }
     }, [])
     useEffect(() => { loadEmail() }, [loadEmail])
@@ -322,17 +324,29 @@ export default function ProfilePage() {
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
                 </div>
 
-                {/* 보고서 수신 이메일 — 여기가 '내 이메일'의 단일 창구 */}
-                <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                {/* 복구용 이메일 = 보고서 수신 이메일 — '내 이메일'의 단일 창구.
+                    입력창을 따로 만들지 않는다: 비밀번호 재설정 메일도 여기서 인증한 주소로만 나간다
+                    (lib/accountRecovery.ts). 홈 배너의 '등록해주세요'가 이 카드로 내려온다(#recovery-email). */}
+                <div id="recovery-email" className="scroll-mt-4 bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
                     <div className="flex items-center gap-2">
                         <Mail className="w-4 h-4 text-cur-muted shrink-0" />
-                        <Label className="text-[13px] font-medium text-cur-body">보고서 받을 내 이메일</Label>
-                        {reportEmail && (
-                            <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-cur-success shrink-0">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> 인증됨
-                            </span>
+                        <Label className="text-[13px] font-medium text-cur-body">복구용 이메일</Label>
+                        {/* 조회 전에는 아무 배지도 띄우지 않는다 — 인증된 계정에 '미등록'이 한 번 번쩍이면 거짓말이 된다 */}
+                        {emailLoaded && (
+                            reportEmail ? (
+                                <span className="ml-auto flex items-center gap-1 text-[11px] font-semibold text-cur-success shrink-0">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> 인증됨
+                                </span>
+                            ) : pendingEmail ? (
+                                <span className="ml-auto text-[11px] font-semibold text-cur-primary shrink-0">인증 대기</span>
+                            ) : (
+                                <span className="ml-auto text-[11px] font-semibold text-cur-error shrink-0">미등록</span>
+                            )
                         )}
                     </div>
+                    <p className="text-[12px] text-cur-body leading-relaxed">
+                        비밀번호를 잊으면 이 주소로만 되찾을 수 있어요. 보고서 받을 주소로도 함께 쓰입니다.
+                    </p>
                     <div className="flex gap-2">
                         <Input
                             type="email"

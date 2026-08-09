@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
-import { resolveMyReportEmail } from "@/lib/myEmail"
+import { resolveMyReportEmail, canRecoverAccount } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
@@ -20,7 +20,6 @@ import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
 import { OnboardingModal } from "@/components/OnboardingModal"
 import { Antoki } from "@/components/Antoki"
-import { showAlert } from "@/lib/uiDialog"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
 // 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
@@ -45,6 +44,15 @@ if (typeof window !== "undefined") {
 // 수신처 안내 배너를 닫은 시각(ms). 영구 숨김이 아니라 7일 뒤 다시 뜬다 —
 // 한 번 닫고 잊으면 보고서가 계속 아무 데도 안 가는데 아무도 모르게 된다.
 const RECIPIENT_HINT_HIDDEN_KEY = "antok_recipient_hint_hidden_at"
+
+// 복구용 이메일 안내를 닫은 시각(ms). localStorage에 두는 이유:
+// ① 서버(user_metadata)에 쓰면 닫을 때마다 계정 메타데이터가 바뀌고 세션 갱신까지 얽힌다 —
+//    "안 볼래" 한 번에 그만한 비용을 치를 일이 아니다.
+// ② 영구 숨김이 아니라 30일 뒤 다시 뜬다. 복구 수단이 없다는 위험은 닫아도 사라지지 않는다.
+// ③ 기기별로 기억된다 — 새 기기에서 다시 보이는 건 오히려 맞다(그 기기에서 잠길 수 있으니).
+// 등록·인증을 마치면 조건 자체가 풀려 이 값과 무관하게 사라진다.
+const RECOVERY_HINT_HIDDEN_KEY = "antok_recovery_hint_hidden_at"
+const RECOVERY_HINT_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000
 
 // created_at(타임스탬프)을 로컬 기준 YYYY-MM-DD로 변환 — tbm_logs/minutes의 date 컬럼과 같은 기준으로 월 집계
 const toLocalDateStr = (iso: string) => {
@@ -284,8 +292,14 @@ export default function MainPage() {
   // 보고서를 받을 사람이 아직 없음(=주간·월간 보고서가 아무 데도 안 나감).
   // 설정 입구가 헤더 드롭다운과 분석 보고서 게이트뿐이라 대부분 기능 존재 자체를 모른다.
   const [recipientGap, setRecipientGap] = useState<{ pending: number; noEmail: boolean } | null>(null)
+  // 복구용 이메일 안내를 닫아뒀는지 — 첫 렌더에는 '숨김'으로 시작해 배너가 깜빡였다 사라지지 않게 한다
+  const [recoveryHintHidden, setRecoveryHintHidden] = useState(true)
   useEffect(() => {
     try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
+    try {
+      const hidAt = Number(window.localStorage.getItem(RECOVERY_HINT_HIDDEN_KEY) || 0)
+      setRecoveryHintHidden(!!hidAt && Date.now() - hidAt < RECOVERY_HINT_SNOOZE_MS)
+    } catch { setRecoveryHintHidden(false) }
     const q = new URLSearchParams(window.location.search)
     setOauthLanding(q.has("code") || q.has("error"))
   }, [])
@@ -896,33 +910,34 @@ export default function MainPage() {
 
         {/* ── 단일 홈 — 탭 없이 한 스크롤: (감독자) 관제 → 내 기록 → 작성 ── */}
         <div className="p-4 sm:p-6 space-y-5">
-          {/* 조직 소속인데 실이메일 미인증 — 월간 보고서 수신 불가 안내 (버튼 최소 원칙의 유일한 잔소리) */}
-          {user && orgCtx?.kind === "member" && !user.user_metadata?.real_email_verified_at && (
+          {/* 복구용 이메일 미등록 — 아이디 계정은 이 주소가 없으면 비밀번호를 잃는 순간 계정이 통째로 잠긴다.
+              등록 창구는 '내 정보 수정' 한 곳뿐이라 여기서는 안내와 이동만 한다(입력창을 또 만들지 않는다).
+              한 번 닫으면 30일간 다시 뜨지 않는다. */}
+          {user && !recoveryHintHidden && !canRecoverAccount(user) && (
             <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25">
-              <span className="text-[18px]" aria-hidden>📮</span>
-              <div className="flex-1 min-w-0 text-[13px] leading-snug">
-                <p className="font-semibold text-cur-ink">이메일 인증이 필요해요</p>
-                <p className="text-cur-muted">인증해야 매달 1일 우리 현장 월간 보고서를 받을 수 있어요.</p>
-              </div>
+              <span className="text-[18px] shrink-0" aria-hidden>📮</span>
               <button
                 type="button"
-                onClick={async () => {
-                  const meta = user.user_metadata || {}
-                  const email = meta.real_email || window.prompt("보고서를 받을 이메일 주소를 입력하세요")
-                  if (!email) return
-                  const { data } = await supabase.auth.getSession()
-                  const res = await fetch("/api/auth/email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token}` },
-                    body: JSON.stringify({ email }),
-                  })
-                  // 서버 안내(쿨다운·상한)를 그대로 보여준다 — 일반 실패 문구로 뭉개면 연타가 고장으로 읽힌다
-                  const j = await res.json().catch(() => ({}))
-                  showAlert(res.ok ? "인증 메일을 보냈어요. 메일함을 확인하세요." : (j.error || "인증 메일 발송에 실패했어요. 잠시 후 다시 시도해주세요."))
-                }}
-                className="shrink-0 h-9 px-3 rounded-lg bg-cur-ink text-white text-[12px] font-bold"
+                onClick={() => router.push("/profile#recovery-email")}
+                className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
-                인증 메일
+                <span className="block text-[14px] font-semibold text-cur-ink">복구용 이메일을 등록해주세요</span>
+                <span className="block text-[12px] text-cur-body mt-0.5">
+                  {orgCtx?.kind === "member"
+                    ? "비밀번호를 잊으면 되찾을 방법이 없어요. 등록하면 월간 보고서도 함께 받아요."
+                    : "비밀번호를 잊으면 되찾을 방법이 없어요. 보고서 받을 주소로도 함께 쓰여요."}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label="복구용 이메일 안내 닫기"
+                onClick={() => {
+                  try { window.localStorage.setItem(RECOVERY_HINT_HIDDEN_KEY, String(Date.now())) } catch { /* 무시 */ }
+                  setRecoveryHintHidden(true)
+                }}
+                className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -967,7 +982,7 @@ export default function MainPage() {
               </span>
               <button
                 type="button"
-                onClick={() => router.push(recipientGap.noEmail ? '/profile' : '/org/reports')}
+                onClick={() => router.push(recipientGap.noEmail ? '/profile#recovery-email' : '/org/reports')}
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
                 <span className="block text-[14px] font-semibold text-cur-ink">
