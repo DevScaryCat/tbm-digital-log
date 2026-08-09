@@ -60,9 +60,9 @@ export function InAppBrowserNotice() {
                 <div className="text-3xl">🌐</div>
                 <h2 className="text-[18px] font-bold text-cur-ink">외부 브라우저로 열어주세요</h2>
                 <p className="text-[14px] text-cur-body leading-relaxed">
-                    카카오톡·네이버 등 <b>앱 안에서 열린 브라우저</b>는 닫으면 로그인이 지워져 매번 다시 로그인해야 해요.
+                    <b>앱 안 브라우저</b>는 로그인이 매번 풀려요.
                     <br />
-                    <b className="text-cur-primary">Safari·Chrome</b>에서 열면 <b>한 번만 로그인</b>하면 계속 유지됩니다.
+                    <b className="text-cur-primary">Safari·Chrome</b>으로 열면 유지됩니다.
                 </p>
                 <Button onClick={openExternal} className="w-full h-12 bg-cur-primary text-cur-on-primary font-bold rounded-xl">
                     <ExternalLink className="w-4 h-4 mr-2" />

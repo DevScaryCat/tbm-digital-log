@@ -396,8 +396,7 @@ export default function OrgMembersPage() {
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/25 px-4 py-3 space-y-1">
                             <p className="text-[13px] font-bold text-cur-primary">첫 현장 계정을 만들면 이 계정이 회사 감독자가 돼요</p>
                             <p className="text-[12px] text-cur-muted leading-relaxed">
-                                문서 출력 형식 같은 회사 공통 설정을 이 계정이 정하고, 모든 현장 계정이 따르게 됩니다.
-                                현장별 기록·보고서도 여기서 모아 봐요.
+                                회사 공통 설정을 정하고, 현장별 기록·보고서를 모아 봐요.
                             </p>
                         </div>
                     )}
@@ -450,7 +449,7 @@ export default function OrgMembersPage() {
                         <div className="space-y-4">
                             <div>
                                 <p className="text-[14px] font-semibold text-cur-ink">현장 이름을 정해주세요</p>
-                                <p className="text-[12px] text-cur-muted mt-1">계정마다 이 이름이 현장명이 돼요. 현장담당자는 이름을 정하지 않고 바로 시작합니다.</p>
+                                <p className="text-[12px] text-cur-muted mt-1">이 이름이 그대로 현장명이 돼요.</p>
                             </div>
                             <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-0.5">
                                 {siteNames.map((n, i) => (
@@ -526,8 +525,7 @@ export default function OrgMembersPage() {
                                 </div>
                             )}
                             <p className="text-[12px] text-cur-muted leading-relaxed">
-                                링크 하나로 여러 현장담당자가 가입할 수 있어요 (14일 유효).
-                                가입이 끝나면 현장 목록에 자동으로 나타납니다.
+                                링크 하나로 여러 현장담당자가 가입할 수 있어요 (14일 유효). 가입하면 현장 목록에 자동으로 떠요.
                             </p>
                             {/* 편입은 드문 일이라(기존 안톡 계정 데려오기) 상시 노출하지 않고 여기서만 */}
                             <details className="group">
@@ -550,7 +548,6 @@ export default function OrgMembersPage() {
                             <div className="space-y-1.5">
                                 <Label className="text-[12px]">아이디 앞부분</Label>
                                 <p className="text-[12px] text-cur-muted leading-relaxed">
-                                    이 글자 뒤에 01, 02… 번호가 붙어 현장 계정 아이디가 돼요.<br />
                                     한글로 적으면 영문으로 바꿔드려요.
                                 </p>
                                 <Input value={stem} onChange={(e) => setStem(e.target.value)} placeholder="예: 무신사 또는 musinsa" className={inputCls} />
@@ -645,7 +642,7 @@ export default function OrgMembersPage() {
                                     <CheckCircle2 className="w-4 h-4" /> 비밀번호를 변경했어요
                                 </p>
                                 <p className="text-[13px] text-cur-ink">새 비밀번호 <b className="font-mono break-all">{pwValue}</b></p>
-                                <p className="text-[12px] text-cur-muted leading-relaxed">새 비밀번호를 현장담당자에게 전달하세요. 현장담당자는 다음 로그인부터 이 비밀번호로 접속합니다.</p>
+                                <p className="text-[12px] text-cur-muted leading-relaxed">현장담당자에게 전달하세요. 다음 로그인부터 적용돼요.</p>
                             </div>
                             <Button onClick={() => setPwTarget(null)} variant="outline" className="w-full h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                         </>

@@ -115,7 +115,7 @@ export default function SuggestionsPage() {
                                         <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                                     </button>
                                 ) : (
-                                    <p className="text-[12px] text-cur-muted-soft">회의록이 저장되기 전에 들어온 의견이에요 — 연결된 문서 없이 보관됩니다</p>
+                                    <p className="text-[12px] text-cur-muted-soft">회의록 저장 전에 들어와 연결된 문서가 없어요</p>
                                 )}
                             </div>
                         ))

@@ -130,8 +130,8 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                             <h2 className="text-[18px] font-bold text-cur-ink">내 근로자 구분을 알려주세요</h2>
                             <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
                                 {usage === "multi"
-                                    ? <>연결된 현장 전체 설정이 아니에요 — 감독자인 나도 TBM·교육일지를 쓰니, <b className="text-cur-ink">내 기록의 법정 교육시간 기준</b>이 되는 구분이에요.</>
-                                    : <><b className="text-cur-ink">내 법정 교육시간의 기준</b>이 되는 구분이에요. 내 정보 수정에서 언제든 바꿀 수 있어요.</>}
+                                    ? <><b className="text-cur-ink">내 기록의 법정 교육시간 기준</b>이에요. 현장 계정 설정과는 별개예요.</>
+                                    : <><b className="text-cur-ink">내 법정 교육시간의 기준</b>이에요. 나중에 바꿀 수 있어요.</>}
                             </p>
                         </div>
                         <div className="space-y-2.5">
@@ -168,12 +168,8 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                                 재설정 메일은 '메일 링크를 눌러 인증한 주소'에만 나간다(lib/accountRecovery).
                                 인증 전 주소를 복구 수단으로 약속하면 잠긴 뒤에야 거짓말이 드러난다. */}
                             <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
-                                주간·월간 안전 보고서가 <b className="text-cur-ink">이 주소로 바로 발송</b>돼요.
-                                별도 인증 절차가 없으니 <b className="text-cur-ink">정확하게</b> 적어주세요.
-                                <br />
-                                <span className="text-cur-muted">
-                                    나중에 <b className="text-cur-ink">내 정보 수정</b>에서 이 주소를 인증해두면, 비밀번호를 잊었을 때 계정을 되찾는 데도 쓸 수 있어요.
-                                </span>
+                                안전 보고서가 <b className="text-cur-ink">이 주소로 발송</b>돼요.
+                                인증 없이 저장되니 <b className="text-cur-ink">정확히</b> 적어주세요.
                             </p>
                         </div>
                         <Input

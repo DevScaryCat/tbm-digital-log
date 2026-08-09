@@ -207,7 +207,7 @@ export default function AccountPage() {
 
                             {isGrandfather ? (
                                 <p className="text-[14px] text-cur-muted leading-relaxed">
-                                    기존 가입자 혜택으로 영구 무료로 이용 중입니다. AI 분석 보고서·월간 보고서는 카드 등록 후 유료 요금제(계정 1개당 월 3,900원)로 전환하면 이용하실 수 있어요.
+                                    기존 가입자 혜택으로 영구 무료입니다. AI 분석·월간 보고서는 카드 등록 후 유료 전환(계정 1개당 월 3,900원)하면 이용할 수 있어요.
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
@@ -277,7 +277,7 @@ export default function AccountPage() {
                             {!isGrandfather && cardlessTrialExpired && (
                                 <div className="mt-5 pt-5 border-t border-cur-hairline space-y-4">
                                     <p className="text-[14px] text-cur-body leading-relaxed">
-                                        무료체험이 종료되었습니다. 결제수단을 등록하면 즉시 결제되어 바로 이어서 사용할 수 있어요.
+                                        결제수단을 등록하면 즉시 결제 후 이어서 쓸 수 있어요.
                                     </p>
                                     <SubscribeButtons
                                         onSuccess={load}
@@ -362,8 +362,8 @@ export default function AccountPage() {
                                     <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
                                 </div>
                                 <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    지금 요금제에는 AI 분석 보고서와 월간 안전 보고서 자동 발송이 포함돼 있지 않아요.
-                                    계정 1개당 월 3,900원으로 전부 이용할 수 있습니다.
+                                    지금 요금제엔 AI 분석·월간 보고서가 없어요.
+                                    계정당 월 3,900원에 전부 이용할 수 있어요.
                                 </p>
                                 <Button
                                     onClick={() => router.push("/pricing")}

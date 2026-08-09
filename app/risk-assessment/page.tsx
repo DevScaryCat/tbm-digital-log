@@ -511,7 +511,7 @@ export default function RiskAssessmentPage() {
                         </p>
                         <p className="text-[13px] text-cur-muted leading-relaxed">
                             {setupPendingOnly ? (
-                                <>등록한 수신자가 확인 메일의 승인 링크를 눌러야<br />보고서가 나가고 이 화면도 열려요. 스팸함도 확인해달라고 알려주세요.</>
+                                <>받는 사람이 확인 메일의 승인 링크를 누르면 열려요.</>
                             ) : (
                                 <>문서 출력 형식과 보고서 받는 사람을 먼저 설정해야<br />분석 보고서를 만들 수 있어요. 1분이면 끝나요.</>
                             )}
@@ -548,8 +548,8 @@ export default function RiskAssessmentPage() {
                             <div className="text-center space-y-3 pt-6">
                                 <h2 className="text-[22px] font-bold text-cur-ink">TBM 종합 분석 보고서</h2>
                                 <p className="text-cur-muted text-[14px] leading-relaxed">
-                                    기간만 선택하면 그 기간의 TBM을 분석해<br />
-                                    위험요인 분석 자료를 자동으로 만들어줍니다.
+                                    기간만 고르면 TBM을 분석해<br />
+                                    위험요인 자료를 만들어요.
                                 </p>
                             </div>
 
@@ -668,7 +668,7 @@ export default function RiskAssessmentPage() {
                                     </div>
                                 ) : (
                                     <p className="text-[12px] text-cur-muted-soft">
-                                        이메일 인증을 하지 않아 내 이메일로는 자동 수신이 안 돼요. 인증을 마치면 다음부터 자동으로 받아요.
+                                        이메일을 인증하면 내 주소로도 자동 수신돼요.
                                     </p>
                                 )}
                                 <div className="flex gap-2">

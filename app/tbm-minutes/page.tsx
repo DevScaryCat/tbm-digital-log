@@ -1172,7 +1172,7 @@ export default function TBMMinutesPage() {
                                             <span className="text-[13px] text-cur-muted font-mono">{recordingCount}회 · {formatTime(recordingTime)}</span>
                                         </div>
                                         {autoPaused && (
-                                            <p className="text-[13px] text-cur-body font-medium">화면이 꺼지거나 다른 화면으로 이동해 자동 일시정지됐어요 — &lsquo;이어서 녹음&rsquo;을 누르면 계속됩니다.</p>
+                                            <p className="text-[13px] text-cur-body font-medium">화면이 꺼져 녹음이 자동 일시정지됐어요.</p>
                                         )}
                                         <Button onClick={startRecording} variant="outline" className="w-full h-12 rounded-[8px] border border-cur-hairline bg-cur-card text-cur-ink text-[15px] font-semibold hover:bg-cur-elevated shadow-none">
                                             <Play className="mr-2 w-4 h-4 text-cur-muted" /> 이어서 녹음
@@ -1505,10 +1505,10 @@ export default function TBMMinutesPage() {
                                 <Sparkles className="w-4 h-4 shrink-0" /> AI 요약본 확인 안내
                             </p>
                             <p className="text-cur-muted font-medium">
-                                본 TBM 회의록의 작업 내용 및 위험요인, 지시사항 등은 AI 요약 기술을 기반으로 생성된 초안을 바탕으로 작성되었습니다.
+                                본 TBM 회의록의 작업 내용·위험요인·지시사항 등은 AI 요약 기술로 생성된 초안을 바탕으로 작성되었습니다.
                             </p>
                             <p className="font-semibold text-cur-ink bg-cur-elevated p-3 rounded-[8px] border border-cur-hairline">
-                                AI가 작성한 요약본은 참고용 초안입니다. 최종 저장하기 전에 내용이 실제 현장 상황과 맞는지 꼭 확인하고 수정해 주세요. 최종 기록된 내용에 대한 확인 책임은 작성자에게 있습니다.
+                                AI 요약본은 참고용 초안입니다. 최종 저장 전 실제 현장 상황과 맞는지 확인·수정해 주세요. 최종 기록 내용의 확인 책임은 작성자에게 있습니다.
                             </p>
                         </div>
 

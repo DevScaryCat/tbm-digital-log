@@ -113,7 +113,7 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                         <Sparkles className="w-4 h-4" /> 예시 화면입니다
                     </p>
                     <p className="text-[12px] text-cur-muted leading-relaxed">
-                        아래 미리보기처럼 매월 자동으로 보고서가 발송됩니다. 구독하면 받는 사람·발송 방법을 실제로 설정할 수 있어요.
+                        구독하면 매월 보고서가 자동 발송돼요.
                     </p>
                     <Button onClick={() => router.push("/pricing")} className="w-full h-9 rounded-lg bg-cur-primary text-white text-[13px] font-bold hover:opacity-90">
                         Pro 플랜 보기
@@ -130,9 +130,8 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                     <div>
                         <Label className="text-[13px]">받는 사람 (최대 5명)</Label>
                         <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
-                            설정한 주기에 맞춰 지난 기간 안전활동(TBM 회의록·교육일지) 보고서가 자동 발송돼요.
-                            수신자를 추가하면 <b>확인 메일</b>이 가고, 수신자가 승인해야 발송됩니다.
-                            여러 현장이 같은 이메일을 등록하면 <b>한 통으로 합쳐</b> 보내드려요.
+                            설정한 주기에 맞춰 보고서가 자동 발송돼요.
+                            받는 사람이 <b>확인 메일</b>을 승인해야 발송됩니다.
                         </p>
                     </div>
                     {stalled && (
@@ -141,9 +140,8 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                             <div className="min-w-0 space-y-1">
                                 <p className="text-[13px] font-bold text-cur-ink">아직 아무에게도 발송되지 않아요</p>
                                 <p className="text-[12px] text-cur-body leading-relaxed">
-                                    등록은 됐지만 <b>승인한 사람이 0명</b>이에요. 받는 사람이 확인 메일의 승인 링크를 눌러야
-                                    그때부터 보고서가 나갑니다. 메일이 안 보이면 스팸함을 확인해달라고 알려주시고,
-                                    필요하면 아래 <b>재발송</b>을 눌러주세요.
+                                    받는 사람이 확인 메일의 승인 링크를 눌러야 발송돼요.
+                                    메일이 안 보이면 스팸함 확인을 부탁하고, 아래 <b>재발송</b>을 눌러주세요.
                                 </p>
                             </div>
                         </div>
@@ -198,7 +196,7 @@ export function ReportPreviewCard() {
             <div>
                 <Label className="text-[13px]">보고서 미리보기</Label>
                 <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">
-                    실제로는 지난 기간 데이터로 채워져 발송됩니다. 예시를 새 탭에서 크게 볼 수 있어요.
+                    발송 시엔 실제 데이터로 채워져요.
                 </p>
             </div>
             <div className="rounded-xl border border-cur-hairline divide-y divide-cur-hairline overflow-hidden">

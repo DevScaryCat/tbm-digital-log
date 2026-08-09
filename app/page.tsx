@@ -635,7 +635,7 @@ export default function MainPage() {
         </div>
         <div className="space-y-1 flex-1">
           <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 TBM 작성</h3>
-          <p className="text-cur-muted text-[12px] leading-snug">현장과의 더 많은 소통으로 사전에 위험을 통제하세요</p>
+          <p className="text-cur-muted text-[12px] leading-snug">녹음하면 AI가 회의록으로 정리해요</p>
         </div>
         <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
       </div>
@@ -649,7 +649,7 @@ export default function MainPage() {
         </div>
         <div className="space-y-1 flex-1">
           <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 교육일지 작성</h3>
-          <p className="text-cur-muted text-[12px] leading-snug">TBM·정기교육 등 안전보건교육일지를 AI로 기록 관리</p>
+          <p className="text-cur-muted text-[12px] leading-snug">같은 방식으로 교육일지도 자동 작성</p>
         </div>
         <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
       </div>
@@ -918,7 +918,7 @@ export default function MainPage() {
               첫 달 무료로 시작하세요
             </h2>
             <p className="text-white/70 text-[15px] sm:text-[16px] max-w-xl">
-              복잡한 설치 없이 카카오/일반 계정으로 바로 시작. 첫 달은 무료 체험이고, 이후 계정 1개당 월 3,900원이에요. 현장이 여러 곳이면 계정을 추가한 만큼만 더 내면 됩니다. 언제든 해지할 수 있습니다.
+              설치 없이 카카오·일반 계정으로 바로 시작하세요. 첫 달 무료, 이후 계정 1개당 월 3,900원 — 추가한 만큼만 내요. 언제든 해지할 수 있어요.
             </p>
             <Button
               onClick={() => router.push("/login")}
@@ -1009,7 +1009,7 @@ export default function MainPage() {
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
                 <span className="block text-[14px] font-semibold text-cur-ink">가이드 안내 — 1분이면 충분해요</span>
-                <span className="block text-[12px] text-cur-body mt-0.5">어떤 버튼을 누르는지 화면 그대로 따라가며 보여드려요</span>
+                <span className="block text-[12px] text-cur-body mt-0.5">버튼 누르는 순서를 그대로 보여드려요</span>
               </button>
               <button
                 type="button"

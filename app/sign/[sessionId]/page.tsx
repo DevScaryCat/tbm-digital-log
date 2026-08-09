@@ -221,7 +221,7 @@ export default function SignPage() {
                     <span className="text-4xl">⏱️</span>
                 </div>
                 <h1 className="text-2xl font-bold text-cur-ink mb-2">만료된 서명 링크입니다</h1>
-                <p className="text-cur-body text-center mb-8">안전보건 교육(TBM) 서명 기간이 종료되어 더 이상 서명할 수 없습니다.<br />이 창을 닫아주세요.</p>
+                <p className="text-cur-body text-center mb-8">서명 기간이 끝났습니다.</p>
                 <Button
                     variant="outline"
                     onClick={() => {
@@ -248,8 +248,7 @@ export default function SignPage() {
                         <span className="text-[12px] font-bold text-cur-muted bg-cur-elevated px-2 py-0.5 rounded-[6px] shrink-0">선택사항</span>
                     </div>
                     <p className="text-[14px] text-cur-body mb-5 leading-relaxed">
-                        현장 위험요인이나 건의사항이 있으면 남겨주세요 — 회의록의 위험요인·대책에 자동 반영됩니다.
-                        <span className="text-cur-muted"> 없으면 아래 &lsquo;건너뛰고 완료&rsquo;를 누르면 돼요.</span>
+                        위험하거나 불편한 점이 있으면 남겨주세요. 회의록에 자동 반영됩니다.
                     </p>
                     <SuggestionForm
                         sessionId={sessionId}
@@ -274,7 +273,7 @@ export default function SignPage() {
                 <CheckCircle2 className="w-24 h-24 text-cur-success mb-6 animate-in zoom-in" />
                 <h1 className="text-2xl font-bold text-cur-ink mb-2">서명 제출 완료</h1>
                 <p className="text-cur-body text-center mb-8">
-                    안전보건 교육(TBM) 서명이 정상적으로 등록되었습니다.
+                    서명이 등록되었습니다.
                     {suggestionSent && <><br />남겨주신 의견도 함께 접수되었습니다.</>}
                 </p>
                 <Button

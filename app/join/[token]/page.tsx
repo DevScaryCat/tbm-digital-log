@@ -240,7 +240,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">이메일</Label>
                         <Input type="email" value={realEmail} onChange={(e) => setRealEmail(e.target.value)} placeholder="매달 1일 월간 보고서를 받을 주소" className={inputCls} />
-                        <p className="text-[12px] text-cur-muted-soft">가입 후 인증 메일이 발송돼요. 인증하면 매달 우리 현장 보고서가 이 주소로 옵니다.</p>
+                        <p className="text-[12px] text-cur-muted-soft">인증하면 매달 현장 보고서가 이 주소로 와요.</p>
                     </div>
 
                     {/* 동의가 휴대폰 인증보다 위 — 아래 블록이 번호를 서버로 보내므로 수집 전에 받아야 한다 */}

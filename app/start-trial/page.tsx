@@ -249,7 +249,7 @@ export default function StartTrialPage() {
                     <div className="text-center space-y-1.5">
                         <h1 className="text-[22px] font-bold tracking-[-0.02em]">첫 달 무료로 시작해요</h1>
                         <p className="text-[13px] text-cur-muted leading-relaxed">
-                            아래 내용만 채우면 한 달간 모든 기능을 무료로 쓸 수 있어요.
+                            한 달간 모든 기능이 무료예요.
                             <br />결제수단을 등록하기 전에는 요금이 청구되지 않습니다.
                         </p>
                     </div>
@@ -336,7 +336,7 @@ export default function StartTrialPage() {
                             className={inputCls}
                         />
                         <p className="text-[13px] text-cur-muted leading-relaxed">
-                            회의록·교육일지의 업체명 칸에 인쇄돼요. 나중에 내 정보에서 바꿀 수 있어요.
+                            문서의 업체명 칸에 인쇄돼요.
                         </p>
                     </div>
 

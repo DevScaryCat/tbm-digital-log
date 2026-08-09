@@ -281,7 +281,7 @@ export default function ProfilePage() {
                 <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
                     {isMember && (
                         <p className="text-[12px] text-cur-muted">
-                            업종·공종은 회사 공통 설정이라 감독자가 관리해요. 나머지는 직접 수정하실 수 있어요.
+                            업종·공종은 감독자가 관리해요.
                         </p>
                     )}
                     <div className="space-y-2">
@@ -366,8 +366,7 @@ export default function ProfilePage() {
                     {/* solo에게는 숨김 — 아직 자식 현장이 없어 '모든 현장 계정' 문구가 혼란만 준다 */}
                     {ctx?.kind === "owner" && (
                         <p className="text-[12px] text-cur-muted">
-                            업종·공종은 회사 공통 설정이에요 — 저장하면 모든 현장 계정에 함께 적용됩니다.
-                            성명·현장명·근로자 구분은 각 현장 계정이 직접 수정해요.
+                            업종·공종은 저장하면 모든 현장 계정에 함께 적용돼요.
                         </p>
                     )}
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
@@ -472,8 +471,7 @@ export default function ProfilePage() {
                     {/* 온보딩에서 자기신고만 하고 링크 인증이 없는 주소 — '인증 메일'로 인증을 마쳐야 복구에 쓸 수 있다 */}
                     {!isKakao && recoveryReady === false && reportEmail && !pendingEmail && (
                         <p className="text-[12px] text-cur-primary leading-relaxed">
-                            <b>{reportEmail}</b> 은(는) 아직 인증이 끝나지 않았어요. &lsquo;인증 메일&rsquo;을 눌러
-                            메일함의 링크로 인증을 마쳐야 계정 복구에 쓸 수 있습니다.
+                            <b>{reportEmail}</b> — &lsquo;인증 메일&rsquo;의 링크를 눌러야 계정 복구에 쓸 수 있어요.
                         </p>
                     )}
                     <p className="text-[12px] text-cur-muted-soft leading-relaxed">

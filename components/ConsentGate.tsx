@@ -200,7 +200,7 @@ export function ConsentGate() {
                             약관 동의가 필요해요
                         </DialogPrimitive.Title>
                         <DialogPrimitive.Description className="text-[13px] text-cur-muted leading-[1.6]">
-                            서비스 이용을 위해 한 번만 확인할게요. 아래 내용에 동의해주세요 — 내용은 새 창에서 볼 수 있습니다.
+                            서비스 이용 전 한 번만 확인할게요. 각 항목 내용은 새 창에서 볼 수 있어요.
                         </DialogPrimitive.Description>
                     </div>
 

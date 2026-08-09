@@ -63,7 +63,7 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
         const next = { ...prev, ...patch }
         if (!next.monthly && !next.weekly) {
             const ok = await showConfirm(
-                "월간·주간 보고서가 모두 꺼집니다. 지금부터는 등록된 받는 사람에게 보고서 메일이 한 통도 가지 않아요.\n\n필요할 때 여기서 다시 켤 수 있고, 문서 출력은 그대로 됩니다.",
+                "등록된 받는 사람에게 보고서 메일이 더 이상 가지 않아요.\n\n문서 출력은 그대로 되고, 언제든 여기서 다시 켤 수 있어요.",
                 { title: "이제 보고서를 받지 못합니다", confirmText: "모두 끄기", danger: true }
             )
             if (!ok) return
@@ -89,7 +89,7 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
         <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
             <div>
                 <p className="text-[13px] font-semibold text-cur-ink">발송 주기</p>
-                <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">월간·주간을 함께 켜면 둘 다 받아볼 수 있어요. 둘 다 끄면 메일이 나가지 않습니다.</p>
+                <p className="text-[12px] text-cur-muted-soft mt-1 leading-relaxed">둘 다 끄면 메일이 나가지 않아요.</p>
             </div>
             {!loaded ? (
                 <div className="py-3 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-cur-muted-soft" /></div>
@@ -126,8 +126,7 @@ export function ReportScheduleCard({ pro = false }: { pro?: boolean }) {
                 <div className="flex gap-2.5 rounded-xl bg-cur-elevated border border-cur-hairline-strong p-3">
                     <BellOff className="w-4 h-4 text-cur-ink shrink-0 mt-0.5" />
                     <p className="text-[12px] text-cur-body leading-relaxed">
-                        <b className="text-cur-ink">보고서 메일이 나가지 않는 상태예요.</b> 위 토글을 켜면 다시 발송됩니다.
-                        (문서 출력·AI 분석 보고서는 영향 없어요)
+                        <b className="text-cur-ink">보고서 메일이 꺼져 있어요.</b> 토글을 켜면 다시 발송됩니다.
                     </p>
                 </div>
             )}
