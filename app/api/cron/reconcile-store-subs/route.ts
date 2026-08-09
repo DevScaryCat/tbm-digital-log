@@ -69,7 +69,10 @@ async function run(request: Request) {
             // 기간이 지난 행 + 기간이 아예 없는 행(만료일을 못 받아 저장된 고장난 행 — 이대로
             // 두면 어떤 스윕에도 걸리지 않고 영구 이용이 된다)
             .or(`current_period_end.is.null,current_period_end.lt.${nowIso}`)
-            .order("current_period_end", { ascending: true })
+            // NULL을 먼저 본다. Postgres의 ASC 기본값은 NULLS LAST라, 그냥 두면 만료일이 없는
+            // 행(=위 주석이 말한 '영구 이용' 행)이 항상 맨 뒤로 밀려 limit을 넘는 순간 영원히
+            // 스윕에 도달하지 못한다 — 가장 위험한 행이 가장 먼저 굶는다.
+            .order("current_period_end", { ascending: true, nullsFirst: true })
             .limit(300)
 
         if (error) {
