@@ -57,6 +57,19 @@ export function sanitizeRiskItems(input: unknown): RiskItem[] {
   }));
 }
 
+/** 기간 내 접수된 근로자 의견 1건 — 서명 페이지에서 직접 제출된 원문 */
+export interface SuggestionRow {
+  content: string;
+  /** 실명 제출 시에만 값이 있다. null이면 렌더에서 '익명'으로 표기 — 이름을 지어내지 않는다 */
+  authorName: string | null;
+  /** 접수일 (KST, YYYY-MM-DD) */
+  date: string;
+  /** 연결된 회의록의 날짜 — 기간 내 회의록에 연결된 경우에만 */
+  docDate?: string;
+  /** 통합(여러 현장) 보고서에서만 채워지는 현장명 */
+  site?: string;
+}
+
 export interface ReportContent {
   companyName: string | null;
   periodLabel: string;
@@ -65,6 +78,8 @@ export interface ReportContent {
   hazards: HazardRow[];
   aiSummary: string;
   riskItems?: RiskItem[];
+  /** 기간 내 접수된 근로자 의견 — 산안법 근로자 의견청취 기록. 0건이면 렌더에서 섹션 자체 생략 */
+  suggestions?: SuggestionRow[];
   /** 통합(여러 현장 병합) 보고서의 현장별 소계 — 있으면 렌더에 '현장별 요약' 섹션 표시 */
   sites?: { name: string; total: number; high: number; mid: number }[];
   /** 지난달보다 나아진 항목만 — 없으면 섹션 미표시.
@@ -181,18 +196,25 @@ export async function buildMergedMinutesForRange(
 ): Promise<ReportContent> {
   const items: HazardRow[] = [];
   const sites: { name: string; total: number; high: number; mid: number }[] = [];
+  const suggestions: SuggestionRow[] = [];
   let totalMinutes = 0;
   const curDays = new Set<string>();
+  // created_at(timestamptz)을 KST 날짜로 — 보고서의 기간·날짜 표기가 전부 KST 기준이다
+  const kstDate = (iso: string) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 
   for (const acc of accounts) {
     const { data: minutes } = await admin
       .from("tbm_minutes")
-      .select("date, hazards, work_name, process_name")
+      .select("id, date, hazards, work_name, process_name")
       .eq("user_id", acc.userId)
       .gte("date", from)
       .lte("date", to);
     const rows = (minutes as any[]) || [];
     totalMinutes += rows.length;
+    // 의견의 '연결 회의록 날짜' 역참조용 — 이미 가져온 회의록에서 만들므로 추가 조회가 없다
+    const minuteDateById = new Map<string, string>();
+    for (const m of rows) if (m.id && m.date) minuteDateById.set(String(m.id), String(m.date));
     let sHigh = 0;
     let sMid = 0;
     for (const m of rows) {
@@ -215,6 +237,38 @@ export async function buildMergedMinutesForRange(
       }
     }
     sites.push({ name: acc.siteName, total: rows.length, high: sHigh, mid: sMid });
+
+    // 기간 내 접수된 근로자 의견 — 계정당 1쿼리(크론 부하 상한). 접수 시각은 KST 기간 경계로 자른다.
+    // 실패는 비치명: 의견 섹션만 빠지고 보고서 본체는 그대로 나간다.
+    try {
+      const { data: sugg, error: sErr } = await admin
+        .from("worker_suggestions")
+        .select("content, author_name, created_at, doc_type, doc_id")
+        .eq("user_id", acc.userId)
+        .gte("created_at", `${from}T00:00:00+09:00`)
+        .lte("created_at", `${to}T23:59:59.999+09:00`)
+        .order("created_at", { ascending: true });
+      if (sErr) {
+        console.error("report suggestions query error:", acc.userId, sErr);
+      } else {
+        for (const sg of (sugg as any[]) || []) {
+          const content = String(sg?.content ?? "").trim();
+          if (!content) continue;
+          const authorName = typeof sg?.author_name === "string" && sg.author_name.trim() ? sg.author_name.trim() : null;
+          const docDate = sg?.doc_type === "minute" && sg?.doc_id ? minuteDateById.get(String(sg.doc_id)) : undefined;
+          suggestions.push({
+            content,
+            authorName,
+            date: sg?.created_at ? kstDate(String(sg.created_at)) : "",
+            ...(docDate ? { docDate } : {}),
+            // 현장명은 통합 보고서에서만 의미가 있다 — 단일 현장은 표기 안 함
+            ...(accounts.length > 1 ? { site: acc.siteName } : {}),
+          });
+        }
+      }
+    } catch (e) {
+      console.error("report suggestions query error:", acc.userId, e);
+    }
   }
 
   const freq = new Map<string, number>();
@@ -230,7 +284,7 @@ export async function buildMergedMinutesForRange(
     ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
     : [];
 
-  const content: ReportContent = { companyName, periodLabel, stats, keywords, hazards, aiSummary: "", sites, improvements };
+  const content: ReportContent = { companyName, periodLabel, stats, keywords, hazards, aiSummary: "", sites, improvements, suggestions };
   // 회의록 0건이면 총평을 만들 근거가 없다 — 배치 예약조차 하지 않는다. 예약만 해도 요금이 나가는데,
   // 크론의 단독 경로는 0건 계정에도 이 함수를 호출한다(교육일지만 쓰는 계정).
   if (stats.total === 0) return content;
@@ -454,6 +508,47 @@ function riskTableHtml(items: RiskItem[]): string {
       </table>`;
 }
 
+/**
+ * 근로자 의견 섹션 — 기간 내 서명 페이지에서 직접 접수된 원문.
+ * 산안법 근로자 의견청취 기록 관점의 데이터라 원문 그대로 싣는다(요약·가공 없음).
+ * 0건이면 빈 문자열(섹션 자체 생략). 익명 제출이 기본 — author_name 없으면 '익명'.
+ */
+function suggestionsTableHtml(items: SuggestionRow[]): string {
+  if (!items || items.length === 0) return "";
+  const MAX = 50; // 메일 본문 비대 방지 — 잘리면 아래에 '외 N건' 안내
+  const shown = items.slice(0, MAX);
+  const rows = shown
+    .map((sg, i) => {
+      const metaBits = [sg.site, sg.date].filter(Boolean).map((s) => escapeHtml(String(s)));
+      return `
+      <tr style="vertical-align:top;">
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;color:#999;font-size:12px;">${i + 1}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;">
+          <div style="font-size:13px;color:#26251e;line-height:1.6;">${escapeHtml(sg.content)}</div>
+          ${metaBits.length ? `<div style="font-size:11px;color:#999;margin-top:2px;">${metaBits.join(" · ")}</div>` : ""}
+        </td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:${sg.authorName ? "#26251e" : "#999"};white-space:nowrap;">${sg.authorName ? escapeHtml(sg.authorName) : "익명"}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;color:#555;white-space:nowrap;">${sg.docDate ? escapeHtml(sg.docDate) : "-"}</td>
+      </tr>`;
+    })
+    .join("");
+  return `
+      <div style="font-size:15px;font-weight:700;margin:22px 0 4px;">근로자 의견 (${items.length}건)</div>
+      <div style="font-size:12px;color:#807d72;margin-bottom:12px;">근로자가 서명 시 직접 제출한 의견 원문입니다 — 근로자 의견 청취 기록으로 활용하세요.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e6e5e0;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#f4f3ee;color:#807d72;font-size:12px;">
+            <th style="padding:8px 6px;text-align:center;width:34px;">No</th>
+            <th style="padding:8px 6px;text-align:left;">의견 내용</th>
+            <th style="padding:8px 6px;text-align:center;width:72px;">제출자</th>
+            <th style="padding:8px 6px;text-align:center;width:86px;">연결 회의록</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${items.length > MAX ? `<div style="font-size:12px;color:#807d72;margin-top:8px;">외 ${items.length - MAX}건 — 전체는 앱의 의견·제안함에서 확인할 수 있습니다.</div>` : ""}`;
+}
+
 /** 이메일/공개페이지용 HTML 본문 (월간·위험성평가 공용 단일 템플릿) */
 export function renderReportHtml(content: ReportContent, viewUrl?: string): string {
   const { companyName, periodLabel } = content;
@@ -643,6 +738,8 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
       </table>
 
       ${riskTableHtml(riskItems)}
+
+      ${suggestionsTableHtml(content.suggestions || [])}
 
       ${
         viewUrl
