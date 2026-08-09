@@ -9,6 +9,7 @@ import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
 import { getSubscription, toLocalStatus, isRevoked } from "@/lib/appStore"
 import { isStoreSource, ownsOrganization } from "@/lib/billing"
+import { markGrandfatherForRestore } from "@/lib/grandfather"
 
 export const runtime = "nodejs"
 
@@ -77,14 +78,10 @@ export async function POST(request: Request) {
 
         // grandfather(영구 무료)가 인앱결제를 하면 아래 patch가 plan을 monthly_pro로 덮어써
         // 그 지위가 영영 사라진다 — 해지해도 돌아올 자리가 없는 편도문(2026-08-10 적대적 검수).
-        // 편입(attach)이 쓰는 것과 같은 자리에 기록해 두면, 해지·만료 확정 경로에서 복원할 수 있다.
+        // 표식은 app_metadata(=service_role 전용)에 남긴다 — user_metadata는 클라이언트가
+        // 직접 쓸 수 있어 아무나 '나는 원래 영구 무료였다'를 자칭할 수 있다.
         if (existing?.plan === "grandfather") {
-            try {
-                const meta = (user.user_metadata ?? {}) as Record<string, unknown>
-                await admin.auth.admin.updateUserById(user.id, {
-                    user_metadata: { ...meta, prev_plan: "grandfather" },
-                })
-            } catch { /* 비치명 — 결제 자체를 막지는 않는다 */ }
+            await markGrandfatherForRestore(admin, user.id)
         }
 
         const patch: Record<string, unknown> = {

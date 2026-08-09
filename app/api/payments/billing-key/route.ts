@@ -11,6 +11,7 @@ import { chargeSubscription } from "@/lib/billing";
 import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
 import { paymentsEnabled } from "@/lib/utils";
 import { phoneAuthEnabled } from "@/lib/phoneAuth";
+import { markGrandfatherForRestore } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
 // 카카오페이 빌링키 검증 재시도(백오프 ~9s)를 위해 실행시간 여유 확보
@@ -169,15 +170,11 @@ export async function POST(request: Request) {
     }
 
     // grandfather(영구 무료)가 카드 구독을 하면 아래 upsert가 plan을 덮어써 그 지위가 사라진다 —
-    // 인앱결제(구글·애플 verify)와 같은 자리에 남겨야 해지·만료 확정 시점에 되돌릴 수 있다
-    // (복원은 lib/grandfather.ts restoreGrandfatherIfEligible). 비치명 — 결제를 막지는 않는다.
+    // 표식을 남겨야 해지·만료 확정 시점에 되돌릴 수 있다(복원은 lib/grandfather.ts).
+    // 표식은 app_metadata(=service_role 전용)에 쓴다 — user_metadata는 클라이언트가 직접
+    // 쓸 수 있어 아무나 영구 무료를 자칭할 수 있다. 비치명 — 결제를 막지는 않는다.
     if (existing?.plan === "grandfather") {
-      try {
-        const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-        await admin.auth.admin.updateUserById(user.id, {
-          user_metadata: { ...meta, prev_plan: "grandfather" },
-        });
-      } catch { /* 비치명 */ }
+      await markGrandfatherForRestore(admin, user.id);
     }
 
     if (!trialUsed) {
