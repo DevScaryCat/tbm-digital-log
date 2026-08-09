@@ -308,6 +308,9 @@ export default function TBMMinutesPage() {
     // 근로자 의견 합류(step 4): 이미 반영한 의견 id — '이전'으로 갔다 와도 중복 추가 방지
     const processedSuggestionIds = useRef(new Set<string>())
     const isMergingRef = useRef(false)
+    // 저장 중 12초 폴링 차단 — hazards 스냅샷 이후 폴링이 의견을 합류·processed 마킹하면
+    // 그 의견은 문서에도(스냅샷 이후) reconcile에도(클레임 대상) 안 잡혀 조용히 유실된다
+    const isSavingSuggestionsRef = useRef(false)
     const [isMergingSuggestions, setIsMergingSuggestions] = useState(false)
 
     const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
@@ -431,8 +434,11 @@ export default function TBMMinutesPage() {
 
     // 근로자 의견을 위험성평가 항목으로 합류 — step 4 폴링과 저장 직전 스윕이 함께 쓴다.
     // processedSuggestionIds로 이미 반영한 의견은 다시 넣지 않는다('이전' 왕복·스윕 중복 방어).
-    const mergeWorkerSuggestions = useCallback(async () => {
+    const mergeWorkerSuggestions = useCallback(async (opts?: { fromSave?: boolean }) => {
         if (!sessionId || isMergingRef.current) return;
+        // 저장이 시작되면 폴링 합류는 중단한다(저장 핸들러 자신의 스윕만 통과) —
+        // 스냅샷 이후의 폴링 합류는 로컬에만 남아 유실되기 때문
+        if (isSavingSuggestionsRef.current && !opts?.fromSave) return;
         isMergingRef.current = true;
         try {
             const { data, error } = await supabase
@@ -552,13 +558,15 @@ export default function TBMMinutesPage() {
 
             // 저장 직전 마지막 스윕 — 마지막 12초 폴링과 저장 사이에 도착한 의견을 동기로 1회 더 합류.
             // 진행 중인 폴링 합류가 있으면 끝나길 기다렸다가 돌린다(잠금 스킵으로 스윕이 빈손이 되는 것 방지).
-            // 실패해도 저장은 막지 않는다 — 저장 후 도착분은 /api/suggestions 서버 합류가 줍는다.
+            // 이 시점부터 폴링 합류는 차단된다(isSavingSuggestionsRef) — 스냅샷 이후 합류분 유실 방지.
+            // 실패해도 저장은 막지 않는다 — 미합류분은 저장 뒤 reconcile 서버 합류가 줍는다.
+            isSavingSuggestionsRef.current = true;
             try {
                 const t0 = Date.now();
                 while (isMergingRef.current && Date.now() - t0 < 10_000) {
                     await new Promise(r => setTimeout(r, 200));
                 }
-                await mergeWorkerSuggestions();
+                await mergeWorkerSuggestions({ fromSave: true });
             } catch { /* 스윕 실패는 무시 — 저장 계속 */ }
             // 스윕·직전 폴링의 합류 결과는 아직 setFormData 큐에만 있을 수 있다 —
             // 함수형 업데이트로 최신 hazards를 스냅샷해 insert에 쓴다(클로저의 formData는 낡았을 수 있음).
@@ -571,6 +579,9 @@ export default function TBMMinutesPage() {
                 .from('tbm_minutes')
                 .insert({
                     user_id: session.user.id,
+                    // 세션→문서 내구 추적: 저장 후 도착한 근로자 의견의 접수(RPC 유예창)와
+                    // 서버 합류(merge 함수 문서 탐색)가 이 값에 기댄다
+                    session_id: sessionId || null,
                     date: formData.date ? format(formData.date, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
                     start_time: formData.startTime,
                     end_time: formData.endTime || getCurrentTime(),
@@ -617,17 +628,46 @@ export default function TBMMinutesPage() {
             }
 
             if (sessionId) {
-                // 이 세션에서 들어온 근로자 제안을 방금 만든 회의록에 연결한다 —
-                // pending 행을 지우고 나면 되짚을 근거가 사라지므로 삭제 '전에' 박아둔다.
-                // 실패해도 저장은 성공이다(제안함에서 링크만 안 보인다).
-                await supabase.from('worker_suggestions')
-                    .update({ doc_type: 'minute', doc_id: logData.id })
-                    .eq('session_id', sessionId)
-                    .is('doc_id', null)
+                // 화면이 hazards에 합류한 의견'만' 방금 만든 회의록에 연결(클레임)한다 —
+                // pending 행을 지우고 나면 세션 마커가 사라지므로 삭제 '전에' 박아둔다.
+                // 미합류분(스윕과 저장 사이 도착·AI 실패분)은 여기서 클레임하면 안 된다:
+                // 예전엔 세션 전체를 클레임해 그 의견들이 hazards에 없는 채 '합류 완료'로
+                // 위장돼 조용히 유실됐다. 이제 미연결로 남겨 아래 reconcile이 서버에서
+                // 변환·합류(멱등 클레임+원자 append)하게 한다. 실패해도 저장은 성공이다.
+                const processedIds = Array.from(processedSuggestionIds.current);
+                let claimFailed = false;
+                if (processedIds.length > 0) {
+                    const { error: claimError } = await supabase.from('worker_suggestions')
+                        .update({ doc_type: 'minute', doc_id: logData.id })
+                        .eq('session_id', sessionId)
+                        .in('id', processedIds)
+                        .is('doc_id', null)
+                    // 클레임 실패 시 reconcile을 부르면 안 된다 — 화면 합류분이 미연결로 남아
+                    // 서버가 같은 의견을 한 번 더 합류시킨다(이중 반영)
+                    claimFailed = !!claimError;
+                }
 
                 // 저장 완료 → pending 정리. OPEN 마커가 사라지면 서명 페이지는 자동으로 만료 처리되므로
                 // 별도 CLOSED 마커 삽입은 불필요(삭제 후엔 소유권 근거가 없어 RLS상 삽입도 거부됨).
                 await supabase.from('tbm_pending_signatures').delete().eq('session_id', sessionId);
+
+                // 잔여분 정리 — 스윕과 저장 사이 도착분·AI 실패분을 서버가 변환해 문서에 합류.
+                // 멱등(행별 조건부 클레임)이라 재시도해도 이중 합류가 없다. 실패는 콘솔만.
+                if (!claimFailed) {
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            const res = await fetch('/api/suggestions/reconcile', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                                body: JSON.stringify({ sessionId }),
+                            });
+                            if (res.ok) break;
+                            console.error('suggestion reconcile failed:', res.status);
+                        } catch (e) {
+                            console.error('suggestion reconcile error:', e);
+                        }
+                    }
+                }
             }
 
             setSavedLogId(logData.id)
@@ -642,6 +682,7 @@ export default function TBMMinutesPage() {
                     : "알 수 없는 오류"
             showAlert("저장 실패: " + errorMessage)
         } finally {
+            isSavingSuggestionsRef.current = false; // 저장 실패 시 검토 화면 폴링 합류 재개
             setIsSaving(false)
         }
     }

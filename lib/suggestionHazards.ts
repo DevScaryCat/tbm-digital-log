@@ -1,10 +1,13 @@
-// lib/suggestionHazards.ts — 근로자 의견 → TBM 위험요인 항목 변환 (서버 공용)
+// lib/suggestionHazards.ts — 근로자 의견 → TBM 위험요인 항목 변환 + 세션 단위 서버 합류(공용)
 //
-// 사용처가 둘이다:
+// 사용처가 셋이다:
 //  1) /api/ai/suggestion-hazards — 감독자 검토 화면(step 4)의 폴링·저장 직전 스윕
-//  2) /api/suggestions — 근로자 의견 접수(무인증) 후 "이미 저장된 회의록"에의 서버 합류
-// 인증·요금·사용량 게이트는 각 라우트가 책임진다. 이 모듈은 변환만 한다.
+//  2) /api/suggestions — 근로자 의견 접수(무인증) 직후, 저장된 회의록에의 서버 합류
+//  3) /api/suggestions/reconcile — 저장 직후 위저드가 호출하는 잔여분 정리 스윕
+// 인증·요금 게이트는 각 라우트가 책임진다. AI 사용량 원장은 sweep 내부에서 행 단위로 계수한다.
 import Anthropic from "@anthropic-ai/sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { checkAndRecordAiUsage } from "@/lib/aiUsage";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -124,4 +127,107 @@ export async function convertSuggestionsToHazards(
           measure: str(h.measure),
         }))
     : [];
+}
+
+interface SavedMinuteDoc {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+/**
+ * 세션이 이어진 "이미 저장된 회의록"을 찾는다.
+ * 1순위: 저장 시 위저드가 기록한 tbm_minutes.session_id (저장 전 의견 0건이어도 추적 가능).
+ * 2순위(구버전 앱 저장분 — session_id 미기록): 같은 세션 의견이 남긴 doc 링크 추적.
+ */
+export async function findSavedMinuteForSession(
+  admin: SupabaseClient,
+  sessionId: string,
+): Promise<SavedMinuteDoc | null> {
+  const { data: bySession } = await admin
+    .from("tbm_minutes")
+    .select("id, user_id, created_at")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (bySession?.[0]) return bySession[0] as SavedMinuteDoc;
+
+  const { data: linked } = await admin
+    .from("worker_suggestions")
+    .select("doc_id")
+    .eq("session_id", sessionId)
+    .eq("doc_type", "minute")
+    .not("doc_id", "is", null)
+    .limit(1);
+  const docId = linked?.[0]?.doc_id as string | undefined;
+  if (!docId) return null;
+  const { data: doc } = await admin
+    .from("tbm_minutes")
+    .select("id, user_id, created_at")
+    .eq("id", docId)
+    .limit(1);
+  return (doc?.[0] as SavedMinuteDoc | undefined) ?? null;
+}
+
+/**
+ * 세션의 미연결(doc_id null) 의견을 저장된 회의록 hazards에 서버에서 합류시킨다.
+ * 행마다 merge_worker_suggestion_hazards(조건부 클레임 + jsonb || 원자 append, 단일 트랜잭션)를
+ * 호출하므로 멱등이다 — 언제, 몇 번을, 누구와 동시에 다시 불러도 이중 합류가 없다
+ * (클레임 승자만 append하고 패자는 ALREADY_MERGED로 끝난다).
+ *
+ * afterDocOnly=true: 문서 생성 '이후' 도착분만 줍는다 — /api/suggestions(접수 직후) 경로용.
+ *   저장이 진행 중인 위저드가 이미 로컬 hazards에 합류해뒀지만 아직 클레임(저장 UPDATE)하지
+ *   못한 '문서 이전' 의견을 여기서 건드리면 이중 반영되므로 반드시 제외해야 한다.
+ * afterDocOnly=false: 전체 잔여분 정리 — /api/suggestions/reconcile(저장 직후, 위저드가
+ *   화면 합류분 클레임을 마친 뒤) 경로용. 스윕과 저장 사이에 도착해 어느 경로에도 안 잡힌
+ *   의견이 여기서 합류된다.
+ *
+ * AI 변환은 행 단위로 문서 소유자 일일 원장(suggestion-hazards)을 계수하고,
+ * 한도 도달·AI 오류 시 '[근로자 의견] 원문'으로 폴백한다(의견을 버리지 않는다).
+ * 모델이 위험요인 해석 불가로 거른 의견(빈 배열)은 문서 연결(클레임)만 한다.
+ */
+export async function sweepSessionSuggestionsIntoMinutes(
+  admin: SupabaseClient,
+  sessionId: string,
+  opts: { afterDocOnly?: boolean } = {},
+): Promise<number> {
+  const doc = await findSavedMinuteForSession(admin, sessionId);
+  if (!doc) return 0; // 아직 저장 전 — step 4 폴링·저장 직전 스윕·reconcile이 책임진다
+
+  let query = admin
+    .from("worker_suggestions")
+    .select("id, content, user_id")
+    .eq("session_id", sessionId)
+    .eq("user_id", doc.user_id) // 계정 격리 — 문서 소유자의 의견만
+    .is("doc_id", null)
+    .order("created_at", { ascending: true })
+    .limit(MAX_SUGGESTIONS);
+  if (opts.afterDocOnly) query = query.gt("created_at", doc.created_at);
+  const { data: rows, error } = await query;
+  if (error || !rows || rows.length === 0) return 0;
+
+  let merged = 0;
+  for (const row of rows as { id: string; content: string; user_id: string }[]) {
+    const content = String(row.content ?? "").slice(0, MAX_SUGGESTION_LEN);
+    if (!content.trim()) continue;
+    let hazards: SuggestionHazard[];
+    try {
+      hazards = (await checkAndRecordAiUsage(row.user_id, "suggestion-hazards"))
+        ? await convertSuggestionsToHazards([content])
+        : [rawSuggestionHazard(content)];
+    } catch (e) {
+      console.error("suggestion conversion failed, falling back to raw:", e);
+      hazards = [rawSuggestionHazard(content)];
+    }
+    const { data: status, error: mergeErr } = await admin.rpc(
+      "merge_worker_suggestion_hazards",
+      { p_suggestion: row.id, p_hazards: hazards },
+    );
+    if (mergeErr) {
+      console.error("merge_worker_suggestion_hazards error:", row.id, mergeErr);
+      continue; // 다음 행은 계속 — 부분 실패가 전체를 막지 않는다
+    }
+    if (status === "MERGED") merged += 1;
+  }
+  return merged;
 }
