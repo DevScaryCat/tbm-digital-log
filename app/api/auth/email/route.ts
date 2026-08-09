@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { resolveMyReportEmail } from "@/lib/myEmail";
+import { hasLinkVerifiedRecoveryEmail } from "@/lib/accountRecovery";
 
 export const runtime = "nodejs";
 
@@ -11,11 +12,19 @@ export async function GET(request: Request) {
   const user = await getUserFromRequest(request);
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const current = typeof meta.real_email === "string" ? meta.real_email.trim() : "";
+  // 계정 복구가 실제로 가능한가 — 보고서 수신 가능(real_email_verified_at)과 기준이 다르다.
+  // 온보딩은 인증 없이도 그 시각을 찍으므로, 복구는 '메일 링크를 눌렀다는 증거'까지 요구한다
+  // (lib/accountRecovery.hasLinkVerifiedRecoveryEmail — 재설정 발송 조건과 같은 판정).
+  const recoveryReady = current
+    ? await hasLinkVerifiedRecoveryEmail(getAdminClient(), user.id, current)
+    : false;
   return NextResponse.json({
     // 인증까지 끝나 실제로 보고서를 받을 수 있는 주소
     email: resolveMyReportEmail(user as never),
     // 입력은 했지만 아직 링크를 안 누른 주소 — 화면이 '인증 대기'를 말할 수 있게
     pending: meta.real_email && !meta.real_email_verified_at ? String(meta.real_email) : null,
+    recoveryReady,
   });
 }
 

@@ -6,6 +6,7 @@ import { getAdminClient } from "@/lib/portone";
 import {
   RECOVERY_GENERIC_MESSAGE,
   baseUrlFrom,
+  hasLinkVerifiedRecoveryEmail,
   normalizeLoginId,
   recoverySendThrottled,
   requestIp,
@@ -41,6 +42,9 @@ export async function POST(request: Request) {
     const recoveryEmail = typeof meta.real_email === "string" ? meta.real_email.trim() : "";
     // 인증 시각이 없으면 수신 보장도, 본인 확인도 없다 → 발송하지 않는다(응답은 동일)
     if (!recoveryEmail || !meta.real_email_verified_at) return generic();
+    // real_email_verified_at은 온보딩이 인증 없이도 찍는다 — 링크를 실제로 누른 증거를 따로 요구한다.
+    // 이게 없으면 첫 로그인에서 오타로 적힌 남의 주소가 그대로 재설정 링크 수신처가 된다.
+    if (!(await hasLinkVerifiedRecoveryEmail(admin, String(userId), recoveryEmail))) return generic();
 
     if (await recoverySendThrottled(admin, [String(userId)])) return generic(); // 조용히 건너뛴다
 

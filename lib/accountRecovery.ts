@@ -54,11 +54,24 @@ export function requestIp(request: Request): string | null {
   return fwd ? fwd.split(",")[0]!.trim() || null : null;
 }
 
+const CANONICAL_ORIGIN = "https://www.safetalk.kr";
+
+/**
+ * 재설정 링크의 출처. **요청 Host 헤더를 그대로 믿지 않는다.**
+ * 믿으면 `Host: evil.example`로 요청만 넣어도 피해자 메일함에 evil.example/reset-password?token=…
+ * 가 배달된다(고전적인 password reset poisoning — 피해자가 누르는 순간 토큰이 공격자에게 간다).
+ * 우리 도메인(safetalk.kr)과 로컬 개발 호스트만 통과시키고, 나머지는 전부 정식 주소로 되돌린다.
+ */
 export function baseUrlFrom(request: Request): string {
-  const proto = request.headers.get("x-forwarded-proto") || "https";
-  const host = request.headers.get("host");
-  const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_APP_URL || "https://www.safetalk.kr";
-  return base.replace(/\/$/, "");
+  const canonical = (process.env.NEXT_PUBLIC_APP_URL || CANONICAL_ORIGIN).replace(/\/$/, "");
+  const host = (request.headers.get("host") || "").trim().toLowerCase();
+  if (!host) return canonical;
+  const hostname = host.split(":")[0]!;
+  const ours = hostname === "safetalk.kr" || hostname.endsWith(".safetalk.kr");
+  const local = hostname === "localhost" || hostname === "127.0.0.1";
+  if (!ours && !local) return canonical;
+  const proto = local ? request.headers.get("x-forwarded-proto") || "http" : "https";
+  return `${proto}://${host}`;
 }
 
 /** DB에는 해시만 남긴다 — 원문 토큰은 메일 안에만 존재한다 */
@@ -94,6 +107,37 @@ export async function recoverySendThrottled(
   if (stamps.some((t) => now - t < 60 * 1000)) return true;
   if (stamps.filter((t) => t >= now - 60 * 60 * 1000).length >= 5) return true;
   return stamps.length >= 10;
+}
+
+/**
+ * "이 주소로 온 링크를 실제로 눌렀다"는 증거가 있는가 — 복구 메일 발송의 마지막 관문.
+ *
+ * user_metadata.real_email_verified_at 하나만 믿으면 안 된다. app/api/onboarding은 첫 로그인에서
+ * 사용자가 적어넣은 주소에 인증 절차 없이 그 시각을 그대로 찍는다(보고서 수신용 제품 결정).
+ * 보고서라면 오타의 대가가 "남이 내 보고서를 본다"지만, 재설정 링크는 오타 하나가 계정 탈취다
+ * (오타 주소의 주인이 아이디 찾기 → 비밀번호 찾기 순으로 그대로 계정을 가져간다).
+ *
+ * 그래서 복구 발송만은 email_verifications의 verified_at(메일 링크를 눌러야만 생긴다)을 따로 요구한다.
+ * ILIKE를 쓰지 않는 이유: 이메일에 흔한 `_`가 ILIKE 와일드카드라 다른 주소까지 매칭된다.
+ */
+export async function hasLinkVerifiedRecoveryEmail(
+  admin: SupabaseClient,
+  userId: string,
+  email: string
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("email_verifications")
+    .select("email")
+    .eq("user_id", userId)
+    .not("verified_at", "is", null)
+    .order("verified_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    console.error("복구 이메일 인증 증거 조회 실패:", error);
+    return false; // 증거를 못 읽으면 보내지 않는다 — 여긴 계정을 여는 경로다
+  }
+  const target = email.trim().toLowerCase();
+  return (data ?? []).some((r) => String(r.email ?? "").trim().toLowerCase() === target);
 }
 
 /** 아이디 찾기 발송 이력만 남긴다 (링크가 없으니 토큰도 없다 — 폭주 제한의 근거용) */

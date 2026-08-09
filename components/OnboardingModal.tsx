@@ -162,10 +162,16 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                     <div className="space-y-4">
                         <div>
                             <h2 className="text-[18px] font-bold text-cur-ink">이메일 주소를 적어주세요</h2>
+                            {/* 계정 복구 수단이라고 여기서 단정하지 않는다 — 이 자리는 인증 없이 저장되고,
+                                재설정 메일은 '메일 링크를 눌러 인증한 주소'에만 나간다(lib/accountRecovery).
+                                인증 전 주소를 복구 수단으로 약속하면 잠긴 뒤에야 거짓말이 드러난다. */}
                             <p className="text-[13px] text-cur-body mt-1.5 leading-relaxed">
-                                주간·월간 안전 보고서가 이 주소로 발송되고,
-                                <b className="text-cur-ink"> 비밀번호를 잊었을 때 계정을 되찾는 수단</b>도 이 주소예요.
+                                주간·월간 안전 보고서가 <b className="text-cur-ink">이 주소로 바로 발송</b>돼요.
                                 별도 인증 절차가 없으니 <b className="text-cur-ink">정확하게</b> 적어주세요.
+                                <br />
+                                <span className="text-cur-muted">
+                                    나중에 <b className="text-cur-ink">내 정보 수정</b>에서 이 주소를 인증해두면, 비밀번호를 잊었을 때 계정을 되찾는 데도 쓸 수 있어요.
+                                </span>
                             </p>
                         </div>
                         <Input

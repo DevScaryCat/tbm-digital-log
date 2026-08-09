@@ -1,7 +1,7 @@
 "use client"
 
 // app/reset-password/page.tsx — 메일 링크로 들어와 새 비밀번호를 정하는 화면
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,7 +23,14 @@ export default function ResetPasswordPage() {
 
 function ResetPasswordScreen() {
     const router = useRouter()
-    const token = useSearchParams().get("token") || ""
+    // 토큰은 마운트 때 한 번만 집어두고 주소창에서 지운다 — 계정을 여는 열쇠가 브라우저 기록·
+    // 공유된 URL·바깥으로 나가는 Referer에 남지 않게. (이후 렌더는 이 state만 본다)
+    const initialToken = useSearchParams().get("token") || ""
+    const [token] = useState(initialToken)
+    useEffect(() => {
+        if (!initialToken) return
+        window.history.replaceState(null, "", window.location.pathname)
+    }, [initialToken])
     const [password, setPassword] = useState("")
     const [confirm, setConfirm] = useState("")
     const [loading, setLoading] = useState(false)

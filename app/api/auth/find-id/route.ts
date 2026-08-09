@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/portone";
 import {
   RECOVERY_GENERIC_MESSAGE,
+  hasLinkVerifiedRecoveryEmail,
   isValidRecoveryEmail,
   loginIdFromEmail,
   logFindIdSend,
@@ -33,7 +34,19 @@ export async function POST(request: Request) {
       console.error("find-id RPC 실패:", error);
       return generic();
     }
-    const rows = (data ?? []) as { user_id: string; login_email: string; recovery_verified: boolean }[];
+    const all = (data ?? []) as { user_id: string; login_email: string; recovery_verified: boolean }[];
+    if (all.length === 0) return generic();
+
+    // recovery_verified 행은 real_email_verified_at만 보고 잡힌 것이다 — 온보딩이 인증 없이도 찍는 값이라
+    // 링크를 실제로 누른 증거를 여기서 한 번 더 요구한다. 그렇지 않으면 첫 로그인에서 오타로 적힌
+    // 남의 주소에 아이디가 배달되고, 그대로 비밀번호 찾기까지 이어진다.
+    // (recovery_verified=false 행은 '로그인 이메일 자체가 이 주소'인 계정 — 카카오가 이미 검증했다)
+    const rows: typeof all = [];
+    for (const r of all) {
+      if (!r.recovery_verified || (await hasLinkVerifiedRecoveryEmail(admin, r.user_id, email))) {
+        rows.push(r);
+      }
+    }
     if (rows.length === 0) return generic();
 
     const loginIds = [
