@@ -128,9 +128,18 @@ export async function fetchSubscriptionCached(ttlMs = 60_000): Promise<Subscript
 /**
  * 보호된 페이지 상단에서 호출. 로그인했지만 구독(또는 체험/평생무료)이 없으면
  * /pricing 으로 보낸다. 로그인 안 한 경우엔 각 페이지의 기존 로직에 맡긴다.
+ *
+ * allowExpired(열람 등급 A 화면 — 문서 목록·열람·출력·달력·제안함·교육 진행도):
+ * 만료자(구독 행은 있는데 isAllowed=false — 체험 종료·해지 만료)도 축출하지 않고 연다.
+ * 대신 expired=true를 돌려주니, 화면 안의 "새로 만들기"류 CTA는 /pricing으로 돌릴 것.
+ * 구독 게이트만 완화하는 것이다 — 비로그인 처리는 기존과 동일하게 각 페이지 로직에 맡긴다.
+ * 구독 행 자체가 없는 계정은 만료가 아니라 미가입이므로 여전히 /start-trial로 보낸다.
  */
-export function useRequireSubscription() {
+export function useRequireSubscription(opts?: { allowExpired?: boolean }) {
+    const allowExpired = opts?.allowExpired === true
     const router = useRouter()
+    // 만료자에게 열어준 경우 true — A 화면이 CTA를 결제 유도로 바꾸는 근거
+    const [expired, setExpired] = useState(false)
     // 5분 내 통과 이력이 있으면 즉시 열고, 아래 effect가 백그라운드로 재검증한다
     const [checking, setChecking] = useState(() => {
         if (typeof window === "undefined") return true
@@ -167,19 +176,28 @@ export function useRequireSubscription() {
             }
             if (!isAllowed(data as SubscriptionRow)) {
                 allowedCache = null
+                // 만료자(행 있음)에게 열람을 허용하는 화면 — 축출 대신 expired만 표시하고 연다.
+                // allowedCache는 굽지 않는다: 이 통과는 '구독 통과'가 아니라서, B 화면(분석 등)이
+                // 5분 낙관 오픈으로 만료자에게 먼저 열리는 일이 없어야 한다.
+                if (allowExpired && data) {
+                    setExpired(true)
+                    setChecking(false)
+                    return
+                }
                 // 구독 행 자체가 없는 계정(카카오 OAuth·구 무인증 가입)은 요금제가 아니라
                 // 무료체험 온보딩으로 — "가입 = 첫 달 무료" 약속을 전 가입 경로에서 지킨다.
                 // 행이 있는데 막힌 것(체험 만료·해지)만 결제 유도(/pricing).
                 router.replace(data ? "/pricing" : "/start-trial")
                 return
             }
+            setExpired(false)
             allowedCache = { userId: user.id, ts: Date.now() }
             setChecking(false)
         })()
         return () => {
             active = false
         }
-    }, [router])
+    }, [router, allowExpired])
 
-    return { checking }
+    return { checking, expired }
 }

@@ -20,7 +20,9 @@ type Suggestion = {
 }
 
 export default function SuggestionsPage() {
-    useRequireSubscription()
+    // 열람 등급 A(제안함) — 만료자도 이미 들어온 근로자 제안은 계속 볼 수 있다.
+    // 화면 내 이동은 문서 열람(/report/*)뿐이라 만료자용 CTA 치환은 없다. 비로그인 처리는 기존대로.
+    useRequireSubscription({ allowExpired: true })
     const router = useRouter()
     const [loading, setLoading] = useState(true)
     const [items, setItems] = useState<Suggestion[]>([])

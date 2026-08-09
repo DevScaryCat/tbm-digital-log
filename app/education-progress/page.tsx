@@ -30,7 +30,8 @@ interface CatStat { label: string; color: string; seconds: number; count: number
 
 export default function EducationProgressPage() {
   const router = useRouter()
-  const { checking } = useRequireSubscription()
+  // 열람 등급 A(법정 교육 진행도) — 기존 데이터 집계 화면이라 만료자도 열람 가능. 비로그인은 아래에서 /login.
+  const { checking } = useRequireSubscription({ allowExpired: true })
   const [loading, setLoading] = useState(true)
   const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
   const [regularCats, setRegularCats] = useState<CatStat[]>([])
