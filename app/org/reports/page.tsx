@@ -12,7 +12,7 @@ import { useOrgContext } from "@/lib/useOrgContext"
 import { ReportSettingsPanel, ReportPreviewCard } from "@/components/ReportSettingsPanel"
 import { CompanyDocFormatCard } from "@/components/CompanyDocFormatCard"
 import { ReportScheduleCard } from "@/components/ReportScheduleCard"
-import { fetchSubscription, isProActive, isAllowed } from "@/lib/useSubscription"
+import { fetchSubscription, isProActive, isExpired } from "@/lib/useSubscription"
 
 export default function OrgReportsPage() {
     const router = useRouter()
@@ -30,7 +30,7 @@ export default function OrgReportsPage() {
                 // 만료(행 있음 && 불허)는 '예시' 패널(C)로 새면 안 된다 — 솔로용 /report-settings가
                 // useRequireSubscription으로 만료자를 축출하는 것과 동일하게 결제 유도로 보낸다.
                 // 스피너를 유지한 채 나간다(setLoading(false)를 태우면 이동 직전 예시 패널이 번쩍인다).
-                if (sub && !isAllowed(sub)) { router.replace("/pricing"); return }
+                if (isExpired(sub)) { router.replace("/pricing"); return }
                 setPro(isProActive(sub))
                 setLoading(false)
             } catch {

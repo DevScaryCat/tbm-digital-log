@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { formatRangeLabelKo } from "@/lib/utils"
-import { fetchSubscription, isProActive, isAllowed } from "@/lib/useSubscription"
+import { fetchSubscription, isProActive, isExpired } from "@/lib/useSubscription"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { TBMHeader } from "@/components/TBMHeader"
 import { AnalyzeProgress, type ProgressStep } from "@/components/AnalyzeProgress"
@@ -102,7 +102,7 @@ export default function RiskAssessmentPage() {
             // 만료(행은 있는데 불허 — 체험 종료·해지 만료)는 pro=false로 legacy '예시' 화면(C)에
             // 흘러들면 안 된다 — C는 원래 Pro 미포함 플랜(grandfather·베이직) 전용이다.
             // 만료자는 B 게이트 정책대로 축출(결제 유도). isAllowed=true인 기존 플랜은 그대로 통과.
-            if (s && !isAllowed(s)) { router.replace("/pricing"); return }
+            if (isExpired(s)) { router.replace("/pricing"); return }
             const p = isProActive(s)
             setPro(p)
             if (!p && kind !== "owner") setStep(0) // 베이직: 설명 화면 먼저

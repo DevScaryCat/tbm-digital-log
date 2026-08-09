@@ -35,6 +35,17 @@ export function isProActive(sub: SubscriptionRow | null): boolean {
     return isAllowed(sub) && isProPlanId(sub?.plan)
 }
 
+/**
+ * 만료 판정(단일 진실) — 구독 행은 있는데 isAllowed=false(체험 종료·해지 만료)면 true.
+ * legacy 비구독(isAllowed && !Pro, grandfather·monthly_basic 등)과 반드시 구분할 것 —
+ * 그쪽은 기존 '예시' 화면이 맞고, 만료자만 결제 유도(/pricing)로 보낸다.
+ * 행 없음(null)은 만료가 아니라 미가입(/start-trial 대상)이다. 앱 expiredStatus()와 동일 판정.
+ * 이 식을 페이지에 인라인으로 다시 쓰지 말 것 — 판정식이 갈라지면 grandfather·org_seat·past_due가 오차단된다.
+ */
+export function isExpired(sub: SubscriptionRow | null): boolean {
+    return !!sub && !isAllowed(sub)
+}
+
 /** 화이트리스트(영구 무료 베이직) 여부 */
 export function isWhitelist(sub: SubscriptionRow | null): boolean {
     return sub?.plan === "grandfather"
@@ -179,7 +190,7 @@ export function useRequireSubscription(opts?: { allowExpired?: boolean }) {
                 // 만료자(행 있음)에게 열람을 허용하는 화면 — 축출 대신 expired만 표시하고 연다.
                 // allowedCache는 굽지 않는다: 이 통과는 '구독 통과'가 아니라서, B 화면(분석 등)이
                 // 5분 낙관 오픈으로 만료자에게 먼저 열리는 일이 없어야 한다.
-                if (allowExpired && data) {
+                if (allowExpired && isExpired(data as SubscriptionRow)) {
                     setExpired(true)
                     setChecking(false)
                     return
