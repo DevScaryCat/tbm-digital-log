@@ -13,6 +13,18 @@ import { cancelOrgSeatMirrors, restoreOrgSeatMirrors } from "@/lib/org";
 
 export const MAX_FAILED_ATTEMPTS = 3;
 
+/** 스토어 인앱결제 출처 — 본인 몫(4,900)은 스토어가 청구·갱신한다 */
+export const STORE_SOURCES = ["google_play", "app_store"] as const;
+
+/**
+ * 인앱결제(구글/애플) 구독인가.
+ * 애플도 구글과 청구 구조가 같다(본인 몫은 스토어, 좌석 몫은 우리 카드) — 두 값을 한 곳에서
+ * 판정해, iOS를 추가하며 `source === "google_play"` 비교가 남아 무과금·이중청구가 나는 것을 막는다.
+ */
+export function isStoreSource(source?: string | null): boolean {
+  return source === "google_play" || source === "app_store";
+}
+
 export interface SubscriptionRow {
   id: string;
   user_id: string;
@@ -26,8 +38,8 @@ export interface SubscriptionRow {
   status: string;
   current_period_end: string | null;
   failed_attempts?: number;
-  /** 청구 주체: 'portone'(웹 카드 정기결제) | 'google_play'(앱 인앱결제).
-   *  구글이면 본인 몫(4,900)은 구글이 받으므로 우리 카드 청구는 좌석 몫만이어야 한다. */
+  /** 청구 주체: 'portone'(웹 카드 정기결제) | 'google_play'·'app_store'(앱 인앱결제).
+   *  스토어면 본인 몫(4,900)은 스토어가 받으므로 우리 카드 청구는 좌석 몫만이어야 한다. */
   source?: string | null;
 }
 
@@ -107,9 +119,9 @@ export async function resolveBillableAmount(
   admin: SupabaseClient,
   sub: SubscriptionRow
 ): Promise<{ amount: number; orderName: string; org: BillableOrg | null }> {
-  // 구글 인앱 구독 소유주: 본인 몫(4,900)은 구글이 이미 받는다.
+  // 인앱 구독 소유주(구글/애플): 본인 몫(4,900)은 스토어가 이미 받는다.
   // 등록 카드(PortOne 빌링키)로는 좌석(활성 소속 현장) 몫만 청구한다 — 본인까지 세면 이중청구.
-  const googleOwner = sub.source === "google_play";
+  const googleOwner = isStoreSource(sub.source);
 
   const { data: orgRow } = await admin
     .from("organizations")
@@ -198,11 +210,11 @@ export async function chargeProratedAccount(
   // 못 만든다(가입 직후 안내되는 첫 화면이 바로 '현장 계정 만들기'다).
   // 체험이 끝나는 날 cron이 늘어난 계정 수로 온전히 청구한다.
   if (sub.status === "trialing") {
-    // 단, 구글 인앱 체험 소유주는 카드부터 받는다 — 포트원 체험은 기간이 끝나면 구독 자체가
-    // 잠겨 무과금 좌석도 같이 잠기지만, 구글 소유주는 본인 몫을 구글이 계속 받아 구독이
+    // 단, 인앱 체험 소유주(구글/애플)는 카드부터 받는다 — 포트원 체험은 기간이 끝나면 구독 자체가
+    // 잠겨 무과금 좌석도 같이 잠기지만, 스토어 소유주는 본인 몫을 스토어가 계속 받아 구독이
     // 살아 있으므로 카드 없이 만든 좌석이 영원히 무과금으로 남는다. 청구는 체험 종료 후
     // 첫 정규 주기부터 cron이 한다(체험 중 좌석 무료 관례는 유지).
-    if (source === "google_play" && !sub.billing_key) {
+    if (isStoreSource(source) && !sub.billing_key) {
       return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
     }
     return { ok: true, charged: 0 };
@@ -239,7 +251,7 @@ export async function chargeProratedAccount(
   // 단 grace(past_due) 중에는 받지 않는다 — 회복 시 만료일이 전진해 새 키로 전액이 다시
   // 청구되므로, grace 창에서 전액을 선청구하면 그게 이중청구가 된다.
   let periodBase = 0;
-  if (source === "google_play") {
+  if (isStoreSource(source)) {
     const gseatId = seatPeriodPaymentId(sub);
     const { data: taken } = await admin
       .from("payments")
@@ -472,14 +484,15 @@ export async function chargeSubscription(
 }
 
 /**
- * 구글 인앱 구독 소유주의 좌석 몫 월 청구. (cron 전용)
+ * 인앱 구독 소유주(구글 Play·애플 App Store)의 좌석 몫 월 청구. (cron 전용)
+ * 함수명은 구글만 있던 시절의 잔재 — 애플(source='app_store') 소유주도 같은 구조로 처리한다.
  *
- * 본인 몫(4,900)은 구글이 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
+ * 본인 몫(4,900)은 스토어가 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
  * chargeSubscription을 재사용하지 않는 이유: 그 함수는 성공 시 current_period_end를 전진시키고
- * 실패 시 status를 past_due/canceled로 바꾸는데, 구글 소유주의 그 두 필드는 **구글 구독 상태의
- * 미러**(verify/RTDN이 관리)라서 좌석 카드 문제로 건드리면 본인 구독까지 망가진다.
+ * 실패 시 status를 past_due/canceled로 바꾸는데, 스토어 소유주의 그 두 필드는 **스토어 구독 상태의
+ * 미러**(verify/RTDN·애플 알림이 관리)라서 좌석 카드 문제로 건드리면 본인 구독까지 망가진다.
  *
- * - 멱등: 주기 키 gseat_{subId}_{만료일}. 같은 구글 주기에 1회만 청구.
+ * - 멱등: 주기 키 gseat_{subId}_{만료일}. 같은 스토어 주기에 1회만 청구.
  *   (좌석 증설 일할결제 chargeProratedAccount가 이 키를 먼저 선점했으면 그 주기는 스킵)
  * - 실패: failed_attempts만 증가. MAX_FAILED_ATTEMPTS 도달 시 좌석 미러(org_seat)만 강등 —
  *   소유주 status/기간은 불변. 복구는 카드 재등록(/api/billing/card, 카운터 리셋) 후 다음 cron.

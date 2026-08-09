@@ -5,6 +5,7 @@
 // 마지막 paid가 되면 환불 기준액·주기 시작일이 왜곡되므로(검증 F5) 정기 건과 분리 정산한다.
 import { SupabaseClient } from "@supabase/supabase-js";
 import { cancelPayment, deleteBillingKey } from "@/lib/portone";
+import { isStoreSource } from "@/lib/billing";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -70,9 +71,9 @@ export async function cancelUserSubscription(
 
   if (error || !sub) return { ok: false, notFound: true, refunded: 0, refundFailed: false };
   if (sub.plan === "grandfather") return { ok: false, grandfather: true, refunded: 0, refundFailed: false };
-  // 인앱결제는 구글이 청구·환불 주체다. 우리가 임의로 상태만 바꾸면 구글은 계속 청구하고
-  // 사용자는 "해지했는데 돈이 나간다"가 된다 — 구글 구독 관리로 보내는 것이 유일하게 옳다.
-  if (sub.source === "google_play") {
+  // 인앱결제는 스토어(구글·애플)가 청구·환불 주체다. 우리가 임의로 상태만 바꾸면 스토어는 계속
+  // 청구하고 사용자는 "해지했는데 돈이 나간다"가 된다 — 스토어 구독 관리로 보내는 것이 유일하게 옳다.
+  if (isStoreSource(sub.source)) {
     return { ok: false, storeManaged: true, refunded: 0, refundFailed: false };
   }
   if (sub.status === "canceled") return { ok: true, alreadyCanceled: true, refunded: 0, refundFailed: false };

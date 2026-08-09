@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
 import { cancelUserSubscription } from "@/lib/cancelSubscription";
+import { isStoreSource } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -62,9 +63,9 @@ export async function POST(request: Request) {
     if (!ownerSub || !isProPlan(ownerSub.plan) || !subscriptionAllows(ownerSub)) {
       return NextResponse.json({ error: "초대한 회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." }, { status: 409 });
     }
-    // 구글 결제 소유주가 좌석 청구용 카드 없이 편입으로 좌석을 늘리는 무과금 경로 차단
+    // 인앱결제(구글·애플) 소유주가 좌석 청구용 카드 없이 편입으로 좌석을 늘리는 무과금 경로 차단
     // (invites POST와 동일 게이트 — 편입 수락 시점에도 소유주 카드가 있어야 한다)
-    if ((ownerSub as { source?: string | null }).source === "google_play" && !ownerSub.billing_key) {
+    if (isStoreSource((ownerSub as { source?: string | null }).source) && !ownerSub.billing_key) {
       return NextResponse.json(
         { error: "초대한 회사에 등록된 결제수단이 없습니다. 회사 감독자에게 문의하세요." },
         { status: 409 }

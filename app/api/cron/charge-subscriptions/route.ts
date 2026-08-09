@@ -4,6 +4,7 @@ import {
   chargeSubscription,
   chargeGoogleOwnerSeats,
   MAX_FAILED_ATTEMPTS,
+  STORE_SOURCES,
   SubscriptionRow,
 } from "@/lib/billing";
 
@@ -39,8 +40,10 @@ async function run(request: Request) {
       .in("status", ["trialing", "active", "past_due"])
       .lte("current_period_end", nowIso)
       .not("billing_key", "is", null)
-      // 인앱결제 구독의 **본인 몫**은 구글이 청구·갱신한다 — 우리 크론까지 긁으면 같은 달에 이중청구가 된다.
-      // 구글 소유주의 **좌석 몫**(등록 카드 청구)은 아래 별도 분기(chargeGoogleOwnerSeats)가 담당한다.
+      // 인앱결제 구독(google_play·app_store)의 **본인 몫**은 스토어가 청구·갱신한다 —
+      // 우리 크론까지 긁으면 같은 달에 이중청구가 된다. 스토어 소유주의 **좌석 몫**(등록 카드 청구)은
+      // 아래 별도 분기(chargeGoogleOwnerSeats)가 담당한다.
+      // (source='portone'만 통과시키므로 애플 구독이 섞여도 여기서 자동으로 배제된다)
       .eq("source", "portone")
       .order("current_period_end", { ascending: true })
       .limit(200);
@@ -65,18 +68,19 @@ async function run(request: Request) {
       else results.failed++;
     }
 
-    // ── 구글 인앱 구독 소유주의 좌석 몫 청구 ─────────────────────────────
-    // 본인 몫(4,900)은 구글이 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
+    // ── 인앱 구독(구글·애플) 소유주의 좌석 몫 청구 ─────────────────────
+    // 본인 몫(4,900)은 스토어가 받고, 등록 카드(PortOne 빌링키)로는 활성 좌석 × 3,900만 받는다.
     // 위 portone 쿼리(.eq source portone)가 이들을 건너뛰므로, 여기가 없으면 좌석이 무과금 누수.
-    // 결제일 도래(lte current_period_end) 조건을 쓸 수 없다 — 그 필드는 구글이 갱신 때마다
+    // 애플도 구조가 같다(스토어가 본인 몫, 우리 카드가 좌석 몫) → app_store를 함께 긁는다.
+    // 결제일 도래(lte current_period_end) 조건을 쓸 수 없다 — 그 필드는 스토어가 갱신 때마다
     // 미래로 밀어주는 값이라, 대신 매일 전체를 훑고 주기 키(gseat_…) 멱등으로 1회/주기를 보장한다.
     {
       const { data: googleDue, error: gErr } = await admin
         .from("subscriptions")
         .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts, source")
-        .eq("source", "google_play")
+        .in("source", STORE_SOURCES as unknown as string[])
         .not("billing_key", "is", null)
-        // trialing 제외: 체험 중 좌석 무료(포트원 관례와 동일) — 체험 종료로 구글이 첫 정규 주기를
+        // trialing 제외: 체험 중 좌석 무료(포트원 관례와 동일) — 체험 종료로 스토어가 첫 정규 주기를
         // 열면(만료일 전진→새 주기 키) 그때 온전히 청구된다. canceled 제외: 끊긴 구독에 청구 금지.
         // past_due(구글 grace) 제외(검수 발견): grace 중 구글은 만료일을 grace 종료일로 연장해
         // 주는데(RTDN이 그대로 미러), 그 날짜 키로 좌석 전액을 청구한 뒤 결제가 회복되면

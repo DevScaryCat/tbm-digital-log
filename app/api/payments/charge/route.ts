@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
-import { chargeSubscription, SubscriptionRow } from "@/lib/billing";
+import { chargeSubscription, isStoreSource, SubscriptionRow } from "@/lib/billing";
 import { paymentsEnabled } from "@/lib/utils";
 
 // 수동/테스트 과금: 로그인 사용자의 구독을 빌링키로 즉시 1회 과금
@@ -26,11 +26,11 @@ export async function POST(request: Request) {
     if (error || !sub) {
       return NextResponse.json({ error: "구독을 찾을 수 없습니다." }, { status: 404 });
     }
-    // 구글 결제 구독은 본인 몫을 구글이 청구·갱신한다 — 이 라우트가 좌석 카드로 전액을
-    // 청구하고 current_period_end를 전진시키면 구글 미러가 오염된다(본인 몫 이중청구).
-    if ((sub as { source?: string | null }).source === "google_play") {
+    // 인앱결제 구독(구글·애플)은 본인 몫을 스토어가 청구·갱신한다 — 이 라우트가 좌석 카드로
+    // 전액을 청구하고 current_period_end를 전진시키면 스토어 미러가 오염된다(본인 몫 이중청구).
+    if (isStoreSource((sub as { source?: string | null }).source)) {
       return NextResponse.json(
-        { error: "Google Play 구독은 스토어에서 결제가 관리됩니다." },
+        { error: "앱에서 시작한 구독은 스토어에서 결제가 관리됩니다." },
         { status: 403 }
       );
     }

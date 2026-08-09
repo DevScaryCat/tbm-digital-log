@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
 import { getSubscription, acknowledge, toLocalStatus, isRevokedState } from "@/lib/googlePlay"
+import { isStoreSource } from "@/lib/billing"
 
 export const runtime = "nodejs"
 
@@ -84,9 +85,10 @@ export async function POST(request: Request) {
         if (existing) {
             // PortOne 카드가 붙어 있던 계정이 앱 결제로 **넘어오면** 카드 자동청구를 끊는다 —
             // 안 끊으면 우리 크론과 구글이 같은 달에 각각 청구해 이중결제가 된다.
-            // 단, 이미 google_play인 행의 카드는 좌석 몫(N×3,900) 청구용으로 등록한 것
-            // (/api/billing/card)이다 — 재검증·복원 때마다 지우면 좌석 청구가 끊긴다.
-            if (existing.billing_key && existing.source !== "google_play") {
+            // 단, 이미 스토어 출처(google_play·app_store)인 행의 카드는 좌석 몫(N×3,900)
+            // 청구용으로 등록한 것(/api/billing/card)이다 — 재검증·복원(또는 iOS→안드로이드
+            // 기기 교체)마다 지우면 좌석 청구가 끊겨 무과금이 된다.
+            if (existing.billing_key && !isStoreSource(existing.source)) {
                 patch.billing_key = null
                 patch.billing_key_verified = false
                 patch.card_info = null

@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
+import { isStoreSource } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -45,9 +46,9 @@ export async function POST(request: Request) {
       if (!sub || !subscriptionAllows(sub) || !isProPlan(sub.plan)) {
         return NextResponse.json({ error: "현재 요금제로는 현장을 초대할 수 없어요. 구독을 먼저 확인해주세요." }, { status: 402 });
       }
-      // 구글 결제 소유주는 좌석 청구용 카드가 필수 — 없으면 초대 경로로 만든 좌석이
+      // 인앱결제(구글·애플) 소유주는 좌석 청구용 카드가 필수 — 없으면 초대 경로로 만든 좌석이
       // 월 청구 크론(billing_key NOT NULL 필터)에서 영영 빠져 무기한 무과금이 된다.
-      if ((sub as { source?: string | null }).source === "google_play" && !sub.billing_key) {
+      if (isStoreSource((sub as { source?: string | null }).source) && !sub.billing_key) {
         return NextResponse.json({ error: "등록된 결제수단이 없습니다." }, { status: 402 });
       }
     }
