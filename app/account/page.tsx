@@ -447,6 +447,7 @@ export default function AccountPage() {
                                             </p>
                                             <SubscribeButtons
                                                 mode="update"
+                                                seatOnly
                                                 currentMethod={currentMethodKey}
                                                 onSuccess={async () => {
                                                     setChangingMethod(false)

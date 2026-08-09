@@ -33,7 +33,8 @@ export default function ReportSettingsPage() {
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
             <div className="w-full max-w-md mx-auto px-4 pt-4">
-                <TBMHeader title="출력/발송 설정" backHref="/" pageBadge={pro ? "PRO" : "예시"} />
+                {/* PRO 칩은 옛 이원제 잔재 — 단일 요금제에서 구독자에게 무의미해 삭제(앱과 동일 결정). 비구독 '예시'만 남긴다 */}
+                <TBMHeader title="출력/발송 설정" backHref="/" pageBadge={pro ? undefined : "예시"} />
             </div>
             <div className="flex-1 w-full max-w-md mx-auto px-4 py-6 pb-16">
                 <ReportSettingsPanel pro={pro} />

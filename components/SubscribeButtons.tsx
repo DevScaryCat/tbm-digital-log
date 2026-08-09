@@ -75,6 +75,7 @@ export function SubscribeButtons({
     mode = "subscribe",
     plan = "monthly_pro",
     currentMethod = null,
+    seatOnly = false,
 }: {
     onSuccess?: () => void
     ctaSuffix?: string
@@ -83,14 +84,20 @@ export function SubscribeButtons({
     plan?: "monthly_pro"
     // 현재 적용된 결제수단 key (update 모드에서 '사용 중'으로 비활성 표시). card/kakaopay/naverpay/tosspay
     currentMethod?: string | null
+    // 스토어(인앱) 구독자의 '현장 계정 청구용 카드' 등록 — 본인 몫(월 4,900)은 스토어가 받고
+    // 이 카드로는 좌석 몫(N×3,900)만 나간다(서버 resolveBillableAmount의 isStoreSource 셈법).
+    // true면 표기 금액에서 본인 1계정을 빼고, 7일 전액환불 등 PortOne 구독 전제의 안내문도 바꾼다.
+    seatOnly?: boolean
 }) {
     const router = useRouter()
     const [processing, setProcessing] = useState<string | null>(null)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 실제로 청구될 금액 = (본인 1 + 활성 소속 현장 수) x 단가.
     // 카드사 정기결제창에 표기하는 금액이라, 서버 resolveBillableAmount와 반드시 같아야 한다.
+    // 스토어 구독자(seatOnly)는 본인 몫을 스토어가 받으므로 이 카드 몫은 좌석 수 × 단가만.
     const [accountCount, setAccountCount] = useState(1)
-    const billedAmount = accountCount * SEAT_PRICE
+    const chargeCount = seatOnly ? Math.max(accountCount - 1, 0) : accountCount
+    const billedAmount = chargeCount * SEAT_PRICE
 
     useEffect(() => {
         let alive = true
@@ -153,7 +160,8 @@ export function SubscribeButtons({
                 issueId: crypto.randomUUID().replace(/-/g, ""),
                 issueName: "안톡 월간구독",
                 // KG이니시스 정기결제창에 결제금액 표기(카드사 심사 요건). 매월 청구 금액.
-                displayAmount: billedAmount,
+                // 스토어 구독자가 좌석 0개로 선등록하는 경우엔 좌석 단가(계정당 3,900)를 표기한다 — 0원 표기는 심사·사용자 모두에게 무의미.
+                displayAmount: billedAmount || SEAT_PRICE,
                 currency: "KRW",
                 // 카드(이니시스) 모바일: 이니시스 모바일 빌링 페이지는 iframe 레이어 안에서
                 // 동작하지 않음(500) → 결제사 페이지로 완전히 이동하는 REDIRECTION을 강제.
@@ -270,16 +278,27 @@ export function SubscribeButtons({
             )}
             <div className="mt-1 rounded-lg bg-cur-elevated/60 border border-cur-hairline p-3 text-[12px] leading-relaxed text-cur-muted">
                 <p className="font-medium text-cur-ink mb-1">정기결제(자동결제) 안내</p>
-                {mode === "update" ? (
+                {seatOnly ? (
+                    <p>· 이 카드에는 현장 계정 몫만 청구되며, 스토어에서 결제 중인 내 구독은 그대로 유지됩니다.</p>
+                ) : mode === "update" ? (
                     <p>· 결제수단만 변경되며, 구독 플랜·다음 결제일·결제 금액은 그대로 유지됩니다.</p>
                 ) : (
                     <p>· 서비스 제공 기간: 결제일로부터 1개월(30일) 이용 후 자동 갱신되며, 매월 동일한 날짜에 자동 결제됩니다.</p>
                 )}
-                <p>· 이용요금: 월 {billedAmount.toLocaleString()}원(VAT 포함){accountCount > 1 ? ` — 계정 ${accountCount}개 x ${SEAT_PRICE.toLocaleString()}원` : " · 계정 1개"}. 현장 계정을 추가하면 그만큼 더해집니다.</p>
+                {seatOnly ? (
+                    <p>· 이용요금: 현장 계정당 월 {SEAT_PRICE.toLocaleString()}원(VAT 포함) — 현재 현장 계정 {chargeCount}개, 월 {billedAmount.toLocaleString()}원. 현장 계정을 추가하면 그만큼 더해집니다.</p>
+                ) : (
+                    <p>· 이용요금: 월 {billedAmount.toLocaleString()}원(VAT 포함){accountCount > 1 ? ` — 계정 ${accountCount}개 x ${SEAT_PRICE.toLocaleString()}원` : " · 계정 1개"}. 현장 계정을 추가하면 그만큼 더해집니다.</p>
+                )}
                 {mode !== "update" && (
                     <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
                 )}
-                <p>· 해지는 언제든 가능합니다. 결제 후 7일 이내에 한 번도 사용하지 않았다면 <b>전액 환불</b>되고, 그 외에는 이용하지 않은 잔여 기간을 일할 계산해 환불해 드립니다.</p>
+                {/* 7일 전액환불은 PortOne(웹 카드) 구독 정책 — 스토어 구독자의 좌석 카드에는 해당 없음(환불·해지는 스토어) */}
+                {seatOnly ? (
+                    <p>· 현장 계정을 줄이면 다음 결제부터 그만큼 청구되지 않습니다.</p>
+                ) : (
+                    <p>· 해지는 언제든 가능합니다. 결제 후 7일 이내에 한 번도 사용하지 않았다면 <b>전액 환불</b>되고, 그 외에는 이용하지 않은 잔여 기간을 일할 계산해 환불해 드립니다.</p>
+                )}
             </div>
         </div>
     )
