@@ -138,6 +138,9 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     // 판정 실패(orgCtx null)·소속 현장(member)·조직 구독 만료(orgLapsed)에는 띄우지 않는다. (앱과 동일 규칙)
     const needsFirstSiteAccount =
         multiSite &&
+        // 영구 무료(grandfather)는 좌석을 만들 수 없다(서버 isBillablePlan 402) — 점으로 떠밀면
+        // "구독을 먼저 확인해주세요"로 끝나는 막다른 길이 된다. 2026-08-10 결제 UI 제거와 같은 규율.
+        plan !== "grandfather" &&
         !!orgCtx &&
         (orgCtx.kind === "owner"
             ? (orgCtx.memberIds ?? []).length === 0

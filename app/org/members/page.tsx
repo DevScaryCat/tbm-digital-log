@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, CheckCircle2, ChevronRight, Pencil } from "lucide-react"
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
-import { fetchSubscription, type SubscriptionRow } from "@/lib/useSubscription"
+import { fetchSubscription, isWhitelist, type SubscriptionRow } from "@/lib/useSubscription"
 
 const inputCls =
     "h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -366,6 +366,17 @@ export default function OrgMembersPage() {
                                 </div>
                             ))}
                             {/* 추가는 목록의 마지막 행 — 별도 카드 대신 (Chris 스케치) */}
+                            {/* 영구 무료(grandfather)에게는 추가 진입 자체를 열지 않는다(2026-08-10).
+                                서버(app/api/org/members·bulk·invites)가 isBillablePlan으로 402를 주는데,
+                                그 문구가 "구독을 먼저 확인해주세요"다 — 결제 UI를 걷어낸 계정에게는
+                                갈 곳 없는 유도가 된다. 앱 org-members.tsx의 canIssueSeats와 같은 규율.
+                                (sub 로딩 중에는 null이라 기존처럼 버튼을 보여준다 — 조회 실패로
+                                 유료 감독자의 발급이 잠기는 쪽이 더 나쁘다) */}
+                            {isWhitelist(sub) ? (
+                                <p className="text-[13px] text-cur-muted leading-relaxed p-4">
+                                    영구 무료 계정은 현장 계정을 추가할 수 없어요. 정책 변경 전까지 무료로 사용 가능합니다.
+                                </p>
+                            ) : (
                             <button
                                 type="button"
                                 onClick={() => { setCreatedIds(null); setAddMsg(null); setAddStep("count") }}
@@ -377,6 +388,7 @@ export default function OrgMembersPage() {
                                 <span className="flex-1 min-w-0 text-[14px] font-semibold text-cur-body">현장 계정 추가하기</span>
                                 <ChevronRight className="w-4 h-4 text-cur-muted-soft shrink-0" />
                             </button>
+                            )}
                         </div>
                     )}
                 </section>
