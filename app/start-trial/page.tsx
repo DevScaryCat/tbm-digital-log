@@ -1,10 +1,11 @@
 "use client"
 
 // 가입 마무리 화면 — 구독 행 없이 시작한 계정(카카오 OAuth, 구 무인증 가입) 전용.
-// 아이디 가입 위저드가 가입 시점에 받는 것(약관 동의·현장명·업종·공종·근로자 구분)과
-// 출력 형식까지 한 화면에서 받고, 동일한 규칙(휴대폰 인증 · 번호당 1회)으로 카드 없는
+// 아이디 가입 위저드가 가입 시점에 받는 것(약관 동의·현장명·업종·공종·근로자 구분)에
+// 성명·출력 형식까지 한 화면에서 받고, 동일한 규칙(휴대폰 인증 · 번호당 1회)으로 카드 없는
 // 1개월 체험을 발급한다. 이 값들이 비면 문서에 카톡 닉네임이 업체명으로 인쇄되고,
-// 교육시간 목표가 12시간으로 단정되며, 출력은 PDF로 고정된다.
+// 회의록 진행자 칸에도 닉네임이 들어가며, 교육시간 목표가 12시간으로 단정되고, 출력은
+// PDF로 고정된다.
 // useRequireSubscription이 "구독 행 없음" 계정을 /pricing 대신 여기로 보낸다.
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -36,6 +37,9 @@ export default function StartTrialPage() {
     const [checking, setChecking] = useState(true)
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
 
+    // 성명(full_name) — 회의록 진행자 칸·화면 표시 이름·조직 현장담당자 이름이 전부 이 키에서 나온다.
+    // 카카오 계정은 이 값이 카톡 닉네임으로 차 있어, 안 받으면 닉네임이 문서에 인쇄된다.
+    const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     // 사용 형태(usage_type) — 카카오 가입자는 온보딩 모달이 안 떠서(트리거=출력 형식 부재,
     // 이 화면이 출력 형식을 채움) 이 값을 받을 자리가 여기뿐이다. 홈 유도·헤더 점이 여기서 파생된다.
@@ -89,6 +93,17 @@ export default function StartTrialPage() {
             // 이미 가진 값은 다시 묻지 않고 채워둔다 — 카카오 계정은 대체로 전부 비어 있다
             const meta = session.user.user_metadata ?? {}
             setCompanyName(String(meta.company_name ?? "").trim())
+            // 성명 프리필은 가려서 한다 — 카카오 계정의 full_name은 카톡 닉네임(아이덴티티 원본과
+            // 동일)이고, 구 무인증 가입은 현장명 복사값(company_name과 동일)이다. 둘 다 성명이
+            // 아니라서 미리 채우면 그대로 제출돼 회의록 진행자 칸에 닉네임이 인쇄된다.
+            // 이 화면에서 저장까지 마치고 409(번호 소진)로 되돌아온 계정의 진짜 성명만 되살린다.
+            const metaName = String(meta.full_name ?? "").trim()
+            const identityNames = (session.user.identities ?? [])
+                .map((i) => String((i.identity_data as Record<string, unknown> | undefined)?.full_name ?? "").trim())
+                .filter(Boolean)
+            if (metaName && metaName !== String(meta.company_name ?? "").trim() && !identityNames.includes(metaName)) {
+                setFullName(metaName)
+            }
             if (meta.usage_type === "solo" || meta.usage_type === "multi") setUsage(meta.usage_type)
             setIndustry(String(meta.industry ?? "").trim())
             setWorkCategory(String(meta.work_category ?? "").trim())
@@ -167,6 +182,7 @@ export default function StartTrialPage() {
         setError(null)
         if (needsConsent && !agreed) { setError("약관 및 개인정보처리방침에 동의해주세요."); return }
         if (!usage) { setError("사용 형태를 선택해주세요."); return }
+        if (!fullName.trim()) { setError("성명을 입력해주세요."); return }
         if (!companyName.trim()) { setError("현장명(또는 업체명)을 입력해주세요."); return }
         if (!industry) { setError("업종을 선택해주세요."); return }
         if (!workCategory) { setError("공종을 선택해주세요."); return }
@@ -179,6 +195,7 @@ export default function StartTrialPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
                 body: JSON.stringify({
+                    name: fullName.trim(),
                     companyName: companyName.trim(),
                     usage,
                     industry,
@@ -325,6 +342,21 @@ export default function StartTrialPage() {
                 {/* 3 — 현장 정보. 여기 값이 문서·보고서에 그대로 인쇄되고 교육시간 목표를 정한다 */}
                 <div className={cardCls}>
                     <h2 className="text-[14px] font-bold text-cur-ink">현장 정보</h2>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="st-name" className="text-[13px] font-medium text-cur-body">성명</Label>
+                        <Input
+                            id="st-name"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            placeholder="성명을 입력하세요"
+                            maxLength={30}
+                            className={inputCls}
+                        />
+                        <p className="text-[13px] text-cur-muted leading-relaxed">
+                            회의록의 진행자 칸에 인쇄돼요.
+                        </p>
+                    </div>
 
                     <div className="space-y-1.5">
                         <Label htmlFor="st-company" className="text-[13px] font-medium text-cur-body">현장명 (또는 업체명)</Label>

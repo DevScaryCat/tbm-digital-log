@@ -64,6 +64,10 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
 
+    // 성명 — 가입 라우트의 managerName과 같은 키(full_name)·같은 캡(30자). 카카오 계정은
+    // full_name이 카톡 닉네임으로 차 있어 회의록 진행자 칸에 닉네임이 인쇄된다 — 여기서 실명으로 바꾼다.
+    // 미전송(구 클라이언트)이면 아래 기존 폴백(현장명 복사)이 그대로 동작한다 — 구계정 영향 0.
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 30) : "";
     // 현장명 — 카카오 가입자는 비어 있어 문서·보고서 곳곳이 "현장"으로 나온다. 여기서 채운다.
     const companyName = typeof body.companyName === "string" ? body.companyName.trim().slice(0, 60) : "";
     if (!String(meta.company_name ?? "").trim() && !companyName) {
@@ -108,9 +112,11 @@ export async function POST(request: Request) {
 
     // 메타데이터 보강 — admin update는 전체 치환이라 최신 값을 병합한다
     let committed: Record<string, unknown> = { ...meta };
+    if (name) committed.full_name = name;
     if (companyName) {
       committed.company_name = companyName;
-      if (!String(meta.full_name ?? "").trim()) committed.full_name = companyName;
+      // 성명이 안 왔을 때만 기존 폴백 — full_name이 비면 화면 표시 이름이 이메일 앞부분으로 나온다
+      if (!name && !String(meta.full_name ?? "").trim()) committed.full_name = companyName;
     }
     if (industry) committed.industry = industry;
     if (workCategory) committed.work_category = workCategory;
