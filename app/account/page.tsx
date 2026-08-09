@@ -6,7 +6,8 @@ import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
-import { isAllowed, isProActive, SubscriptionRow } from "@/lib/useSubscription"
+import { isAllowed, isProActive, isWhitelist, SubscriptionRow } from "@/lib/useSubscription"
+import { GrandfatherNotice } from "@/components/GrandfatherNotice"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
@@ -122,7 +123,7 @@ export default function AccountPage() {
         }
     }
 
-    const isGrandfather = sub?.plan === "grandfather"
+    const isGrandfather = isWhitelist(sub)
     // 스토어(인앱) 구독 — 본인 몫(월 4,900)은 스토어가 청구·갱신한다. 해지·결제수단 변경도
     // 결제한 스토어에서만 가능(앱 account.tsx의 storeManaged 분기와 동일 판정·워딩).
     const playManaged = sub?.source === "google_play"
@@ -228,9 +229,11 @@ export default function AccountPage() {
                                 </p>
                             )}
 
+                            {/* 월간 보고서는 2026-08-08 결정으로 영구무료도 받는다 — 결제 이유로 내걸면 거짓말이 된다.
+                                실익은 AI 분석 보고서(한도 0) 하나뿐이라 그것만 말한다. */}
                             {isGrandfather ? (
                                 <p className="text-[14px] text-cur-muted leading-relaxed">
-                                    기존 가입자 혜택으로 영구 무료입니다. AI 분석·월간 보고서는 카드 등록 후 유료 전환(계정 1개당 월 3,900원)하면 이용할 수 있어요.
+                                    기존 가입자 혜택으로 영구 무료입니다. AI 분석 보고서는 카드 등록 후 유료 전환(계정 1개당 월 3,900원)하면 이용할 수 있어요.
                                 </p>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
@@ -481,25 +484,39 @@ export default function AccountPage() {
 
                         {/* 월간 보고서 수신처·발송주기 설정은 /report-settings 로 이관 (중복 제거) */}
 
-                        {/* legacy 요금제(구 베이직·영구무료) 안내 — AI 분석·월간 보고서가 빠져 있다 */}
-                        {active && !pro && (
-                            <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <Sparkles className="w-5 h-5 text-cur-primary" />
-                                    <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
+                        {/* legacy 요금제 업셀 — 구 베이직은 AI 분석·월간 보고서가 둘 다 없지만,
+                            영구무료는 월간 보고서를 받는다(2026-08-08 결정). 같은 문구를 쓰면 거짓말이 되고,
+                            무엇보다 "구독하면 영구 무료 지위가 사라진다"를 결제 버튼 위에서 먼저 말해야 한다. */}
+                        {active &&
+                            !pro &&
+                            (isGrandfather ? (
+                                <div className="space-y-3">
+                                    <GrandfatherNotice />
+                                    <Button
+                                        onClick={() => router.push("/pricing")}
+                                        className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                                    >
+                                        요금제 보기
+                                    </Button>
                                 </div>
-                                <p className="text-[13px] text-cur-muted leading-relaxed">
-                                    지금 요금제엔 AI 분석·월간 보고서가 없어요.
-                                    계정당 월 3,900원에 전부 이용할 수 있어요.
-                                </p>
-                                <Button
-                                    onClick={() => router.push("/pricing")}
-                                    className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
-                                >
-                                    요금제 보기
-                                </Button>
-                            </div>
-                        )}
+                            ) : (
+                                <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="w-5 h-5 text-cur-primary" />
+                                        <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
+                                    </div>
+                                    <p className="text-[13px] text-cur-muted leading-relaxed">
+                                        지금 요금제엔 AI 분석·월간 보고서가 없어요.
+                                        계정당 월 3,900원에 전부 이용할 수 있어요.
+                                    </p>
+                                    <Button
+                                        onClick={() => router.push("/pricing")}
+                                        className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                                    >
+                                        요금제 보기
+                                    </Button>
+                                </div>
+                            ))}
 
                         {/* 결제 내역 */}
                         <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline">

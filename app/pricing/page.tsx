@@ -12,7 +12,8 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
-import { fetchSubscription, isAllowed, SubscriptionRow } from "@/lib/useSubscription"
+import { fetchSubscription, isAllowed, isWhitelist, SubscriptionRow } from "@/lib/useSubscription"
+import { GrandfatherNotice } from "@/components/GrandfatherNotice"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { paymentsEnabled } from "@/lib/utils"
 
@@ -73,7 +74,7 @@ export default function PricingPage() {
     }, [router])
 
     const subscribed = isAllowed(sub)
-    const isGrandfather = sub?.plan === "grandfather"
+    const isGrandfather = isWhitelist(sub)
     const nextDate = sub?.current_period_end
         ? new Date(sub.current_period_end).toLocaleDateString("ko-KR")
         : null
@@ -105,19 +106,14 @@ export default function PricingPage() {
             )
         }
 
-        // 영구 무료(기존 가입자 혜택) — 유료로 올릴 이유가 없으면 그대로 두는 게 맞다
+        // 영구 무료(기존 가입자 혜택) — 구매를 막지는 않되, 결제 버튼 위에서 잃는 것을 먼저 말한다.
+        // (월간 보고서는 2026-08-08 결정으로 grandfather도 받는다 — 예전 문구가 그걸 결제 이유로
+        //  내걸고 있었는데 거짓이다. 실익은 AI 분석 보고서 하나뿐이라 고지 카드가 그것만 말한다.)
         if (isGrandfather) {
             return (
-                <div className="rounded-[12px] bg-cur-elevated border border-cur-hairline p-5 text-center space-y-1">
-                    <p className="font-bold text-cur-ink">영구 무료로 이용 중</p>
-                    <p className="text-cur-muted text-[13px] leading-relaxed">
-                        기존 가입자 혜택입니다. AI 분석 보고서·월간 보고서를 쓰려면 아래에서 결제수단을 등록하세요.
-                    </p>
-                    {paymentsEnabled() && (
-                        <div className="pt-3">
-                            <SubscribeButtons onSuccess={loadSubscription} ctaSuffix="로 시작" />
-                        </div>
-                    )}
+                <div className="space-y-3">
+                    <GrandfatherNotice />
+                    {paymentsEnabled() && <SubscribeButtons onSuccess={loadSubscription} ctaSuffix="로 시작" />}
                 </div>
             )
         }

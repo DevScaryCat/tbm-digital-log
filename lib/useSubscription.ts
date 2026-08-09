@@ -51,6 +51,24 @@ export function isWhitelist(sub: SubscriptionRow | null): boolean {
     return sub?.plan === "grandfather"
 }
 
+// 월 한도 — DB 트리거 enforce_tbm_monthly_limit와 반드시 같은 집합/같은 숫자여야 한다.
+// 유료 단일 티어(monthly_pro·org_seat·구 org) = 200/30/20, legacy(구 베이직·영구무료) = 80/10/0.
+// (TBMHeader의 사용량 바에서 옮겨왔다 — 결제 화면의 영구무료 고지도 같은 표를 읽어야
+//  숫자가 갈라지지 않는다. 앱 src/lib/subscription.ts의 LIMITS와도 동일.)
+const PAID = { log: 200, minutes: 30, ra: 20 }
+const LEGACY = { log: 80, minutes: 10, ra: 0 }
+const LIMITS: Record<string, { log: number; minutes: number; ra: number }> = {
+    monthly_pro: PAID,
+    org_seat: PAID,
+    org: PAID,
+    monthly_basic: LEGACY,
+    grandfather: LEGACY,
+}
+
+export function limitFor(plan: string | null, kind: "log" | "minutes" | "ra"): number {
+    return (LIMITS[plan ?? "monthly_pro"] ?? PAID)[kind]
+}
+
 /** 메인/헤더에 표시할 플랜 배지. 사용 가능한 구독이 없으면 null */
 export function planBadge(sub: SubscriptionRow | null): { label: string; isPro: boolean; trial: boolean } | null {
     if (!isAllowed(sub)) return null
