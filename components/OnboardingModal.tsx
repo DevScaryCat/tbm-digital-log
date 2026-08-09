@@ -67,7 +67,9 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
             })
             const j = await res.json().catch(() => ({}))
             if (!res.ok) { setErr(j.error || "저장에 실패했어요. 다시 시도해주세요."); return }
-            // 서버가 admin API로 바꾼 메타데이터는 로컬 세션 스냅샷에 없다 — 서버 기준으로 다시 읽는다
+            // 서버가 admin API로 바꾼 메타데이터는 로컬 세션 스냅샷에 없다 — 세션을 재발급해
+            // 저장소 스냅샷까지 교체한다(TBMHeader의 점 배지가 getSession에서 usage_type을 읽는다).
+            await supabase.auth.refreshSession().catch(() => null)
             const { data: fresh } = await supabase.auth.getUser()
             onDone(fresh?.user ?? null)
         } catch {

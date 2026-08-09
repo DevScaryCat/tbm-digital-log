@@ -610,9 +610,13 @@ export default function MainPage() {
   // '여러 현장' 선택자가 아직 첫 현장 계정을 안 만든 상태 — usage_type(단일 진실)+역할에서 파생.
   // 예전엔 localStorage 마커였는데, 카드 한 번 클릭에 영구 소멸하고 기기를 바꾸면 사라졌다.
   // 파생이므로 소멸 조건도 상태 그 자체다: 좌석이 생기거나(kind가 owner로) usage를 바꾸면 꺼진다.
+  // 웹 헤더·앱 헤더의 점 배지와 완전히 같은 판정이어야 한다(세 유도가 어긋나면 마커 시절과 같은 비동기).
+  // owner인데 활성 좌석이 0인 경우(전부 해제)도 포함 — 헤더는 점을 띄우는데 홈만 침묵하면 어긋난다.
   const hintAddSite = user?.user_metadata?.usage_type === "multi"
-    && orgCtx?.kind === "solo"
-    && !orgCtx.orgLapsed
+    && !!orgCtx
+    && (orgCtx.kind === "owner"
+      ? (orgCtx.memberIds ?? []).length === 0
+      : orgCtx.kind === "solo" && !orgCtx.orgLapsed)
 
   // 복구용 이메일 배너 조건 — 수신처 공백 배너(noEmail)와 요구('내 정보 수정에서 이메일 등록')와
   // 목적지(/profile#recovery-email)가 같아, 겹치면 배너 하나로 합친다(같은 말 두 번 하지 않기)

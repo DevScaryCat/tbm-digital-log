@@ -158,6 +158,10 @@ export default function ProfilePage() {
             const j = await res.json().catch(() => ({}))
             if (!res.ok) { setUsageMsg(j.error || "저장에 실패했어요. 다시 시도해주세요."); return }
             setUsage(next)
+            // 서버가 admin API로 바꾼 usage_type은 저장된 세션 스냅샷(getSession)에 토큰 갱신(~1시간)까지
+            // 실리지 않는다 — TBMHeader의 '현장 계정 관리' 점이 이 스냅샷에서 파생되므로 세션을 재발급해
+            // 다음 화면부터 곧바로 따라오게 한다(앱 TBMHeader·/start-trial과 동일 규칙).
+            void supabase.auth.refreshSession().catch(() => { /* 실패해도 토큰 갱신 때 따라온다 */ })
         } catch {
             setUsageMsg("네트워크 오류로 저장하지 못했어요.")
         } finally {
