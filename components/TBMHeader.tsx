@@ -200,9 +200,12 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                             <DropdownMenuSeparator className="bg-cur-hairline" />
                         </>
                     )}
-                    {groupLabel("보고서·분석")}
-                    {/* AI 분석 보고서 진입은 출력·통계 페이지의 맥락 버튼으로 이동 — 메뉴에서는 제거 */}
-                    {item({ href: "/org/reports", label: "출력/발송 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {/* 순서: 계정 → 회사 관리 → 보고서·분석 (Chris 2026-08-09 — 자주 쓰는 것·나에 관한 것이 위).
+                        로그아웃만 관례대로 맨 아래 단독. 앱 TBMHeader와 1:1 동일 순서 유지할 것. */}
+                    {groupLabel("계정")}
+                    <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("회사 관리")}
                     {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" />, dot: needsFirstSiteAccount })}
@@ -211,10 +214,10 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                         <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
                     )}
                     <DropdownMenuSeparator className="bg-cur-hairline" />
-                    {groupLabel("계정")}
-                    <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
-                        <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
-                    </DropdownMenuItem>
+                    {groupLabel("보고서·분석")}
+                    {/* AI 분석 보고서 진입은 출력·통계 페이지의 맥락 버튼으로 이동 — 메뉴에서는 제거 */}
+                    {item({ href: "/org/reports", label: "출력/발송 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    <DropdownMenuSeparator className="bg-cur-hairline" />
                     <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                         <LogOut className="mr-2 h-4 w-4" /> 로그아웃
                     </DropdownMenuItem>
