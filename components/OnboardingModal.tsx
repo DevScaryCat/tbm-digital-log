@@ -36,10 +36,9 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
     const [err, setErr] = useState<string | null>(null)
 
     const pickUsage = (u: "solo" | "multi") => {
+        // 로컬 마커는 심지 않는다 — 홈 유도(현장 계정 추가하기)는 서버에 저장되는
+        // usage_type(단일 진실)+역할에서 파생된다. 저장 전 이탈하면 유도도 안 뜨는 게 맞다.
         setUsage(u)
-        // '여러 현장'은 기존 홈 유도(현장 계정 추가하기 입구)와 같은 마커를 쓴다
-        if (u === "multi") { try { window.localStorage.setItem("antok_hint_add_site", "1") } catch { /* 무시 */ } }
-        else { try { window.localStorage.removeItem("antok_hint_add_site") } catch { /* 무시 */ } }
         setStep(2)
     }
 
@@ -91,7 +90,8 @@ export function OnboardingModal({ onDone }: { onDone: (updatedUser: unknown) => 
                     <div className="space-y-4">
                         <div>
                             <h2 className="text-[18px] font-bold text-cur-ink">어떻게 사용하시나요?</h2>
-                            <p className="text-[13px] text-cur-muted mt-1">나중에 언제든 바꿀 수 있어요.</p>
+                            {/* '나중에 바꿀 수 있다'는 약속의 실체는 /profile 사용 형태 토글 — 자리를 구체적으로 말한다 */}
+                            <p className="text-[13px] text-cur-muted mt-1">내 정보 수정에서 언제든 바꿀 수 있어요.</p>
                         </div>
                         <div className="space-y-2.5">
                             <button

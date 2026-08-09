@@ -100,3 +100,14 @@ export const KSIC_MAJORS: KsicMajor[] = [
 export function findKsicMajor(name: string): KsicMajor | undefined {
     return KSIC_MAJORS.find((m) => m.name === name)
 }
+
+/**
+ * 중분류가 단 하나뿐이고 이름까지 대분류와 같은 업종(전기·가스, 기타).
+ * 이런 업종에서 공종 셀렉트를 또 보여주면 같은 문자열을 두 번 고르게 된다 —
+ * 가입·확인 화면은 이 판정으로 공종 칸을 숨기고 한 줄로 합친다(값은 자동 선택돼 저장은 동일).
+ */
+export function isSingleSameMinor(name: string): boolean {
+    const mj = findKsicMajor(name)
+    if (!mj || mj.minors.length !== 1) return false
+    return mj.minors[0].name === mj.name
+}

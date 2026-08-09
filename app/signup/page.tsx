@@ -15,7 +15,7 @@ import { AlertCircle, Loader2, CheckCircle, CheckCircle2, ChevronLeft } from "lu
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
-import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
+import { KSIC_MAJORS, findKsicMajor, isSingleSameMinor } from "@/lib/ksic"
 import { Logo } from "@/components/Logo"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -378,7 +378,8 @@ export default function SignupPage() {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                {industry && (
+                                {/* 중분류가 대분류와 같은 단일 항목(전기·가스, 기타)이면 이미 자동 선택됨 — 같은 이름을 두 번 고르게 하지 않는다 */}
+                                {industry && !isSingleSameMinor(industry) && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
                                         <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
                                         <Select value={workCategory} onValueChange={setWorkCategory}>
@@ -435,8 +436,10 @@ export default function SignupPage() {
                                 {[
                                     ["아이디", id],
                                     ["현장명", siteName],
-                                    ["업종 (대분류)", industry],
-                                    ["공종 (중분류)", workCategory],
+                                    // 업종=공종 동일 문자열이면 한 줄로 — 같은 값이 두 줄 반복되면 오타처럼 읽힌다
+                                    ...(isSingleSameMinor(industry)
+                                        ? [["업종·공종", industry]]
+                                        : [["업종 (대분류)", industry], ["공종 (중분류)", workCategory]]),
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">

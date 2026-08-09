@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Settings } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge } from "@/lib/useSubscription"
-import { fetchOrgContext } from "@/lib/useOrgContext"
+import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
 
 interface TBMHeaderProps {
     title?: string
@@ -84,6 +84,10 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     const [resetLabel, setResetLabel] = useState("매월 1일 초기화")
     // 조직 역할 — member는 보고서 설정·구독/결제 메뉴 숨김, owner는 좌석 관리 노출
     const [orgKind, setOrgKind] = useState<"owner" | "member" | "solo" | null>(null)
+    // 현장 계정 점 배지 판정용 — 조회 실패(null)면 점을 띄우지 않는다 (근거 없이 재촉하지 않기)
+    const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
+    // '여러 현장을 관리해요'를 골랐는가 — user_metadata.usage_type(단일 진실)에서 파생
+    const [multiSite, setMultiSite] = useState(false)
 
     useEffect(() => {
         const getUser = async () => {
@@ -91,6 +95,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
             if (session) {
                 const meta = session.user.user_metadata
                 setUserName(meta.full_name || meta.company_name || "사용자")
+                setMultiSite(meta.usage_type === "multi")
                 const sub = await fetchSubscription()
                 setBadge(planBadge(sub))
                 setPlan(sub?.plan ?? null)
@@ -102,7 +107,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                 }).format(new Date())
                 setUsageStartISO(new Date(`${kstYmd.slice(0, 7)}-01T00:00:00+09:00`).toISOString())
                 setResetLabel("매월 1일 초기화")
-                fetchOrgContext().then((c) => setOrgKind(c?.kind ?? "solo"))
+                fetchOrgContext().then((c) => { setOrgKind(c?.kind ?? "solo"); setOrgCtx(c) })
             }
         }
         getUser()
@@ -140,8 +145,18 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
     // 관리+계정 통합 메뉴 — 기어 버튼을 없애고 이름 하나로 모음 (Chris 7/31).
     // 항목이 늘어난 만큼 섹션 라벨+구분선으로 분류를 명확히 나눈다.
     // 소속 현장에게는 관리 항목을 잠긴 모습으로 보여준다: 어디서 관리되는지 알게.
+    // '여러 현장' 선택자가 아직 현장 계정을 하나도 안 만든 상태 — 현장 계정 관리 메뉴에 점을 띄운다.
+    // 파생 조건 우선: 현장 계정이 1개라도 생기면(owner + 활성 member 존재) 선택값과 무관하게 끈다.
+    // 판정 실패(orgCtx null)·소속 현장(member)·조직 구독 만료(orgLapsed)에는 띄우지 않는다. (앱과 동일 규칙)
+    const needsFirstSiteAccount =
+        multiSite &&
+        !!orgCtx &&
+        (orgCtx.kind === "owner"
+            ? (orgCtx.memberIds ?? []).length === 0
+            : orgCtx.kind === "solo" && !orgCtx.orgLapsed)
+
     const userProfileDropdown = (() => {
-        const item = (m: { href: string; label: string; icon: ReactNode }) =>
+        const item = (m: { href: string; label: string; icon: ReactNode; dot?: boolean }) =>
             orgKind === "member" ? (
                 <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
                     <Lock className="mr-2 h-4 w-4" /> {m.label}
@@ -150,6 +165,8 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
             ) : (
                 <DropdownMenuItem key={m.href} onClick={() => router.push(m.href)} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                     {m.icon} {m.label}
+                    {/* 할 일 점 — 앱 메뉴의 점과 같은 규격(주황 1.5) */}
+                    {m.dot && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cur-primary" />}
                 </DropdownMenuItem>
             )
         const groupLabel = (text: string) => (
@@ -188,7 +205,7 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     {item({ href: "/org/reports", label: "출력/발송 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("회사 관리")}
-                    {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" />, dot: needsFirstSiteAccount })}
                     {item({ href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
                     {orgKind === "member" && (
                         <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>

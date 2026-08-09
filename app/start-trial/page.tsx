@@ -15,12 +15,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, CheckCircle2 } from "lucide-react"
+import { Loader2, CheckCircle2, User, Building2 } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { InAppBrowserNotice } from "@/components/InAppBrowserNotice"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import type { ExportFormat } from "@/lib/exportFormats"
-import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
+import { KSIC_MAJORS, findKsicMajor, isSingleSameMinor } from "@/lib/ksic"
 // 클라이언트에서는 "@/lib/consent"가 아니라 이쪽 — 저쪽은 nodemailer를 끌어와 브라우저 번들이 깨진다
 import { isConsentCurrent } from "@/lib/consentTerms"
 
@@ -37,6 +37,9 @@ export default function StartTrialPage() {
     const [phoneEnabled, setPhoneEnabled] = useState<boolean | null>(null)
 
     const [companyName, setCompanyName] = useState("")
+    // 사용 형태(usage_type) — 카카오 가입자는 온보딩 모달이 안 떠서(트리거=출력 형식 부재,
+    // 이 화면이 출력 형식을 채움) 이 값을 받을 자리가 여기뿐이다. 홈 유도·헤더 점이 여기서 파생된다.
+    const [usage, setUsage] = useState<"solo" | "multi" | null>(null)
     const [industry, setIndustry] = useState("")
     const [workCategory, setWorkCategory] = useState("")
     // 기본값 프리셋 — 가입 위저드와 동일 (별도 검증 불필요)
@@ -86,6 +89,7 @@ export default function StartTrialPage() {
             // 이미 가진 값은 다시 묻지 않고 채워둔다 — 카카오 계정은 대체로 전부 비어 있다
             const meta = session.user.user_metadata ?? {}
             setCompanyName(String(meta.company_name ?? "").trim())
+            if (meta.usage_type === "solo" || meta.usage_type === "multi") setUsage(meta.usage_type)
             setIndustry(String(meta.industry ?? "").trim())
             setWorkCategory(String(meta.work_category ?? "").trim())
             if (meta.worker_type) setWorkerType(String(meta.worker_type))
@@ -162,6 +166,7 @@ export default function StartTrialPage() {
     const claim = async () => {
         setError(null)
         if (needsConsent && !agreed) { setError("약관 및 개인정보처리방침에 동의해주세요."); return }
+        if (!usage) { setError("사용 형태를 선택해주세요."); return }
         if (!companyName.trim()) { setError("현장명(또는 업체명)을 입력해주세요."); return }
         if (!industry) { setError("업종을 선택해주세요."); return }
         if (!workCategory) { setError("공종을 선택해주세요."); return }
@@ -175,6 +180,7 @@ export default function StartTrialPage() {
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
                 body: JSON.stringify({
                     companyName: companyName.trim(),
+                    usage,
                     industry,
                     workCategory,
                     workerType,
@@ -278,7 +284,45 @@ export default function StartTrialPage() {
                     </div>
                 )}
 
-                {/* 2 — 현장 정보. 여기 값이 문서·보고서에 그대로 인쇄되고 교육시간 목표를 정한다 */}
+                {/* 2 — 사용 형태. 온보딩 모달 step1과 같은 질문 — 카카오 경로는 모달이 안 떠서 여기서 받는다 */}
+                <div className={cardCls}>
+                    <h2 className="text-[14px] font-bold text-cur-ink">어떻게 사용하시나요?</h2>
+                    <div className="space-y-2.5">
+                        <button
+                            type="button"
+                            onClick={() => setUsage("solo")}
+                            aria-pressed={usage === "solo"}
+                            className={`w-full flex items-center gap-3.5 p-4 rounded-[12px] border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${
+                                usage === "solo" ? "border-cur-primary bg-cur-primary/5" : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+                            }`}
+                        >
+                            <span className="w-10 h-10 shrink-0 rounded-[10px] bg-cur-elevated flex items-center justify-center"><User className="w-5 h-5 text-cur-ink" /></span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[15px] font-bold text-cur-ink">제 현장 하나만 관리해요</span>
+                                <span className="block text-[12px] text-cur-body mt-0.5">이 계정 하나로 기록하고 출력합니다</span>
+                            </span>
+                            {usage === "solo" && <CheckCircle2 className="w-4 h-4 shrink-0 text-cur-primary" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setUsage("multi")}
+                            aria-pressed={usage === "multi"}
+                            className={`w-full flex items-center gap-3.5 p-4 rounded-[12px] border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${
+                                usage === "multi" ? "border-cur-primary bg-cur-primary/5" : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+                            }`}
+                        >
+                            <span className="w-10 h-10 shrink-0 rounded-[10px] bg-cur-primary/10 flex items-center justify-center"><Building2 className="w-5 h-5 text-cur-primary" /></span>
+                            <span className="flex-1 min-w-0">
+                                <span className="block text-[15px] font-bold text-cur-ink">여러 현장을 관리해요</span>
+                                <span className="block text-[12px] text-cur-body mt-0.5">현장마다 계정을 만들어 연결하고, 이 계정이 감독자가 됩니다</span>
+                            </span>
+                            {usage === "multi" && <CheckCircle2 className="w-4 h-4 shrink-0 text-cur-primary" />}
+                        </button>
+                    </div>
+                    <p className="text-[13px] text-cur-muted leading-relaxed">내 정보 수정에서 언제든 바꿀 수 있어요.</p>
+                </div>
+
+                {/* 3 — 현장 정보. 여기 값이 문서·보고서에 그대로 인쇄되고 교육시간 목표를 정한다 */}
                 <div className={cardCls}>
                     <h2 className="text-[14px] font-bold text-cur-ink">현장 정보</h2>
 
@@ -318,7 +362,8 @@ export default function StartTrialPage() {
                         </Select>
                     </div>
 
-                    {industry && (
+                    {/* 중분류가 대분류와 같은 단일 항목(전기·가스, 기타)이면 이미 자동 선택됨 — 같은 이름을 두 번 고르게 하지 않는다 */}
+                    {industry && !isSingleSameMinor(industry) && (
                         <div className="space-y-1.5">
                             <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory}>
@@ -348,7 +393,7 @@ export default function StartTrialPage() {
                     </div>
                 </div>
 
-                {/* 3 — 출력 형식. 고를 기회가 없으면 PDF로 굳어 한글 양식을 쓰는 현장이 손으로 옮겨 적는다 */}
+                {/* 4 — 출력 형식. 고를 기회가 없으면 PDF로 굳어 한글 양식을 쓰는 현장이 손으로 옮겨 적는다 */}
                 <div className={cardCls}>
                     <h2 className="text-[14px] font-bold text-cur-ink">문서 출력 형식</h2>
                     <ExportFormatPicker value={exportFormat} onChange={setExportFormat} />
@@ -357,7 +402,7 @@ export default function StartTrialPage() {
                     </p>
                 </div>
 
-                {/* 4 — 휴대폰 인증 (게이트가 켜져 있을 때만). 동의 전에는 잠가둔다 */}
+                {/* 5 — 휴대폰 인증 (게이트가 켜져 있을 때만). 동의 전에는 잠가둔다 */}
                 {phoneEnabled && (
                     <div className={cardCls}>
                         <h2 className="text-[14px] font-bold text-cur-ink">휴대폰 인증</h2>
@@ -386,7 +431,7 @@ export default function StartTrialPage() {
                     </div>
                 )}
 
-                {/* 5 — 시작 */}
+                {/* 6 — 시작 */}
                 <div className={cardCls}>
                     <Button
                         onClick={claim}

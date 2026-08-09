@@ -26,7 +26,7 @@ export function countRecipients(list: unknown): RecipientCounts {
  */
 export async function fetchRecipients(
     token?: string,
-): Promise<{ counts: RecipientCounts; recipients: Recipient[]; isPro: boolean } | null> {
+): Promise<{ counts: RecipientCounts; recipients: Recipient[]; isPro: boolean; myEmail: string | null } | null> {
     try {
         const res = await fetch("/api/reports/recipients", {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -34,7 +34,13 @@ export async function fetchRecipients(
         if (!res.ok) return null
         const j = await res.json()
         const recipients = (Array.isArray(j.recipients) ? j.recipients : []) as Recipient[]
-        return { counts: countRecipients(recipients), recipients, isPro: !!j.isPro }
+        return {
+            counts: countRecipients(recipients),
+            recipients,
+            isPro: !!j.isPro,
+            // 서버 판정의 '내 이메일' — 클라 세션 스냅샷(토큰 갱신까지 낡음) 대신 이걸 쓴다
+            myEmail: typeof j.myEmail === "string" && j.myEmail.trim() ? j.myEmail.trim() : null,
+        }
     } catch {
         return null
     }

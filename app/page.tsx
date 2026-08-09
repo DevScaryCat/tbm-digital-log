@@ -10,12 +10,12 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
-import { resolveMyReportEmail, canRecoverAccount, isKakaoUser } from "@/lib/myEmail"
+import { canRecoverAccount, isKakaoUser } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Logo } from "@/components/Logo"
 import { totalSeconds, secondsToHours, formatHoursProgress, isRegularEducationType } from "@/lib/educationHours"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
-import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
+import { KSIC_MAJORS, findKsicMajor, isSingleSameMinor } from "@/lib/ksic"
 import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
 import { OnboardingModal } from "@/components/OnboardingModal"
@@ -287,8 +287,6 @@ export default function MainPage() {
 
   // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 활동 현황 옆 '통계 보기' 버튼 노출
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
-  // 온보딩에서 '여러 현장'을 고르고 셋업을 건너뛴 솔로 — 홈에서 현장 추가 입구를 이어준다
-  const [hintAddSite, setHintAddSite] = useState(false)
   // 보고서를 받을 사람이 아직 없음(=주간·월간 보고서가 아무 데도 안 나감).
   // 설정 입구가 헤더 드롭다운과 분석 보고서 게이트뿐이라 대부분 기능 존재 자체를 모른다.
   const [recipientGap, setRecipientGap] = useState<{ pending: number; noEmail: boolean } | null>(null)
@@ -310,7 +308,6 @@ export default function MainPage() {
     } catch { /* 조회 실패 — null 유지(근거 없이 조르지 않는다) */ }
   }
   useEffect(() => {
-    try { setHintAddSite(window.localStorage.getItem("antok_hint_add_site") === "1") } catch { /* 무시 */ }
     try {
       const hidAt = Number(window.localStorage.getItem(RECOVERY_HINT_HIDDEN_KEY) || 0)
       setRecoveryHintHidden(!!hidAt && Date.now() - hidAt < RECOVERY_HINT_SNOOZE_MS)
@@ -446,8 +443,10 @@ export default function MainPage() {
         const { data } = await supabase.auth.getSession()
         const r = await fetchRecipients(data?.session?.access_token)
         if (cancelled || !r || !r.isPro) return
-        // 온보딩에서 이메일 입력을 건너뛴 계정은 받을 주소 자체가 없다 — 수신처 0명보다 앞선 문제다
-        const noEmail = !resolveMyReportEmail(data?.session?.user as never)
+        // 온보딩에서 이메일 입력을 건너뛴 계정은 받을 주소 자체가 없다 — 수신처 0명보다 앞선 문제다.
+        // 판정은 서버 응답(myEmail)만 쓴다 — 세션 스냅샷은 온보딩(admin API)이 방금 등록한
+        // real_email을 토큰 갱신(~1시간)까지 모른 채 "없다"고 말해 거짓 배너가 떴다.
+        const noEmail = !r.myEmail
         setRecipientGap(noEmail || r.counts.approved === 0 ? { pending: r.counts.pending, noEmail } : null)
       })()
     return () => { cancelled = true }
@@ -608,6 +607,18 @@ export default function MainPage() {
     && orgCtx.kind !== "member"
     && !user.user_metadata?.preferred_export_format
 
+  // '여러 현장' 선택자가 아직 첫 현장 계정을 안 만든 상태 — usage_type(단일 진실)+역할에서 파생.
+  // 예전엔 localStorage 마커였는데, 카드 한 번 클릭에 영구 소멸하고 기기를 바꾸면 사라졌다.
+  // 파생이므로 소멸 조건도 상태 그 자체다: 좌석이 생기거나(kind가 owner로) usage를 바꾸면 꺼진다.
+  const hintAddSite = user?.user_metadata?.usage_type === "multi"
+    && orgCtx?.kind === "solo"
+    && !orgCtx.orgLapsed
+
+  // 복구용 이메일 배너 조건 — 수신처 공백 배너(noEmail)와 요구('내 정보 수정에서 이메일 등록')와
+  // 목적지(/profile#recovery-email)가 같아, 겹치면 배너 하나로 합친다(같은 말 두 번 하지 않기)
+  const showRecoveryHint = !!user && !recoveryHintHidden && !canRecoverAccount(user, recoveryReady)
+  const mergedEmailHint = showRecoveryHint && !!recipientGap?.noEmail
+
   // 작성 카드 2종 — 평소 홈(하단)과 빈 상태(최상단) 두 자리에서 같은 마크업을 쓴다
   const writeCards = (
     <div className="grid grid-cols-2 gap-3">
@@ -698,7 +709,8 @@ export default function MainPage() {
                 </Select>
               </div>
             )}
-            {!setupInheritedProfile && setupIndustry && (
+            {/* 중분류가 대분류와 같은 단일 항목이면 자동 선택돼 있어 묻지 않는다 (가입 위저드와 동일 규칙) */}
+            {!setupInheritedProfile && setupIndustry && !isSingleSameMinor(setupIndustry) && (
               <div className="space-y-1 animate-in slide-in-from-top-2">
                 <label className="text-[13px] font-medium text-cur-body">공종 (중분류)</label>
                 <Select value={setupWorkCategory} onValueChange={setSetupWorkCategory}>
@@ -937,8 +949,8 @@ export default function MainPage() {
         <div className="p-4 sm:p-6 space-y-5">
           {/* 복구용 이메일 미등록 — 아이디 계정은 이 주소가 없으면 비밀번호를 잃는 순간 계정이 통째로 잠긴다.
               등록 창구는 '내 정보 수정' 한 곳뿐이라 여기서는 안내와 이동만 한다(입력창을 또 만들지 않는다).
-              한 번 닫으면 30일간 다시 뜨지 않는다. */}
-          {user && !recoveryHintHidden && !canRecoverAccount(user, recoveryReady) && (
+              한 번 닫으면 30일간 다시 뜨지 않는다. 수신처 공백 배너와 겹치면 아래 병합 배너 하나만 띄운다. */}
+          {showRecoveryHint && !mergedEmailHint && (
             <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25">
               <span className="text-[18px] shrink-0" aria-hidden>📮</span>
               <button
@@ -979,8 +991,9 @@ export default function MainPage() {
             </div>
           )}
 
-          {/* 첫 로그인 온보딩 — 저장이 끝나면 서버 기준 user로 교체돼 조건이 풀린다 */}
-          {needsOnboarding && <OnboardingModal onDone={(u) => { if (u) commitUser(u); setHintAddSite((() => { try { return window.localStorage.getItem("antok_hint_add_site") === "1" } catch { return false } })()) }} />}
+          {/* 첫 로그인 온보딩 — 저장이 끝나면 서버 기준 user로 교체돼 조건이 풀리고,
+              방금 저장된 usage_type에서 홈 유도(hintAddSite)도 곧바로 파생된다 */}
+          {needsOnboarding && <OnboardingModal onDone={(u) => { if (u) commitUser(u) }} />}
 
           {/* 튜토리얼 미이수 배너 — 완료·건너뛰기·X 모두 tutorial_seen_at 기록으로 사라진다 */}
           {user && !user.user_metadata?.tutorial_seen_at && (
@@ -1023,18 +1036,22 @@ export default function MainPage() {
                 className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
               >
                 <span className="block text-[14px] font-semibold text-cur-ink">
-                  {recipientGap.noEmail
-                    ? "보고서 받을 이메일이 없어요"
-                    : recipientGap.pending > 0
-                      ? `보고서 수신 승인 대기 ${recipientGap.pending}명`
-                      : "보고서 받을 사람이 아직 없어요"}
+                  {mergedEmailHint
+                    ? "보고서·계정 복구에 쓸 이메일을 등록해주세요"
+                    : recipientGap.noEmail
+                      ? "보고서 받을 이메일이 없어요"
+                      : recipientGap.pending > 0
+                        ? `보고서 수신 승인 대기 ${recipientGap.pending}명`
+                        : "보고서 받을 사람이 아직 없어요"}
                 </span>
                 <span className="block text-[12px] text-cur-body mt-0.5">
-                  {recipientGap.noEmail
-                    ? "내 정보 수정에서 이메일을 등록해주세요"
-                    : recipientGap.pending > 0
-                      ? "승인 링크를 눌러야 주간·월간 보고서가 발송돼요"
-                      : "등록하면 주간·월간 보고서가 이메일로 자동 발송돼요"}
+                  {mergedEmailHint
+                    ? "내 정보 수정에서 등록·인증하면 보고서 수신과 계정 복구에 함께 쓰여요"
+                    : recipientGap.noEmail
+                      ? "내 정보 수정에서 이메일을 등록해주세요"
+                      : recipientGap.pending > 0
+                        ? "승인 링크를 눌러야 주간·월간 보고서가 발송돼요"
+                        : "등록하면 주간·월간 보고서가 이메일로 자동 발송돼요"}
                 </span>
               </button>
               <button
@@ -1042,6 +1059,11 @@ export default function MainPage() {
                 aria-label="보고서 수신처 안내 닫기"
                 onClick={() => {
                   try { window.localStorage.setItem(RECIPIENT_HINT_HIDDEN_KEY, String(Date.now())) } catch { /* 무시 */ }
+                  // 병합 배너를 닫았는데 복구 배너가 곧바로 홀로 다시 뜨면 '닫기'가 거짓말이 된다
+                  if (mergedEmailHint) {
+                    try { window.localStorage.setItem(RECOVERY_HINT_HIDDEN_KEY, String(Date.now())) } catch { /* 무시 */ }
+                    setRecoveryHintHidden(true)
+                  }
                   setRecipientGap(null)
                 }}
                 className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
@@ -1051,15 +1073,12 @@ export default function MainPage() {
             </div>
           )}
 
-          {/* 솔로가 온보딩에서 '여러 현장'을 골라둔 경우만 — 첫 현장 추가 입구 (그 외 솔로에겐 소음이라 숨김) */}
-          {orgCtx?.kind === "solo" && hintAddSite && (
+          {/* '여러 현장' 선택자가 아직 첫 현장을 안 만든 경우만 — 첫 현장 추가 입구 (그 외 솔로에겐 소음이라 숨김).
+              클릭해도 유도는 죽지 않는다 — 좌석을 실제로 만들거나 usage를 바꿔야 꺼진다(파생 조건) */}
+          {hintAddSite && (
             <button
               type="button"
-              onClick={() => {
-                try { window.localStorage.removeItem("antok_hint_add_site") } catch { /* 무시 */ }
-                setHintAddSite(false)
-                router.push("/org/members?new=1")
-              }}
+              onClick={() => router.push("/org/members?new=1")}
               className="relative w-full flex items-center gap-3 p-4 rounded-[12px] border border-cur-hairline bg-cur-card text-left hover:border-cur-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
             >
               <span aria-hidden className="absolute inset-1 rounded-[10px] border-2 border-cur-primary pointer-events-none animate-pulse" />

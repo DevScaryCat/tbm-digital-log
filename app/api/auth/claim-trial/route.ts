@@ -74,6 +74,9 @@ export async function POST(request: Request) {
     // 여기서 400을 던지면 아래 "동의 먼저 커밋"이 무의미해지므로 조용히 버린다.
     const industry = typeof body.industry === "string" ? body.industry.trim().slice(0, 40) : "";
     const workCategory = typeof body.workCategory === "string" ? body.workCategory.trim().slice(0, 40) : "";
+    // 사용 형태 — usage_type의 최초 기록(카카오 경로는 온보딩 모달이 안 떠서 여기가 유일한 수집처).
+    // 값이 없으면 건드리지 않는다 — 기존 미정 계정의 후수집은 이번 범위 밖.
+    const usage = body.usage === "multi" ? "multi" : body.usage === "solo" ? "solo" : "";
     const workerType = WORKER_TYPES.includes(body.workerType) ? (body.workerType as string) : "";
     const exportFormat = EXPORT_FORMATS.some((f) => f.value === body.exportFormat)
       ? (body.exportFormat as string)
@@ -111,6 +114,7 @@ export async function POST(request: Request) {
     }
     if (industry) committed.industry = industry;
     if (workCategory) committed.work_category = workCategory;
+    if (usage) committed.usage_type = usage;
     if (workerType) committed.worker_type = workerType;
     if (exportFormat) committed.preferred_export_format = exportFormat;
     // 원장 기록이 실패하면 동의 캐시는 심지 않는다 — 증빙 0건인데 게이트만 닫혀

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Mail, CheckCircle2 } from "lucide-react"
+import { Loader2, Mail, CheckCircle2, User, Building2 } from "lucide-react"
 import { showAlert } from "@/lib/uiDialog"
 // 가입 위저드(app/signup)와 동일한 KSIC 기반 옵션 — 여기서 기존 유저가 나중에 편집/백필한다.
 import { KSIC_MAJORS, findKsicMajor } from "@/lib/ksic"
@@ -80,6 +80,12 @@ export default function ProfilePage() {
     }, [])
     useEffect(() => { loadCtx() }, [loadCtx])
 
+    // 사용 형태(usage_type) — '혼자/여러 현장'의 단일 진실. 온보딩이 "나중에 바꿀 수 있다"고
+    // 약속한 자리가 여기다(홈 유도·헤더 점·앱 배지가 전부 이 값에서 파생된다).
+    const [usage, setUsage] = useState<"solo" | "multi" | null>(null)
+    const [usageBusy, setUsageBusy] = useState(false)
+    const [usageMsg, setUsageMsg] = useState<string | null>(null)
+
     const [fullName, setFullName] = useState("")
     const [companyName, setCompanyName] = useState("")
     const [workerType, setWorkerType] = useState("현장 근로자 (비사무직)")
@@ -102,6 +108,13 @@ export default function ProfilePage() {
             }
             const meta = session.user.user_metadata ?? {}
             setIsKakao(isKakaoUser(session.user as never))
+            setUsage(meta.usage_type === "multi" ? "multi" : meta.usage_type === "solo" ? "solo" : null)
+            // usage_type은 admin API(온보딩·이 화면의 PATCH)로 바뀌어 세션 스냅샷이 낡을 수 있다 —
+            // 서버 기준으로 조용히 덮어쓴다 (다른 필드는 본인이 이 화면에서만 고치므로 그대로 둔다)
+            supabase.auth.getUser().then(({ data }) => {
+                const t = data?.user?.user_metadata?.usage_type
+                if (t === "multi" || t === "solo") setUsage(t)
+            }).catch(() => { /* 배경 갱신 실패 — 세션 값 유지 */ })
             setFullName(meta.full_name ?? "")
             setCompanyName(meta.company_name ?? "")
             setWorkerType(meta.worker_type ?? "현장 근로자 (비사무직)")
@@ -128,6 +141,29 @@ export default function ProfilePage() {
     const dirty = initial !== snapshot({ fullName, companyName, workerType, industry, workCategory })
 
     const isMember = ctx?.kind === "member"
+    // 활성 현장 계정이 연결돼 있으면 '혼자 사용'으로 못 바꾼다 — 서버(PATCH /api/profile/usage)의
+    // 409와 같은 판정을 미리 보여주고 선택지를 잠근다
+    const hasSeats = ctx?.kind === "owner" && (ctx.memberIds ?? []).length > 0
+
+    const changeUsage = async (next: "solo" | "multi") => {
+        if (usageBusy || next === usage) return
+        setUsageBusy(true)
+        setUsageMsg(null)
+        try {
+            const res = await fetch("/api/profile/usage", {
+                method: "PATCH",
+                headers: await authHeaders(),
+                body: JSON.stringify({ usage: next }),
+            })
+            const j = await res.json().catch(() => ({}))
+            if (!res.ok) { setUsageMsg(j.error || "저장에 실패했어요. 다시 시도해주세요."); return }
+            setUsage(next)
+        } catch {
+            setUsageMsg("네트워크 오류로 저장하지 못했어요.")
+        } finally {
+            setUsageBusy(false)
+        }
+    }
     // 성명·소속 현장명·근로자 구분은 사람과 현장마다 다른 값이라 본인이 고친다(현장 계정 포함).
     // 회사 공통으로 남는 건 업종·공종뿐 — 이건 fail-closed로 owner/solo 확정 시에만 열고,
     // 판정 실패(null)에서는 잠근다(아래 재시도 카드로 복구).
@@ -332,6 +368,56 @@ export default function ProfilePage() {
                     )}
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
                 </div>
+
+                {/* 사용 형태 — 온보딩 "내 정보 수정에서 바꿀 수 있어요" 약속의 실체.
+                    member(현장 계정)는 회사 소속이라 이 선택 자체가 성립하지 않아 숨긴다. */}
+                {!isMember && (
+                    <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-3">
+                        <Label className="text-[13px] font-medium text-cur-body">사용 형태</Label>
+                        <p className="text-[12px] text-cur-body leading-relaxed">
+                            여러 현장을 고르면 홈과 메뉴에 현장 계정 추가 안내가 열려요.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => changeUsage("solo")}
+                                disabled={usageBusy || hasSeats}
+                                aria-pressed={usage === "solo"}
+                                className={`flex items-center gap-2.5 p-3.5 rounded-[12px] border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary disabled:opacity-50 ${
+                                    usage === "solo" ? "border-cur-primary bg-cur-primary/5" : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+                                }`}
+                            >
+                                <User className={`w-4 h-4 shrink-0 ${usage === "solo" ? "text-cur-primary" : "text-cur-muted"}`} />
+                                <span className="min-w-0">
+                                    <span className="block text-[14px] font-semibold text-cur-ink">현장 하나만</span>
+                                    <span className="block text-[11px] text-cur-muted mt-0.5">이 계정으로만 기록해요</span>
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => changeUsage("multi")}
+                                disabled={usageBusy}
+                                aria-pressed={usage === "multi"}
+                                className={`flex items-center gap-2.5 p-3.5 rounded-[12px] border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary disabled:opacity-50 ${
+                                    usage === "multi" ? "border-cur-primary bg-cur-primary/5" : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+                                }`}
+                            >
+                                <Building2 className={`w-4 h-4 shrink-0 ${usage === "multi" ? "text-cur-primary" : "text-cur-muted"}`} />
+                                <span className="min-w-0">
+                                    <span className="block text-[14px] font-semibold text-cur-ink">여러 현장</span>
+                                    <span className="block text-[11px] text-cur-muted mt-0.5">현장 계정을 만들어 연결해요</span>
+                                </span>
+                            </button>
+                        </div>
+                        {/* 서버 409와 같은 사유를 미리 보여준다 — 눌러보고 나서야 막히는 것보다 낫다 */}
+                        {hasSeats && (
+                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                연결된 현장 계정이 있어 &lsquo;현장 하나만&rsquo;으로 바꿀 수 없어요. 현장 계정 연결을 먼저 해제해주세요.
+                            </p>
+                        )}
+                        {usageMsg && <p className="text-[12px] text-cur-error">{usageMsg}</p>}
+                    </div>
+                )}
 
                 {/* 복구용 이메일 = 보고서 수신 이메일 — '내 이메일'의 단일 창구.
                     입력창을 따로 만들지 않는다: 비밀번호 재설정 메일도 여기서 인증한 주소로만 나간다
