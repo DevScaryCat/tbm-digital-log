@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
         const { data: existing } = await admin
             .from("subscriptions")
-            .select("id, trial_used, source, billing_key")
+            .select("id, trial_used, plan, source, billing_key")
             .eq("user_id", user.id)
             .maybeSingle()
 
@@ -73,6 +73,18 @@ export async function POST(request: Request) {
                 { error: "이미 만료되었거나 사용할 수 없는 결제입니다.", status },
                 { status: 409 }
             )
+        }
+
+        // grandfather(영구 무료)가 인앱결제를 하면 아래 patch가 plan을 monthly_pro로 덮어써
+        // 그 지위가 영영 사라진다 — 해지해도 돌아올 자리가 없는 편도문(2026-08-10 적대적 검수).
+        // 편입(attach)이 쓰는 것과 같은 자리에 기록해 두면, 해지·만료 확정 경로에서 복원할 수 있다.
+        if (existing?.plan === "grandfather") {
+            try {
+                const meta = (user.user_metadata ?? {}) as Record<string, unknown>
+                await admin.auth.admin.updateUserById(user.id, {
+                    user_metadata: { ...meta, prev_plan: "grandfather" },
+                })
+            } catch { /* 비치명 — 결제 자체를 막지는 않는다 */ }
         }
 
         const patch: Record<string, unknown> = {

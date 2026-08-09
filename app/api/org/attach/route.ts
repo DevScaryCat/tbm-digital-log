@@ -72,6 +72,34 @@ export async function POST(request: Request) {
       );
     }
 
+    // 스토어 구독(구글·애플) 보유자는 편입 불가 — **좌석 점유 전에** 막아야 한다.
+    // 서버는 스토어 구독을 해지할 수 없다(권한이 스토어에 있음). 그대로 통과시키면 ③의
+    // cancelUserSubscription이 storeManaged로 무동작 반환하고, 그 실패를 로그만 찍고 지나가
+    // ④가 좌석 미러로 덮어써 버린다 → 스토어가 본인에게 4,900원, 감독자 카드가 같은 좌석에
+    // 3,900원. 한 자리에 무기한 이중청구다(2026-08-10 적대적 검수 발견).
+    // ⚠️ 이 검사를 ②(claim_org_seat) 뒤로 내리면 409로 막을 때 점유한 좌석이 반환되지 않아
+    //    유령 좌석이 남는다 — 반드시 점유 전이다.
+    const { data: myStoreSub } = await admin
+      .from("subscriptions")
+      .select("status, source")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (
+      myStoreSub &&
+      isStoreSource(myStoreSub.source) &&
+      ["active", "trialing", "past_due"].includes(myStoreSub.status)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            myStoreSub.source === "app_store"
+              ? "앱스토어 구독 중인 계정은 바로 편입할 수 없어요. 설정 > Apple 계정 > 구독에서 해지한 뒤 다시 시도해주세요."
+              : "Google Play 구독 중인 계정은 바로 편입할 수 없어요. Play 스토어 > 정기 결제에서 해지한 뒤 다시 시도해주세요.",
+        },
+        { status: 409 }
+      );
+    }
+
     // ② 좌석 점유 (advisory lock) — 실패 시 아무 것도 건드리지 않은 상태로 종료
     const { data: claim, error: claimErr } = await admin.rpc("claim_org_seat", {
       p_org: invite.org_id,
@@ -90,7 +118,7 @@ export async function POST(request: Request) {
     // ③ 기존 개인 구독 정산 (grandfather는 스킵 + detach 시 복원용 지위 기록 §9.3)
     const { data: sub } = await admin
       .from("subscriptions")
-      .select("id, plan, status, billing_key")
+      .select("id, plan, status, billing_key, source")
       .eq("user_id", user.id)
       .maybeSingle();
     if (sub?.plan === "grandfather") {
