@@ -5,7 +5,7 @@
 // 체험 오퍼가 아닌 기본 요금제로 결제를 띄우게 한다.
 
 import { NextResponse } from "next/server"
-import { getUserFromRequest, getAdminClient } from "@/lib/portone"
+import { getUserFromRequest, getAdminClient, isProPlan } from "@/lib/portone"
 
 export const runtime = "nodejs"
 
@@ -25,21 +25,30 @@ export async function GET(request: Request) {
 
     const { data: sub } = await admin
         .from("subscriptions")
-        .select("trial_used, status, source, current_period_end")
+        .select("trial_used, status, plan, source, current_period_end")
         .eq("user_id", user.id)
         .maybeSingle()
 
-    // 이미 이용 중이면 중복 결제를 막는다(앱에서 버튼 자체를 잠그게)
-    const activeNow =
+    // 이미 이용 중이면 중복 결제를 막는다(앱에서 버튼 자체를 잠그게).
+    //
+    // ⚠️ 상태(status)만 보면 안 된다 — 2026-08-10 실측 사고 2건:
+    //  ① 체험이 끝난 계정(status는 여전히 'trialing', 기간만 지남)이 '이미 이용 중'으로 잠겨
+    //     **돈을 내겠다는 사람이 결제를 못 했다**(Chris 실기기).
+    //  ② grandfather 8계정(status='active', 기간 null)이 전부 잠겨 있었다 —
+    //     legacy 페이월이 '구독 시작하기'로 보내는데 그 끝이 막다른 길이었다(실고객 이현로지스 전원).
+    //
+    // 판정 기준: **지금 유효한 Pro 이용권이 있는가**. 있으면 새 구매가 중복이니 막고, 없으면 열어준다.
+    //  · isProPlan: grandfather·monthly_basic(legacy)는 false → 업그레이드 구매를 열어준다.
+    //  · 기간: null이면 무기한 유효(org_seat 미러), 값이 있으면 미래일 때만 유효.
+    // 체험 중(기간 유효)인 monthly_pro는 여전히 막힌다 — 카드 체험과 스토어 구독의 이중과금 방지.
+    const hasValidPro =
         !!sub &&
-        (["active", "trialing", "past_due"].includes(sub.status) ||
-            (sub.status === "canceled" &&
-                !!sub.current_period_end &&
-                new Date(sub.current_period_end) > new Date()))
+        isProPlan(sub.plan) &&
+        (sub.current_period_end === null || new Date(sub.current_period_end) > new Date())
 
     return NextResponse.json({
         trialEligible: !sub?.trial_used,
-        alreadySubscribed: activeNow,
+        alreadySubscribed: hasValidPro,
         source: sub?.source ?? null,
         // 정보 필드(차단 신호 아님) — 감독자 본인 몫은 인앱, 좌석 몫은 카드로 공존 청구된다
         orgOwner: (ownedOrgs ?? 0) > 0,
