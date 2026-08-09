@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
 import { getSubscription, toLocalStatus, isRevoked } from "@/lib/appStore"
+import { isStoreSource, storePurchaseGuard } from "@/lib/billing"
 
 export const runtime = "nodejs"
 
@@ -42,6 +43,17 @@ export async function POST(request: Request) {
         const admin = getAdminClient()
         const token = purchase.originalTransactionId
 
+        const { data: existing } = await admin
+            .from("subscriptions")
+            .select("id, trial_used, source, billing_key")
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+        // 감독자(회사 소유주)는 인앱 단일 상품으로 커버되지 않는다 — 앱 UI(eligibility)만이 아니라
+        // 여기서도 막아야 API 직타로 좌석 몫(N×3,900)이 통째로 무과금이 되는 경로가 닫힌다.
+        const guard = await storePurchaseGuard(admin, user.id, existing?.source)
+        if (guard.block) return NextResponse.json({ error: guard.block }, { status: 409 })
+
         // 같은 영수증이 다른 계정에 이미 붙어 있으면 거절 — 영수증 하나로 여러 계정을 여는 경로 차단.
         // (DB에도 부분 유일 인덱스가 있지만, 여기서 막아야 사용자에게 이유를 설명할 수 있다)
         const { data: owner } = await admin
@@ -63,12 +75,6 @@ export async function POST(request: Request) {
                 { status: 409 }
             )
         }
-
-        const { data: existing } = await admin
-            .from("subscriptions")
-            .select("id, trial_used, source, billing_key")
-            .eq("user_id", user.id)
-            .maybeSingle()
 
         const patch: Record<string, unknown> = {
             user_id: user.id,
@@ -95,9 +101,10 @@ export async function POST(request: Request) {
             // 안 끊으면 우리 크론과 애플이 같은 달에 각각 청구해 이중결제가 된다.
             // 단, 이미 스토어 출처(app_store/google_play)인 행의 카드는 좌석 몫(N×3,900)
             // 청구용으로 등록한 것(/api/billing/card)이라 재검증·복원 때 지우면 좌석 청구가 끊긴다.
-            const storeSource =
-                existing.source === "app_store" || existing.source === "google_play"
-            if (existing.billing_key && !storeSource) {
+            // 좌석(회사)을 가진 계정의 카드도 지우지 않는다 — 좌석 몫을 받을 유일한 수단이라
+            // 지우는 순간 그 감독자의 현장이 전부 무과금이 된다(위 guard가 이미 대부분 막지만,
+            // 스토어 결제 중인 감독자 경로가 여기로 들어온다).
+            if (existing.billing_key && !isStoreSource(existing.source) && !guard.ownsOrg) {
                 patch.billing_key = null
                 patch.billing_key_verified = false
                 patch.card_info = null

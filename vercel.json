@@ -3,6 +3,10 @@
   "regions": ["icn1"],
   "crons": [
     {
+      "path": "/api/cron/reconcile-store-subs",
+      "schedule": "30 0 * * *"
+    },
+    {
       "path": "/api/cron/charge-subscriptions",
       "schedule": "0 1 * * *"
     },

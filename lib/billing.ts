@@ -25,6 +25,36 @@ export function isStoreSource(source?: string | null): boolean {
   return source === "google_play" || source === "app_store";
 }
 
+/**
+ * 인앱결제(구글·애플) 개통을 받아도 되는 계정인가. (verify 라우트 공용 서버 판정)
+ *
+ * 감독자(회사 소유주)는 현장 수만큼 곱해 청구된다. 인앱결제는 고정가 단일 상품이라 그대로 열어주면
+ * 현장 5개짜리 회사가 4,900원 하나로 열린다. eligibility API가 orgOwner로 앱 UI를 막고 있었지만
+ * 그건 **클라이언트 전용**이라 verify를 직접 치면 통과했다 — 서버에서 같은 규칙으로 막는다.
+ *
+ * 단, 이미 스토어로 결제 중인 감독자(source가 app_store·google_play)는 막지 않는다. 구매 복원·
+ * 재검증·기기 교체마다 409를 주면 정상 결제자가 잠긴다.
+ *
+ * 반환 ownsOrg는 좌석 보유 여부 판정에도 쓴다(카드 정보 보존).
+ */
+export async function storePurchaseGuard(
+  admin: SupabaseClient,
+  userId: string,
+  existingSource?: string | null
+): Promise<{ ownsOrg: boolean; block: string | null }> {
+  const { count } = await admin
+    .from("organizations")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId);
+  const ownsOrg = (count ?? 0) > 0;
+  if (!ownsOrg || isStoreSource(existingSource)) return { ownsOrg, block: null };
+  return {
+    ownsOrg,
+    block:
+      "현장 계정을 운영하는 감독자 계정은 앱 스토어 구독으로 결제할 수 없습니다. 안전톡톡 웹(safetalk.kr)의 구독 및 결제에서 카드로 등록해주세요.",
+  };
+}
+
 export interface SubscriptionRow {
   id: string;
   user_id: string;

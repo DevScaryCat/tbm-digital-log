@@ -116,6 +116,14 @@ export async function getUserFromRequest(request: Request) {
   return data.user;
 }
 
+/**
+ * 상태 갱신이 멈춘 행을 걸러내는 유예 폭. 이 기간을 넘도록 만료가 방치된 행은
+ * "권한이 있는 상태"가 아니라 "갱신이 고장난 상태"로 본다.
+ * 2주로 잡은 이유: 정상 경로는 하루 단위로 갱신되므로 여유가 크고, 반대로 우리 크론·자격증명이
+ * 망가져 fail-closed로 정상 결제자를 잠그기 전까지 알아채고 고칠 시간이 충분하다.
+ */
+const STALE_PERIOD_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+
 /** 구독 상태가 앱/유료기능 사용을 허용하는지 (서버 측 판정) */
 export function subscriptionAllows(
   sub: { status?: string; current_period_end?: string | null; billing_key?: string | null } | null,
@@ -128,6 +136,18 @@ export function subscriptionAllows(
     !sub.billing_key &&
     sub.current_period_end &&
     new Date(sub.current_period_end) <= new Date()
+  ) {
+    return false;
+  }
+  // 백스톱: 만료가 STALE_PERIOD_GRACE_MS 넘게 지났는데 상태가 아직 살아 있는 행은 갱신이
+  // 유실된 것이다(스토어 알림 유실 + 재조회 크론 정지, 또는 청구 크론 정지). 정상 운영이면
+  // 카드 구독은 하루 안에 갱신·강등되고 스토어 구독은 재조회 크론이 하루 안에 확정하므로,
+  // 2주가 지나도록 만료 상태로 남아 있는 정상 이용자는 존재하지 않는다.
+  // current_period_end가 null인 행(org_seat 미러·grandfather 영구무료)은 애초에 만료 개념이
+  // 없으므로 여기 걸리지 않는다.
+  if (
+    sub.current_period_end &&
+    Date.now() - new Date(sub.current_period_end).getTime() > STALE_PERIOD_GRACE_MS
   ) {
     return false;
   }

@@ -48,6 +48,44 @@ function appleRoot(): crypto.X509Certificate {
     return rootCert
 }
 
+/**
+ * 애플 서명 전용 인증서를 식별하는 확장 OID (애플 공식 라이브러리와 동일한 핀).
+ * 루트까지의 체인만 확인하면 **부족하다** — 애플 개발자 배포 인증서도 같은 WWDR 중간 인증서에서
+ * 발급돼 Apple Root CA G3로 이어진다. 즉 애플 개발자 계정만 있으면 누구나 자기 인증서로 서명한
+ * JWS를 '애플이 서명한 것'으로 통과시킬 수 있다. 이 두 확장이 그 둘을 갈라놓는다.
+ */
+const OID_LEAF_SERVER_AUTH = "1.2.840.113635.100.6.11.1"
+const OID_INTERMEDIATE_WWDR = "1.2.840.113635.100.6.2.1"
+
+/** 점 표기 OID를 DER TLV(06 len …)로 인코딩 */
+function derOid(oid: string): Buffer {
+    const parts = oid.split(".").map(Number)
+    const body: number[] = [parts[0] * 40 + parts[1]]
+    for (const n of parts.slice(2)) {
+        const chunks: number[] = []
+        let v = n
+        do {
+            chunks.unshift(v & 0x7f)
+            v >>>= 7
+        } while (v > 0)
+        for (let i = 0; i < chunks.length - 1; i++) chunks[i] |= 0x80
+        body.push(...chunks)
+    }
+    return Buffer.from([0x06, body.length, ...body])
+}
+
+const LEAF_OID_DER = derOid(OID_LEAF_SERVER_AUTH)
+const INTERMEDIATE_OID_DER = derOid(OID_INTERMEDIATE_WWDR)
+
+/**
+ * 인증서 DER에 해당 확장 OID가 들어 있는가.
+ * node:crypto의 X509Certificate는 임의 확장을 노출하지 않아, 인코딩된 OID TLV를 DER에서 찾는다
+ * (의존성 추가 없이 확장 존재 여부만 판정하면 충분하다 — 값은 보지 않는다).
+ */
+function hasOid(cert: crypto.X509Certificate, oidDer: Buffer): boolean {
+    return cert.raw.includes(oidDer)
+}
+
 interface AppleKey {
     keyId: string
     issuerId: string
@@ -137,7 +175,16 @@ export function verifyAppleJWS<T>(jws: string): T {
         }
     }
 
-    // ④ 리프 공개키로 본문 서명 확인
+    // ④ 애플 **서명 서비스** 인증서인지 확인 (체인만으로는 개발자 배포 인증서와 구분되지 않는다)
+    if (!hasOid(chain[0], LEAF_OID_DER)) {
+        throw new Error("애플 JWS 리프 인증서에 서명 확장(6.11.1)이 없음")
+    }
+    // 중간 인증서(리프·루트 제외)에 WWDR 확장이 있어야 한다
+    if (!chain.slice(1, -1).some((c) => hasOid(c, INTERMEDIATE_OID_DER))) {
+        throw new Error("애플 JWS 중간 인증서에 WWDR 확장(6.2.1)이 없음")
+    }
+
+    // ⑤ 리프 공개키로 본문 서명 확인
     const ok = crypto.verify(
         "sha256",
         Buffer.from(`${h}.${p}`),
@@ -269,6 +316,12 @@ export async function getSubscription(transactionId: string): Promise<ApplePurch
     const originalTransactionId = tx.originalTransactionId ?? tx.transactionId
     if (!originalTransactionId) throw new Error("애플 거래 식별자 없음")
 
+    // 가족 공유(FAMILY_SHARED)로 얻은 이용권은 우리 구독으로 인정하지 않는다 —
+    // 인정하면 가족 공유를 켠 구독 하나로 구성원 수만큼 계정이 무료로 열린다.
+    if (tx.inAppOwnershipType && tx.inAppOwnershipType !== "PURCHASED") {
+        throw new Error(`직접 구매한 구독이 아닙니다(${tx.inAppOwnershipType})`)
+    }
+
     // 유예기간(status 4) 중에는 실제 이용 가능 시각이 grace 종료일까지 연장된다
     const graceEnd = picked.status === 4 ? picked.renewal?.gracePeriodExpiresDate : undefined
     const endMs = Math.max(graceEnd ?? 0, tx.expiresDate ?? 0)
@@ -279,7 +332,10 @@ export async function getSubscription(transactionId: string): Promise<ApplePurch
         transactionId: tx.transactionId ?? null,
         productId: tx.productId ?? null,
         expiresAt: endMs > 0 ? new Date(endMs).toISOString() : null,
-        autoRenewing: picked.renewal?.autoRenewStatus === 1,
+        // 명시적으로 꺼져 있을 때(0)만 해지 예약으로 본다. signedRenewalInfo가 빠진 응답에서
+        // false로 두면 정상 구독이 'canceled'로 기록돼(toLocalStatus) 좌석 크론(status='active'
+        // 만 청구)이 그 감독자를 통째로 건너뛴다 — 무과금.
+        autoRenewing: picked.renewal?.autoRenewStatus !== 0,
         // 무료체험은 소개 오퍼로 판매된다(기본 요금제엔 오퍼가 붙지 않는다)
         isTrial: tx.offerDiscountType === "FREE_TRIAL" || tx.offerType === 1,
         appAccountToken: tx.appAccountToken ?? null,
