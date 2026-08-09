@@ -21,8 +21,9 @@
 //   · charge-subscriptions 크론의 '해지 + 기간 소진' 스윕
 // 호출하면 안 되는 곳 = 해지 **예약**(잔여 유료 기간 있음). 되돌리면 이미 낸 기간을 뺏는다.
 //
-// 한도는 건드리지 않는다 — grandfather로 돌아가면 DB 트리거 enforce_tbm_monthly_limit이
-// 다시 80/10/0(교육일지·회의록·AI분석)을 적용한다. 그것이 Chris 결정("무료는 유지, 한도는 그대로").
+// 한도는 여기서 건드리지 않는다 — 한도는 plan 문자열만 보고 DB 트리거 enforce_tbm_monthly_limit이
+// 정한다. 2026-08-10 Chris 결정으로 grandfather도 유료와 **같은** 200/30/20(교육일지·회의록·AI분석)을
+// 받으므로, 복원 = "요금만 0원으로 돌아가고 기능·한도는 유료 그대로"가 된다.
 
 import { SupabaseClient } from "@supabase/supabase-js";
 

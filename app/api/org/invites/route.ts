@@ -2,7 +2,7 @@
 // kind='link'  : 신규 가입용 다회용 링크 (14일 만료, 좌석 상한은 가입 시 claim_org_seat가 검증)
 // kind='attach': 기존 계정 편입 초대 — 아이디({id}@tbm.com)로 대상 지정, 대상이 로그인 후 수락
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
 import { isStoreSource } from "@/lib/billing";
 
@@ -43,7 +43,9 @@ export async function POST(request: Request) {
         .select("status, plan, current_period_end, billing_key, source")
         .eq("user_id", user.id)
         .maybeSingle();
-      if (!sub || !subscriptionAllows(sub) || !isProPlan(sub.plan)) {
+      // isBillablePlan: grandfather(영구 무료·카드 등록 불가)는 초대로도 좌석을 못 만든다
+      // (사유는 lib/portone.ts isBillablePlan 주석 — 무과금 좌석 방지)
+      if (!sub || !subscriptionAllows(sub) || !isBillablePlan(sub.plan)) {
         return NextResponse.json({ error: "현재 요금제로는 현장을 초대할 수 없어요. 구독을 먼저 확인해주세요." }, { status: 402 });
       }
       // 인앱결제(구글·애플) 소유주는 좌석 청구용 카드가 필수 — 없으면 초대 경로로 만든 좌석이

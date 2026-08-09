@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getAdminClient, subscriptionAllows, isProPlan, reportEligiblePlan } from "@/lib/portone";
+import { getAdminClient, subscriptionAllows, isProPlan } from "@/lib/portone";
 import { buildMergedMinutesContent, renderReportHtml, buildReportAttachments, type StoredMonthlyContent } from "@/lib/monthlyReport";
 import { buildMergedEducationContent, renderEducationReportHtml, buildEducationAttachments } from "@/lib/educationReport";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
@@ -305,7 +305,7 @@ async function run(request: Request) {
       for (const s of (allSubs as any[]) || []) {
         if (orgLinked.has(s.user_id)) continue; // 회사 경로가 저장
         // grandfather 포함(2026-08-08 결정) — 실고객(이현로지스)이 여기서 통째로 빠져 있었다
-        if (!reportEligiblePlan(s.plan)) continue;
+        if (!isProPlan(s.plan)) continue;
         const ok = ["active", "trialing", "past_due"].includes(s.status) ||
           (s.status === "canceled" && s.current_period_end && new Date(s.current_period_end).getTime() > nowMs0);
         if (!ok) continue;
@@ -389,7 +389,7 @@ async function run(request: Request) {
       if (orgLinked.has(s.user_id)) continue;
       // 구 베이직(monthly_basic)은 계속 제외, grandfather는 포함(2026-08-08 결정) —
       // 수신처를 등록·승인하면 grandfather도 메일을 받는다.
-      if (!reportEligiblePlan(s.plan)) continue;
+      if (!isProPlan(s.plan)) continue;
       // 월간 발송을 끈 계정은 대상에서 뺀다 (화면 토글이 실제로 동작하도록)
       if ((s as any).report_send_monthly === false) continue;
       const ok = ["active", "trialing", "past_due"].includes(s.status) ||

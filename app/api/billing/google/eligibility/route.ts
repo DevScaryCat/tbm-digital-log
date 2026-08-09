@@ -38,8 +38,14 @@ export async function GET(request: Request) {
     //     legacy 페이월이 '구독 시작하기'로 보내는데 그 끝이 막다른 길이었다(실고객 이현로지스 전원).
     //
     // 판정 기준: **지금 유효한 Pro 이용권이 있는가**. 있으면 새 구매가 중복이니 막고, 없으면 열어준다.
-    //  · isProPlan: grandfather·monthly_basic(legacy)는 false → 업그레이드 구매를 열어준다.
-    //  · 기간: null이면 무기한 유효(org_seat 미러), 값이 있으면 미래일 때만 유효.
+    //  · isProPlan: monthly_basic(구 베이직)만 false → 업그레이드 구매를 열어준다.
+    //  · 기간: null이면 무기한 유효(org_seat 미러·grandfather), 값이 있으면 미래일 때만 유효.
+    //
+    // 2026-08-10 Chris 결정으로 grandfather(영구 무료)는 isProPlan=true + 기간 null(무기한)이 되어
+    // 여기서 alreadySubscribed=true가 된다 → 앱의 구매 버튼이 잠긴다. **이게 의도다**:
+    // 영구 무료 계정은 유료와 같은 기능을 이미 쓰고 있고 결제 시스템 자체를 걷어냈다.
+    // (위 ②의 '막다른 길' 지적은 그때 grandfather가 유료 기능을 못 쓰던 전제에서 나온 것이고,
+    //  이제는 기능이 동일하므로 구매를 막는 것이 맞다.)
     // 체험 중(기간 유효)인 monthly_pro는 여전히 막힌다 — 카드 체험과 스토어 구독의 이중과금 방지.
     const hasValidPro =
         !!sub &&

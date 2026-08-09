@@ -4,7 +4,7 @@
 // 좌석 확보 전에 환불·해지하면 편입 실패 시 구독만 증발하므로 반드시 claim이 먼저다.
 // 미러 upsert 실패 시 초대를 소진하지 않고 500 — 재수락으로 자가 복구(claim·정산은 멱등).
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows , isProPlan} from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { cancelUserSubscription } from "@/lib/cancelSubscription";
 import { isStoreSource } from "@/lib/billing";
 import { markGrandfatherForRestore } from "@/lib/grandfather";
@@ -61,7 +61,9 @@ export async function POST(request: Request) {
       .select("status, plan, current_period_end, billing_key, source")
       .eq("user_id", inviterOwnerId)
       .maybeSingle();
-    if (!ownerSub || !isProPlan(ownerSub.plan) || !subscriptionAllows(ownerSub)) {
+    // isBillablePlan: 초대한 감독자가 grandfather(영구 무료·카드 등록 불가)면 편입을 막는다 —
+    // 좌석 몫을 청구할 결제 수단이 없어 무과금 좌석이 된다(invites POST와 동일 게이트)
+    if (!ownerSub || !isBillablePlan(ownerSub.plan) || !subscriptionAllows(ownerSub)) {
       return NextResponse.json({ error: "초대한 회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." }, { status: 409 });
     }
     // 인앱결제(구글·애플) 소유주가 좌석 청구용 카드 없이 편입으로 좌석을 늘리는 무과금 경로 차단

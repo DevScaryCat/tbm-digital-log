@@ -2,7 +2,7 @@
 // 아이디 시드 + 개수 + 공용 초기 비밀번호로 site01, site02… 를 한 번에 만든다.
 // 현장명·현장담당자·새 비밀번호는 현장담당자 본인이 첫 로그인 온보딩에서 입력한다(must_set_password).
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows, isProPlan } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
 import { chargeProratedAccount } from "@/lib/billing";
 
@@ -31,7 +31,9 @@ export async function POST(request: Request) {
       .select("id, user_id, status, plan, current_period_end, billing_key")
       .eq("user_id", user.id)
       .maybeSingle();
-    if (!sub || !subscriptionAllows(sub) || !isProPlan((sub as any).plan)) {
+    // isBillablePlan: grandfather(영구 무료·카드 등록 불가)에게 좌석을 열면 무과금 좌석이 된다
+    // (members 라우트와 동일한 규율 — 사유는 lib/portone.ts isBillablePlan 주석)
+    if (!sub || !subscriptionAllows(sub) || !isBillablePlan((sub as any).plan)) {
       return NextResponse.json(
         { error: "현재 요금제로는 현장 계정을 추가할 수 없어요. 구독을 먼저 확인해주세요." },
         { status: 402 }

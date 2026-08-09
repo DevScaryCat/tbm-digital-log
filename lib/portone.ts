@@ -11,8 +11,9 @@ export interface PlanDef {
   amount: number;
   currency: "KRW";
   /** 유료 단일 티어의 기능(AI 분석 보고서·월간 보고서) 사용 가능 여부.
-   *  legacy(monthly_basic)와 grandfather만 false — DB 트리거 enforce_tbm_monthly_limit의
-   *  200/30/20 대 80/10/0 분기와 반드시 같은 집합이어야 한다. */
+   *  legacy(monthly_basic)만 false — DB 트리거 enforce_tbm_monthly_limit의
+   *  200/30/20 대 80/10/0 분기와 반드시 같은 집합이어야 한다.
+   *  (grandfather는 PLANS에 없는 가상 플랜이고 isProPlan에서 true로 처리한다) */
   pro: boolean;
   /** 사용자가 결제 UI에서 직접 선택할 수 있는 플랜인지.
    *  org_seat는 조직 플로우 전용 — body의 plan을 그대로 받는 라우트에서
@@ -74,17 +75,38 @@ export function getPlan(planId?: string | null): PlanDef {
   return PLANS.monthly_pro;
 }
 
-/** 해당 플랜이 유료 티어 기능을 허용하는지 (grandfather=영구 무료 '베이직'이므로 false) */
+/**
+ * 해당 플랜이 유료 티어 **기능**을 허용하는지.
+ *
+ * 2026-08-10 Chris 결정: grandfather(영구 무료, 실계정 8개)는 "결제 시스템만 빠진 유료 계정"이다.
+ * 기능·한도를 유료와 완전히 동일하게 준다(교육일지 200·회의록 30·AI 분석 20) — 종전에는
+ * false라 AI 분석이 0회로 잠겨 실고객이 핵심 기능을 아예 못 썼다.
+ * 이 집합은 DB 트리거 enforce_tbm_monthly_limit / lib/useSubscription.ts LIMITS /
+ * 앱 src/lib/subscription.ts LIMITS와 반드시 같아야 한다.
+ *
+ * ⚠️ 이 함수는 **기능 자격**만 뜻한다. "돈을 받을 수 있는 구독인가"는 isBillablePlan을 쓸 것 —
+ *    grandfather에게 좌석·조직을 열면 무과금 좌석이 생긴다(아래 주석 참조).
+ */
 export function isProPlan(planId?: string | null): boolean {
-  if (planId === "grandfather") return false;
+  if (planId === "grandfather") return true;
   return getPlan(planId).pro;
 }
 
-/** 주간·월간 보고서 생성·발송 자격 — 유료 자격(isProPlan)과 분리된 기준.
- *  grandfather(영구 무료)가 isProPlan=false라 실고객(이현로지스)이 월간 보고서에서
- *  통째로 빠져 있었다 → 2026-08-08 결정으로 grandfather 포함. 구 베이직(monthly_basic)은 계속 제외. */
-export function reportEligiblePlan(planId?: string | null): boolean {
-  return planId === "grandfather" || isProPlan(planId);
+/**
+ * **실제로 청구가 가능한** 유료 구독인가 — 좌석·조직 게이트 전용 판정.
+ *
+ * isProPlan과 분리한 이유(2026-08-10): grandfather는 기능은 유료와 같지만 결제 수단을
+ * 등록할 수 없는(카드 등록 UI 자체가 없는) 계정이다. 좌석 발급·초대·조직 생성을 isProPlan으로
+ * 게이트하면 grandfather가 통과해 **감독자가 되고, 소속 현장 좌석이 무기한 무과금으로 늘어난다**
+ * (좌석 청구 크론은 billing_key NOT NULL 행만 긁는데 grandfather는 billing_key=null이다).
+ * 그래서 조직·좌석 경로만 이 판정을 쓴다.
+ *
+ * (구 reportEligiblePlan은 삭제했다 — grandfather가 isProPlan=true가 되면서 완전히 같은 식이 됐다.
+ *  주간·월간 보고서 크론은 이제 isProPlan을 직접 쓴다.)
+ */
+export function isBillablePlan(planId?: string | null): boolean {
+  if (planId === "grandfather") return false;
+  return isProPlan(planId);
 }
 
 /** 기본 플랜(하위 호환용 별칭) */

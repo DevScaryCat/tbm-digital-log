@@ -4,7 +4,7 @@
 // PATCH : 비밀번호 리셋 (현장담당자 교체 대응)
 // DELETE: detach (좌석 해제 — 미러 구독 즉시 강등, 계정·데이터는 보존)
 import { NextResponse } from "next/server";
-import { getAdminClient, getUserFromRequest, subscriptionAllows, isProPlan } from "@/lib/portone";
+import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext, listOrgMembers, detachOrgMember } from "@/lib/org";
 import { chargeProratedAccount } from "@/lib/billing";
 
@@ -36,13 +36,16 @@ async function requireOwner(
   if (opts.requireValidSub) {
     // source 포함: 구글 인앱 소유주(source=google_play)는 좌석 일할청구가 구글 주기 키(gseat)를
     // 선점해야 cron 월청구와 이중청구가 안 된다 — chargeProratedAccount가 이 값으로 분기한다.
-    // (subscriptionAllows·isProPlan은 source 무관이라 구글 구독자도 그대로 통과한다)
+    // (subscriptionAllows·isBillablePlan은 source 무관이라 구글 구독자도 그대로 통과한다)
     const { data } = await admin
       .from("subscriptions")
       .select("id, user_id, status, plan, current_period_end, billing_key, source")
       .eq("user_id", user.id)
       .maybeSingle();
-    if (!data || !subscriptionAllows(data) || !isProPlan((data as any).plan)) {
+    // isProPlan이 아니라 isBillablePlan — 2026-08-10부터 grandfather(영구 무료)는 기능상 유료와
+    // 동일하지만 **결제 수단을 등록할 수 없는** 계정이다. isProPlan으로 열면 grandfather가 감독자가
+    // 되어 좌석이 무기한 무과금으로 늘어난다(좌석 청구 크론은 billing_key NOT NULL만 긁는다).
+    if (!data || !subscriptionAllows(data) || !isBillablePlan((data as any).plan)) {
       return {
         error: NextResponse.json(
           { error: "현재 요금제로는 현장 계정을 추가할 수 없어요. 구독을 먼저 확인해주세요." },

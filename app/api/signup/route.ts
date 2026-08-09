@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
-import { PLANS , subscriptionAllows, isProPlan} from "@/lib/portone";
+import { PLANS, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { consentMetaPatch, recordConsent } from "@/lib/consent";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
@@ -59,7 +59,9 @@ export async function POST(request: Request) {
         .maybeSingle();
       // subscriptionAllows로 판정 — 수제 status 나열은 trialing(무료체험 감독자)을 빠뜨려
       // 체험 중 초대 링크 가입이 전부 400으로 죽었다. 체험 중 현장 추가는 무청구가 맞다.
-      const ownerOk = ownerSub && subscriptionAllows(ownerSub) && isProPlan((ownerSub as any).plan);
+      // isBillablePlan: 초대 링크 가입도 좌석을 하나 만드는 경로다 — grandfather(영구 무료·
+      // 카드 등록 불가) 감독자 밑으로는 무과금 좌석이 되므로 막는다(org/attach와 동일 게이트)
+      const ownerOk = ownerSub && subscriptionAllows(ownerSub) && isBillablePlan((ownerSub as any).plan);
       if (!ownerOk) {
         return NextResponse.json(
           { error: "회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." },
