@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
 import { getSubscription, toLocalStatus, isRevoked } from "@/lib/appStore"
-import { isStoreSource, storePurchaseGuard } from "@/lib/billing"
+import { isStoreSource, ownsOrganization } from "@/lib/billing"
 
 export const runtime = "nodejs"
 
@@ -49,10 +49,9 @@ export async function POST(request: Request) {
             .eq("user_id", user.id)
             .maybeSingle()
 
-        // 감독자(회사 소유주)는 인앱 단일 상품으로 커버되지 않는다 — 앱 UI(eligibility)만이 아니라
-        // 여기서도 막아야 API 직타로 좌석 몫(N×3,900)이 통째로 무과금이 되는 경로가 닫힌다.
-        const guard = await storePurchaseGuard(admin, user.id, existing?.source)
-        if (guard.block) return NextResponse.json({ error: guard.block }, { status: 409 })
+        // 감독자(회사 소유주)도 스토어 결제를 허용한다(2026-08-09 번복) — 본인 몫(4,900)은 스토어,
+        // 좌석 몫(N×3,900)은 보존된 카드로 좌석 크론이 계속 청구한다. ownsOrg는 아래 카드 보존 판정용.
+        const ownsOrg = await ownsOrganization(admin, user.id)
 
         // 같은 영수증이 다른 계정에 이미 붙어 있으면 거절 — 영수증 하나로 여러 계정을 여는 경로 차단.
         // (DB에도 부분 유일 인덱스가 있지만, 여기서 막아야 사용자에게 이유를 설명할 수 있다)
@@ -102,9 +101,9 @@ export async function POST(request: Request) {
             // 단, 이미 스토어 출처(app_store/google_play)인 행의 카드는 좌석 몫(N×3,900)
             // 청구용으로 등록한 것(/api/billing/card)이라 재검증·복원 때 지우면 좌석 청구가 끊긴다.
             // 좌석(회사)을 가진 계정의 카드도 지우지 않는다 — 좌석 몫을 받을 유일한 수단이라
-            // 지우는 순간 그 감독자의 현장이 전부 무과금이 된다(위 guard가 이미 대부분 막지만,
-            // 스토어 결제 중인 감독자 경로가 여기로 들어온다).
-            if (existing.billing_key && !isStoreSource(existing.source) && !guard.ownsOrg) {
+            // 지우는 순간 그 감독자의 현장이 전부 무과금이 된다(감독자 스토어 결제 허용 이후
+            // 카드→스토어 전환 감독자가 늘 이 경로로 들어온다).
+            if (existing.billing_key && !isStoreSource(existing.source) && !ownsOrg) {
                 patch.billing_key = null
                 patch.billing_key_verified = false
                 patch.card_info = null

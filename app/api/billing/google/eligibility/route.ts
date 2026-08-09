@@ -15,8 +15,9 @@ export async function GET(request: Request) {
 
     const admin = getAdminClient()
 
-    // 감독자(조직 소유주)는 현장 수만큼 곱해 청구된다. 구글 인앱결제는 고정가 단일 구독이라
-    // 여기서 결제를 허용하면 현장 5개짜리 회사가 4,900원 하나로 열린다 — 앱에서 막는다.
+    // 감독자(조직 소유주) 여부 — 정보 필드. 한때 앱이 이 값으로 결제 UI를 막았지만(좌석 몫 무과금 우려)
+    // 2026-08-09 번복: 본인 몫(4,900)은 스토어, 좌석 몫(N×3,900)은 보존된 카드로 좌석 크론이
+    // 계속 청구하므로 감독자도 인앱결제를 연다. 차단 신호로 쓰지 말 것.
     const { count: ownedOrgs } = await admin
         .from("organizations")
         .select("id", { count: "exact", head: true })
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
         trialEligible: !sub?.trial_used,
         alreadySubscribed: activeNow,
         source: sub?.source ?? null,
-        // 여러 현장을 거느린 계정 — 앱 단일 구독으로는 커버할 수 없다
+        // 정보 필드(차단 신호 아님) — 감독자 본인 몫은 인앱, 좌석 몫은 카드로 공존 청구된다
         orgOwner: (ownedOrgs ?? 0) > 0,
     })
 }

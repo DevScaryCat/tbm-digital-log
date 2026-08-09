@@ -26,33 +26,22 @@ export function isStoreSource(source?: string | null): boolean {
 }
 
 /**
- * 인앱결제(구글·애플) 개통을 받아도 되는 계정인가. (verify 라우트 공용 서버 판정)
+ * 회사(조직) 소유 여부 — verify 라우트 공용.
  *
- * 감독자(회사 소유주)는 현장 수만큼 곱해 청구된다. 인앱결제는 고정가 단일 상품이라 그대로 열어주면
- * 현장 5개짜리 회사가 4,900원 하나로 열린다. eligibility API가 orgOwner로 앱 UI를 막고 있었지만
- * 그건 **클라이언트 전용**이라 verify를 직접 치면 통과했다 — 서버에서 같은 규칙으로 막는다.
- *
- * 단, 이미 스토어로 결제 중인 감독자(source가 app_store·google_play)는 막지 않는다. 구매 복원·
- * 재검증·기기 교체마다 409를 주면 정상 결제자가 잠긴다.
- *
- * 반환 ownsOrg는 좌석 보유 여부 판정에도 쓴다(카드 정보 보존).
+ * 한때 여기서 감독자(조직 소유주)의 스토어 결제를 409로 막았다(고정가 단일 상품이라 좌석 몫
+ * N×3,900이 무과금이 될까 봐). 2026-08-09 번복(Chris 결정): 감독자도 **본인 몫(4,900)은 스토어**로
+ * 내고 **좌석 몫은 기존 카드(PortOne)**로 내는 공존이 가능해졌으므로 차단을 제거했다 —
+ *   (a) verify가 좌석 보유 계정의 billing_key/card_info를 보존하고(아래 반환값이 그 판정),
+ *   (b) 좌석 크론(chargeGoogleOwnerSeats)이 source in ('google_play','app_store') 소유주를 매일 훑어
+ *       활성 좌석 × 3,900을 계속 청구한다.
+ * 반환값은 verify의 "좌석 보유 계정 카드 보존" 판정에 쓴다.
  */
-export async function storePurchaseGuard(
-  admin: SupabaseClient,
-  userId: string,
-  existingSource?: string | null
-): Promise<{ ownsOrg: boolean; block: string | null }> {
+export async function ownsOrganization(admin: SupabaseClient, userId: string): Promise<boolean> {
   const { count } = await admin
     .from("organizations")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", userId);
-  const ownsOrg = (count ?? 0) > 0;
-  if (!ownsOrg || isStoreSource(existingSource)) return { ownsOrg, block: null };
-  return {
-    ownsOrg,
-    block:
-      "현장 계정을 운영하는 감독자 계정은 앱 스토어 구독으로 결제할 수 없습니다. 안전톡톡 웹(safetalk.kr)의 구독 및 결제에서 카드로 등록해주세요.",
-  };
+  return (count ?? 0) > 0;
 }
 
 export interface SubscriptionRow {
