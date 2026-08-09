@@ -197,7 +197,10 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("회사 관리")}
                     {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" />, dot: needsFirstSiteAccount })}
-                    {item({ href: "/account", label: "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {/* 영구 무료(grandfather)에겐 결제라는 말 자체가 없다(Chris 2026-08-10) —
+                        메뉴 라벨이 '결제'면 결제 없는 계정을 결제 화면으로 부르는 셈이다. 도착하는
+                        /account도 같은 판정(isWhitelist)으로 안내문 한 장만 보여준다. */}
+                    {item({ href: "/account", label: plan === "grandfather" ? "이용 정보" : "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
                     {orgKind === "member" && (
                         <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
                     )}

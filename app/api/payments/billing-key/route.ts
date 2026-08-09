@@ -11,7 +11,6 @@ import { chargeSubscription } from "@/lib/billing";
 import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
 import { paymentsEnabled } from "@/lib/utils";
 import { phoneAuthEnabled } from "@/lib/phoneAuth";
-import { markGrandfatherForRestore } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
 // 카카오페이 빌링키 검증 재시도(백오프 ~9s)를 위해 실행시간 여유 확보
@@ -46,6 +45,35 @@ export async function POST(request: Request) {
     // org/org_seat를 body로 밀어넣는 우회 차단 — 회사 플랜 결제는 /api/org/checkout 전용
     if (!selectedPlan.selectable) {
       return NextResponse.json({ error: "선택할 수 없는 플랜입니다." }, { status: 400 });
+    }
+
+    const admin = getAdminClient();
+
+    // 기존 구독 조회 (영구무료 차단 + 체험 사용 여부 + 조직 플랜 가드에 공용).
+    // PortOne 검증(아래)보다 **앞**에 둔다 — 거절할 요청이면 PG 왕복(최대 9초 재시도)을
+    // 시작하기 전에 끊어야 하고, 발급된 빌링키가 붕 뜬 채 남지도 않는다.
+    const { data: existing } = await admin
+      .from("subscriptions")
+      .select("trial_used, status, billing_key, plan, current_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    // --- 영구 무료(grandfather)는 결제수단을 등록할 수 없다 (2026-08-10 Chris) ---
+    // 이 계정들은 "결제 시스템만 빠진 유료 계정"이다: 기능·한도가 이미 유료와 동일(200/30/20)해서
+    // 카드를 걸 이유가 없고, 걸리면 오히려 두 가지가 망가진다.
+    //  (a) 아래 upsert가 plan을 monthly_pro로 덮어써 영구 무료 지위가 행에서 사라진다.
+    //  (b) isBillablePlan이 true가 되며 좌석·조직이 열려 청구 구조가 바뀐다.
+    // UI(/pricing·/account·SubscribeButtons)에서 버튼을 지웠지만, 그건 이 라우트를 직접
+    // 치는 우회를 막지 못한다 — 그래서 서버가 최종 방벽이다.
+    // 409(Conflict): 요청이 틀린 게 아니라 계정 상태가 결제와 양립하지 않는다는 뜻.
+    if (existing?.plan === "grandfather") {
+      return NextResponse.json(
+        {
+          error:
+            "영구 무료 계정은 결제수단을 등록하지 않아요. 정책 변경 전까지 무료로 사용 가능합니다.",
+        },
+        { status: 409 }
+      );
     }
 
     // 1) 빌링키 발급 검증 (PortOne)
@@ -94,14 +122,6 @@ export async function POST(request: Request) {
       (method ? { provider: PROVIDER_LABEL[method] ?? method } : null);
 
     const now = new Date();
-    const admin = getAdminClient();
-
-    // 기존 구독 조회 (체험 사용 여부 + 조직 플랜 가드에 공용)
-    const { data: existing } = await admin
-      .from("subscriptions")
-      .select("trial_used, status, billing_key, plan, current_period_end")
-      .eq("user_id", user.id)
-      .maybeSingle();
 
     // 소속 현장은 감독자가 대신 결제한다 — 본인이 카드를 걸면 미러 행이 덮여 조용히
     // 조직에서 분리되고 감독자는 계속 그 계정 요금을 낸다. plan 문자열이 아니라 실제
@@ -169,13 +189,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, attachedToTrial: true });
     }
 
-    // grandfather(영구 무료)가 카드 구독을 하면 아래 upsert가 plan을 덮어써 그 지위가 사라진다 —
-    // 표식을 남겨야 해지·만료 확정 시점에 되돌릴 수 있다(복원은 lib/grandfather.ts).
-    // 표식은 app_metadata(=service_role 전용)에 쓴다 — user_metadata는 클라이언트가 직접
-    // 쓸 수 있어 아무나 영구 무료를 자칭할 수 있다. 비치명 — 결제를 막지는 않는다.
-    if (existing?.plan === "grandfather") {
-      await markGrandfatherForRestore(admin, user.id);
-    }
+    // (여기 있던 markGrandfatherForRestore 호출은 삭제했다 — 위에서 grandfather를 409로
+    //  끊으므로 도달할 수 없는 코드였고, 남겨두면 "카드로도 구독할 수 있다"는 거짓 신호가 된다.
+    //  스토어 인앱결제·조직 편입 경로는 여전히 그 표식을 남긴다: app/api/billing/{apple,google}/verify,
+    //  app/api/org/attach. 복원은 lib/grandfather.ts restoreGrandfatherIfEligible.)
 
     if (!trialUsed) {
       // --- 최초 구독: 첫 달 무료 체험 ---

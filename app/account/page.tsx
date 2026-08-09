@@ -7,7 +7,6 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { isAllowed, isProActive, isWhitelist, SubscriptionRow } from "@/lib/useSubscription"
-import { GrandfatherNotice } from "@/components/GrandfatherNotice"
 import { fetchOrgContext } from "@/lib/useOrgContext"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
@@ -177,7 +176,8 @@ export default function AccountPage() {
     return (
         <div className="min-h-screen bg-cur-canvas flex flex-col font-sans text-cur-body">
             <div className="w-full max-w-lg mx-auto px-4 pt-4">
-                <TBMHeader title="구독 및 결제" />
+                {/* 영구 무료 계정에는 '결제'가 없다 — 메뉴 라벨(TBMHeader)과 같은 말로 맞춘다 */}
+                <TBMHeader title={isGrandfather ? "이용 정보" : "구독 및 결제"} />
             </div>
 
             <div className="flex-1 w-full max-w-lg mx-auto px-4 py-6 space-y-5">
@@ -229,12 +229,21 @@ export default function AccountPage() {
                                 </p>
                             )}
 
-                            {/* 월간 보고서는 2026-08-08 결정으로 영구무료도 받는다 — 결제 이유로 내걸면 거짓말이 된다.
-                                실익은 AI 분석 보고서(한도 0) 하나뿐이라 그것만 말한다. */}
+                            {/* 2026-08-10 Chris: 영구 무료 = "결제 시스템만 빠진 유료 계정".
+                                여기선 GrandfatherNotice(카드형)를 쓰지 않는다 — 이 상태 카드가 이미
+                                "영구 무료" 제목을 달고 있어 카드 안에 카드를 끼우면 같은 말이 두 번 나온다.
+                                AI 분석도 유료와 같은 월 20회로 열렸으므로 예전의 '카드 등록 후 유료 전환하면
+                                이용할 수 있어요'는 거짓이 됐다(등록 자체가 서버에서 409로 막힌다).
+                                금액·결제수단·다음 결제일은 이 분기에서 한 줄도 그리지 않는다. */}
                             {isGrandfather ? (
-                                <p className="text-[14px] text-cur-muted leading-relaxed">
-                                    기존 가입자 혜택으로 영구 무료입니다. AI 분석 보고서는 카드 등록 후 유료 전환(계정 1개당 월 3,900원)하면 이용할 수 있어요.
-                                </p>
+                                <div className="space-y-2">
+                                    <p className="text-[14px] text-cur-body leading-relaxed">
+                                        정책 변경 전까지 무료로 사용 가능합니다.
+                                    </p>
+                                    <p className="text-[13px] text-cur-muted leading-relaxed">
+                                        모든 기능을 유료 구독과 똑같이 쓸 수 있어요. 결제하실 것은 없습니다.
+                                    </p>
+                                </div>
                             ) : (
                                 <div className="space-y-2 text-[14px]">
                                     {/* 요금 구성 — 계정이 곧 청구 항목이라는 걸 표로 보여준다. 설명 문단보다 행 두 줄이 낫다 */}
@@ -484,41 +493,32 @@ export default function AccountPage() {
 
                         {/* 월간 보고서 수신처·발송주기 설정은 /report-settings 로 이관 (중복 제거) */}
 
-                        {/* legacy 요금제 업셀 — 구 베이직은 AI 분석·월간 보고서가 둘 다 없지만,
-                            영구무료는 월간 보고서를 받는다(2026-08-08 결정). 같은 문구를 쓰면 거짓말이 되고,
-                            무엇보다 "구독하면 영구 무료 지위가 사라진다"를 결제 버튼 위에서 먼저 말해야 한다. */}
-                        {active &&
-                            !pro &&
-                            (isGrandfather ? (
-                                <div className="space-y-3">
-                                    <GrandfatherNotice />
-                                    <Button
-                                        onClick={() => router.push("/pricing")}
-                                        className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
-                                    >
-                                        요금제 보기
-                                    </Button>
+                        {/* legacy 요금제 업셀 — 이제 구 베이직(monthly_basic) 전용이다.
+                            영구 무료는 2026-08-10부터 pro=true(AI 분석 20회 포함)라 !pro에 걸리지 않지만,
+                            판정이 한 번이라도 흔들리면 "결제 없는 계정"에 결제 유도가 뜬다 — 명시로 못 박는다. */}
+                        {active && !pro && !isGrandfather && (
+                            <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-cur-primary" />
+                                    <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
                                 </div>
-                            ) : (
-                                <div className="bg-cur-primary/5 rounded-2xl p-6 border border-cur-primary/30 space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles className="w-5 h-5 text-cur-primary" />
-                                        <h2 className="text-[16px] font-bold text-cur-ink">AI 분석·월간 보고서 이용하기</h2>
-                                    </div>
-                                    <p className="text-[13px] text-cur-muted leading-relaxed">
-                                        지금 요금제엔 AI 분석·월간 보고서가 없어요.
-                                        계정당 월 3,900원에 전부 이용할 수 있어요.
-                                    </p>
-                                    <Button
-                                        onClick={() => router.push("/pricing")}
-                                        className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
-                                    >
-                                        요금제 보기
-                                    </Button>
-                                </div>
-                            ))}
+                                <p className="text-[13px] text-cur-muted leading-relaxed">
+                                    지금 요금제엔 AI 분석·월간 보고서가 없어요.
+                                    계정당 월 3,900원에 전부 이용할 수 있어요.
+                                </p>
+                                <Button
+                                    onClick={() => router.push("/pricing")}
+                                    className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary font-bold"
+                                >
+                                    요금제 보기
+                                </Button>
+                            </div>
+                        )}
 
-                        {/* 결제 내역 */}
+                        {/* 결제 내역 — 영구 무료 계정엔 애초에 결제가 없다. 빈 '결제 내역' 카드는
+                            결제라는 개념을 다시 불러오는 장식일 뿐이라 숨긴다. 다만 과거에 결제한
+                            이력이 남아 있으면(구독했다가 영구 무료로 복원된 계정) 영수증은 계속 보여준다. */}
+                        {(!isGrandfather || payments.length > 0) && (
                         <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline">
                             <div className="flex items-center gap-2 mb-4">
                                 <Receipt className="w-5 h-5 text-cur-muted" />
@@ -548,6 +548,7 @@ export default function AccountPage() {
                                 </div>
                             )}
                         </div>
+                        )}
                     </>
                 )}
             </div>

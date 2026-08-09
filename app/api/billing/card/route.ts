@@ -45,6 +45,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "billingKey가 없습니다." }, { status: 400 });
     }
 
+    const admin = getAdminClient();
+
+    const { data: existing } = await admin
+      .from("subscriptions")
+      .select("id, billing_key, source, plan")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!existing) {
+      return NextResponse.json(
+        { error: "구독 정보가 없습니다. 먼저 구독을 시작해주세요." },
+        { status: 404 }
+      );
+    }
+
+    // 영구 무료(grandfather) 차단 — /api/payments/billing-key와 같은 규칙(2026-08-10 Chris).
+    // 이 라우트는 plan을 덮지 않지만, 좌석 청구용 카드를 붙이는 자리다. 영구 무료 계정은
+    // 애초에 좌석·조직을 열 수 없고(서버 isBillablePlan 게이트), 카드만 붙으면
+    // "결제수단은 등록됐는데 청구될 일은 없는" 유령 빌링키가 PG에 남는다.
+    if (existing.plan === "grandfather") {
+      return NextResponse.json(
+        {
+          error:
+            "영구 무료 계정은 결제수단을 등록하지 않아요. 정책 변경 전까지 무료로 사용 가능합니다.",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 소속 현장 계정 차단 — 미러 행(org_seat)에 카드가 붙으면 조용히 조직 과금 구조가 오염된다
+    const ctx = await getOrgContext(user.id, admin);
+    if (ctx.kind === "member") {
+      return NextResponse.json(
+        { error: "소속 현장 계정입니다. 구독·결제는 회사 감독자가 관리합니다." },
+        { status: 403 }
+      );
+    }
+
+    // 거절할 요청은 여기서 다 끊었다 — 아래부터가 PG 왕복(최대 9초 재시도)이라,
+    // 앞에 두지 않으면 거절당할 계정의 빌링키가 PortOne에 붕 뜬 채로 남는다.
+
     // 1) 빌링키 발급 검증 (billing-key 라우트와 동일 관례 — 간편결제 전파 지연은 백오프 재시도)
     let info = await getBillingKeyInfo(billingKey);
     const retryDelays = [1500, 3000, 4500];
@@ -90,29 +130,6 @@ export async function POST(request: Request) {
     const cardInfo =
       extractCardInfo(info.body) ||
       (typeof method === "string" ? { provider: PROVIDER_LABEL[method] ?? method } : null);
-
-    const admin = getAdminClient();
-
-    // 소속 현장 계정 차단 — 미러 행(org_seat)에 카드가 붙으면 조용히 조직 과금 구조가 오염된다
-    const ctx = await getOrgContext(user.id, admin);
-    if (ctx.kind === "member") {
-      return NextResponse.json(
-        { error: "소속 현장 계정입니다. 구독·결제는 회사 감독자가 관리합니다." },
-        { status: 403 }
-      );
-    }
-
-    const { data: existing } = await admin
-      .from("subscriptions")
-      .select("id, billing_key, source")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!existing) {
-      return NextResponse.json(
-        { error: "구독 정보가 없습니다. 먼저 구독을 시작해주세요." },
-        { status: 404 }
-      );
-    }
 
     // 3) 다른 키로 교체 시 구키는 PG에서 폐기 — 실패해도 교체는 진행 (cancelSubscription 관례)
     if (existing.billing_key && existing.billing_key !== billingKey) {

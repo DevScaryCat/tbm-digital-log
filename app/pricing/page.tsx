@@ -106,17 +106,9 @@ export default function PricingPage() {
             )
         }
 
-        // 영구 무료(기존 가입자 혜택) — 구매를 막지는 않되, 결제 버튼 위에서 잃는 것을 먼저 말한다.
-        // (월간 보고서는 2026-08-08 결정으로 grandfather도 받는다 — 예전 문구가 그걸 결제 이유로
-        //  내걸고 있었는데 거짓이다. 실익은 AI 분석 보고서 하나뿐이라 고지 카드가 그것만 말한다.)
-        if (isGrandfather) {
-            return (
-                <div className="space-y-3">
-                    <GrandfatherNotice />
-                    {paymentsEnabled() && <SubscribeButtons onSuccess={loadSubscription} ctaSuffix="로 시작" />}
-                </div>
-            )
-        }
+        // 영구 무료(grandfather)는 이 함수에 오지 않는다 — 아래 렌더에서 renderAction 자체를
+        // 부르지 않고 GrandfatherNotice 한 장만 띄운다(구매 버튼·요금·결제수단 전부 없음).
+        // 2026-08-10 Chris: 이 계정들은 "결제 시스템만 빠진 유료 계정"이라 팔 것이 없다.
 
         if (!paymentsEnabled()) {
             return (
@@ -209,22 +201,32 @@ export default function PricingPage() {
                 {/* 부제를 없앴다(Chris) — "플랜은 하나뿐이에요. 쓰는 계정 수만큼만 냅니다"는
                     설명하려다 오히려 "왜 계정이 여러 개인데?"를 만들었다. 계정 단위 과금은
                     금액 바로 아래 한 줄이면 충분하고, 계정이 여럿인 사람에겐 실계산이 대신 말한다. */}
-                <h1 className="text-[26px] font-bold text-cur-ink tracking-[-0.02em] text-center">요금제</h1>
+                {/* 영구 무료 계정에게 '요금제'는 살 것이 있다는 뜻이 된다 — 제목부터 바꾼다 */}
+                <h1 className="text-[26px] font-bold text-cur-ink tracking-[-0.02em] text-center">
+                    {isGrandfather ? "이용 정보" : "요금제"}
+                </h1>
+
+                {/* 로딩 중엔 sub이 null이라 isGrandfather=false다. 금액을 먼저 그렸다가 무료 안내로
+                    바뀌면 영구 무료 사용자에게 요금이 한 번 번쩍인다 — 로딩 동안은 금액을 숨긴다. */}
+                {isGrandfather && <GrandfatherNotice />}
 
                 <section className="bg-cur-card rounded-[12px] border border-cur-hairline overflow-hidden">
-                    <div className="text-center px-6 pt-7 pb-6 border-b border-cur-hairline">
-                        <p className="text-[40px] font-bold text-cur-ink leading-none tracking-[-0.03em]">
-                            {(accountCount * SEAT_PRICE).toLocaleString()}
-                            <span className="text-[15px] font-semibold text-cur-muted ml-1.5">원</span>
-                        </p>
-                        <p className="text-[13px] text-cur-muted mt-2.5">
-                            {accountCount > 1
-                                ? `계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · 매달 · VAT 포함`
-                                : `계정 1개당 · 매달 · VAT 포함`}
-                        </p>
-                        <p className="text-[12px] text-cur-muted-soft mt-1">첫 달 무료 · 언제든 해지</p>
-                    </div>
+                    {!isGrandfather && !loading && (
+                        <div className="text-center px-6 pt-7 pb-6 border-b border-cur-hairline">
+                            <p className="text-[40px] font-bold text-cur-ink leading-none tracking-[-0.03em]">
+                                {(accountCount * SEAT_PRICE).toLocaleString()}
+                                <span className="text-[15px] font-semibold text-cur-muted ml-1.5">원</span>
+                            </p>
+                            <p className="text-[13px] text-cur-muted mt-2.5">
+                                {accountCount > 1
+                                    ? `계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · 매달 · VAT 포함`
+                                    : `계정 1개당 · 매달 · VAT 포함`}
+                            </p>
+                            <p className="text-[12px] text-cur-muted-soft mt-1">첫 달 무료 · 언제든 해지</p>
+                        </div>
+                    )}
 
+                    {/* 영구 무료도 한도까지 유료와 같으므로 이 목록은 그대로가 진실이다(200/30/20) */}
                     <ul className="px-6 py-5 space-y-3">
                         {FEATURES.map((f) => (
                             <li key={f} className="flex items-start gap-2.5 text-[14px] text-cur-body">
@@ -235,11 +237,13 @@ export default function PricingPage() {
                     </ul>
                 </section>
 
-                {renderAction()}
+                {!isGrandfather && renderAction()}
 
-                <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
-                    해지해도 남은 기간까지는 그대로 쓸 수 있어요.
-                </p>
+                {!isGrandfather && (
+                    <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
+                        해지해도 남은 기간까지는 그대로 쓸 수 있어요.
+                    </p>
+                )}
             </div>
         </div>
     )

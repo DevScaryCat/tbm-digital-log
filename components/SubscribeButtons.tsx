@@ -7,6 +7,8 @@ import { Loader2, CreditCard } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { paymentsEnabled } from "@/lib/utils"
 import { fetchOrgContext } from "@/lib/useOrgContext"
+import { fetchSubscriptionCached, isWhitelist } from "@/lib/useSubscription"
+import { GrandfatherNotice } from "@/components/GrandfatherNotice"
 import { REDIRECT_CTX_KEY } from "@/components/BillingRedirectHandler"
 
 // 단일 요금제 단가 — 서버 lib/portone.ts SEAT_PRICE와 같은 값이어야 한다.
@@ -98,12 +100,20 @@ export function SubscribeButtons({
     const [accountCount, setAccountCount] = useState(1)
     const chargeCount = seatOnly ? Math.max(accountCount - 1, 0) : accountCount
     const billedAmount = chargeCount * SEAT_PRICE
+    // 영구 무료(grandfather) 안전망. 호출부(/pricing·/account)가 이미 이 컴포넌트를 렌더하지
+    // 않지만, 결제수단 버튼은 한 군데서만 새 나가도 카드가 붙고 그 순간 영구 무료 지위가
+    // plan 덮어쓰기로 사라진다(2026-08-10). 어느 화면에 붙여도 안전하도록 여기서도 막는다.
+    // (진짜 방벽은 서버 — /api/payments/billing-key·/api/billing/card가 409로 거절한다)
+    const [grandfather, setGrandfather] = useState(false)
 
     useEffect(() => {
         let alive = true
         fetchOrgContext().then((c) => {
             if (!alive) return
             if (c?.kind === "owner") setAccountCount(1 + (c.memberIds?.length ?? 0))
+        })
+        fetchSubscriptionCached().then((s) => {
+            if (alive) setGrandfather(isWhitelist(s))
         })
         return () => { alive = false }
     }, [])
@@ -205,6 +215,9 @@ export function SubscribeButtons({
             setProcessing(null)
         }
     }
+
+    // 영구 무료 계정에는 팔 것이 없다 — 결제수단 목록 대신 안내 한 장만
+    if (grandfather) return <GrandfatherNotice />
 
     if (!paymentsEnabled()) {
         return (

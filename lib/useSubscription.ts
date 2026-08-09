@@ -17,9 +17,14 @@ export interface SubscriptionRow {
     amount?: number | null
 }
 
-/** Pro 상당 플랜 여부 — 조직 플랜(org=안전관리자, org_seat=하위 현장) 포함 */
+/** Pro 상당 플랜 여부 — 조직 플랜(org=안전관리자, org_seat=하위 현장) 포함.
+ *
+ * 2026-08-10 Chris 결정: grandfather(영구 무료)는 "결제 시스템만 빠진 유료 계정"이다 → 여기 포함.
+ * 서버 lib/portone.ts isProPlan()과 반드시 같은 집합이어야 한다. 빠져 있으면 화면(AI 분석·
+ * 월간 보고서 설정·통계)이 잠긴 채로 남아, DB 한도만 20회로 열려 있고 정작 들어갈 문이 없다.
+ * ⚠️ "돈을 받을 수 있는 구독인가"는 이 판정이 아니다 — 좌석·조직 게이트는 서버 isBillablePlan. */
 function isProPlanId(plan?: string | null): boolean {
-    return plan === "monthly_pro" || plan === "org" || plan === "org_seat"
+    return plan === "monthly_pro" || plan === "org" || plan === "org_seat" || plan === "grandfather"
 }
 
 /** 화면에 띄울 플랜 이름 — 단일 요금제라 티어 이름이 없다 */
@@ -30,7 +35,7 @@ function planLabel(plan?: string | null): string {
     return "안톡"
 }
 
-/** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather는 영구 무료 베이직이라 Pro 아님) */
+/** 현재 구독이 Pro 기능을 쓸 수 있는 상태인지 (grandfather 포함 — 위 isProPlanId 주석 참조) */
 export function isProActive(sub: SubscriptionRow | null): boolean {
     return isAllowed(sub) && isProPlanId(sub?.plan)
 }
@@ -46,7 +51,7 @@ export function isExpired(sub: SubscriptionRow | null): boolean {
     return !!sub && !isAllowed(sub)
 }
 
-/** 화이트리스트(영구 무료 베이직) 여부 */
+/** 영구 무료(grandfather) 여부 — 기능은 유료와 같고 결제 UI만 없는 계정 */
 export function isWhitelist(sub: SubscriptionRow | null): boolean {
     return sub?.plan === "grandfather"
 }
