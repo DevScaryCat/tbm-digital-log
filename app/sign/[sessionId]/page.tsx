@@ -13,8 +13,10 @@ import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } f
 import { showAlert } from "@/lib/uiDialog"
 
 // 근로자 의견·제안 폼 — 서명 완료 화면의 suggest 단계에서 사용.
-// submit_worker_suggestion RPC(SECURITY DEFINER)가 열린 세션 검증·소유자 결정까지 처리하므로 익명(anon) 그대로 호출한다.
-// 익명이 기본이며, 참석자가 실명을 선택한 경우에만 서명자 이름(p_author_name)을 함께 보낸다.
+// RPC 직접 호출 대신 서버 라우트 /api/suggestions(무인증)를 부른다 — 서버가 기존
+// submit_worker_suggestion RPC 게이트(열린 세션 검증·상한·소유자 결정)를 그대로 태우고,
+// 감독자가 이미 저장하고 나간 세션이면 의견을 저장된 회의록 hazards에 서버에서 합류시킨다.
+// 익명이 기본이며, 참석자가 실명을 선택한 경우에만 서명자 이름(authorName)을 함께 보낸다.
 // sent/onSent를 상위에서 받는 이유: suggest 뷰를 나갔다 오면 이 컴포넌트가 언마운트되므로 1회 전송 상태를 상위에 보존해야 한다.
 function SuggestionForm({
     sessionId,
@@ -39,17 +41,24 @@ function SuggestionForm({
         }
         setSending(true)
         try {
-            const { error } = await supabase.rpc("submit_worker_suggestion", {
-                p_session: sessionId,
-                p_content: text,
-                p_author_name: anonymous ? null : signerName,
+            const res = await fetch("/api/suggestions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sessionId,
+                    content: text,
+                    authorName: anonymous ? null : signerName,
+                }),
             })
-            if (error) {
-                const msg = error.message.includes("SESSION_CLOSED")
+            if (!res.ok) {
+                // 서버가 RPC 에러 코드를 그대로 전달한다 — 기존 안내 문구 분기 유지
+                const data = await res.json().catch(() => ({}))
+                const code = typeof data?.error === "string" ? data.error : ""
+                const msg = code.includes("SESSION_CLOSED")
                     ? "세션이 종료되어 제안을 보낼 수 없습니다."
-                    : error.message.includes("TOO_MANY")
+                    : code.includes("TOO_MANY")
                         ? "이 세션의 제안 접수가 마감되었습니다."
-                        : error.message.includes("NAME_TOO_LONG")
+                        : code.includes("NAME_TOO_LONG")
                             ? "이름이 너무 길어 실명으로 접수할 수 없습니다. 익명으로 보내주세요."
                             : "전송에 실패했습니다. 잠시 후 다시 시도해주세요."
                 showAlert(msg)
@@ -57,6 +66,8 @@ function SuggestionForm({
             }
             setContent("")
             onSent()
+        } catch {
+            showAlert("전송에 실패했습니다. 잠시 후 다시 시도해주세요.")
         } finally {
             setSending(false)
         }

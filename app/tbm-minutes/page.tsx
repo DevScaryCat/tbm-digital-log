@@ -1,7 +1,7 @@
 // app/tbm-minutes/page.tsx
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { useRequireSubscription } from "@/lib/useSubscription"
@@ -429,54 +429,57 @@ export default function TBMMinutesPage() {
         }
     }, [step, sessionId]);
 
+    // 근로자 의견을 위험성평가 항목으로 합류 — step 4 폴링과 저장 직전 스윕이 함께 쓴다.
+    // processedSuggestionIds로 이미 반영한 의견은 다시 넣지 않는다('이전' 왕복·스윕 중복 방어).
+    const mergeWorkerSuggestions = useCallback(async () => {
+        if (!sessionId || isMergingRef.current) return;
+        isMergingRef.current = true;
+        try {
+            const { data, error } = await supabase
+                .from('worker_suggestions')
+                .select('id, content')
+                .eq('session_id', sessionId);
+            if (error || !data) return; // 실패해도 검토 흐름은 계속
+            const fresh = (data as { id: string; content: string }[])
+                .filter(s => !processedSuggestionIds.current.has(s.id))
+                .slice(0, 30); // API 상한
+            if (fresh.length === 0) return;
+            setIsMergingSuggestions(true);
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch('/api/ai/suggestion-hazards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+                    body: JSON.stringify({ suggestions: fresh.map(s => s.content.slice(0, 500)) })
+                });
+                if (!res.ok) {
+                    if (res.status !== 429 && res.status !== 402) console.error('suggestion-hazards error:', res.status);
+                    return;
+                }
+                const result = await res.json();
+                if (Array.isArray(result.hazards) && result.hazards.length > 0) {
+                    setFormData(prev => ({ ...prev, hazards: [...prev.hazards, ...result.hazards] }));
+                }
+                fresh.forEach(s => processedSuggestionIds.current.add(s.id));
+            } finally {
+                setIsMergingSuggestions(false);
+            }
+        } catch (e) {
+            console.error('suggestion merge failed:', e); // 알림 없이 콘솔만
+        } finally {
+            isMergingRef.current = false;
+        }
+    }, [sessionId]);
+
     // step 4에서 근로자 의견을 위험성평가 항목으로 합류.
     // 진입 시 1회 + 12초 주기 폴링 — 소장이 검토 화면을 보는 동안 뒤늦게 도착하는 의견도
     // 저장 전에 잡아야 한다(진입 시 1회만 조회하면 검토 중 도착분이 문서에서 빠짐 — 실사고 있었음).
     useEffect(() => {
         if (step !== S_REVIEW || isProcessingSTT || isProcessingAI || !sessionId) return;
-        const mergeWorkerSuggestions = async () => {
-            if (isMergingRef.current) return;
-            isMergingRef.current = true;
-            try {
-                const { data, error } = await supabase
-                    .from('worker_suggestions')
-                    .select('id, content')
-                    .eq('session_id', sessionId);
-                if (error || !data) return; // 실패해도 검토 흐름은 계속
-                const fresh = (data as { id: string; content: string }[])
-                    .filter(s => !processedSuggestionIds.current.has(s.id))
-                    .slice(0, 30); // API 상한
-                if (fresh.length === 0) return;
-                setIsMergingSuggestions(true);
-                try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const res = await fetch('/api/ai/suggestion-hazards', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-                        body: JSON.stringify({ suggestions: fresh.map(s => s.content.slice(0, 500)) })
-                    });
-                    if (!res.ok) {
-                        if (res.status !== 429 && res.status !== 402) console.error('suggestion-hazards error:', res.status);
-                        return;
-                    }
-                    const result = await res.json();
-                    if (Array.isArray(result.hazards) && result.hazards.length > 0) {
-                        setFormData(prev => ({ ...prev, hazards: [...prev.hazards, ...result.hazards] }));
-                    }
-                    fresh.forEach(s => processedSuggestionIds.current.add(s.id));
-                } finally {
-                    setIsMergingSuggestions(false);
-                }
-            } catch (e) {
-                console.error('suggestion merge failed:', e); // 알림 없이 콘솔만
-            } finally {
-                isMergingRef.current = false;
-            }
-        };
         mergeWorkerSuggestions();
         const poll = setInterval(mergeWorkerSuggestions, 12_000);
         return () => clearInterval(poll);
-    }, [step, isProcessingSTT, isProcessingAI, sessionId]);
+    }, [step, isProcessingSTT, isProcessingAI, sessionId, mergeWorkerSuggestions]);
 
     const validateStep = (currentStep: number) => {
         if (currentStep === S_BASIC) {
@@ -547,6 +550,23 @@ export default function TBMMinutesPage() {
                 formData.photo ? uploadBase64ToStorage(formData.photo, 'photos', 'photo') : Promise.resolve(null),
             ]);
 
+            // 저장 직전 마지막 스윕 — 마지막 12초 폴링과 저장 사이에 도착한 의견을 동기로 1회 더 합류.
+            // 진행 중인 폴링 합류가 있으면 끝나길 기다렸다가 돌린다(잠금 스킵으로 스윕이 빈손이 되는 것 방지).
+            // 실패해도 저장은 막지 않는다 — 저장 후 도착분은 /api/suggestions 서버 합류가 줍는다.
+            try {
+                const t0 = Date.now();
+                while (isMergingRef.current && Date.now() - t0 < 10_000) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                await mergeWorkerSuggestions();
+            } catch { /* 스윕 실패는 무시 — 저장 계속 */ }
+            // 스윕·직전 폴링의 합류 결과는 아직 setFormData 큐에만 있을 수 있다 —
+            // 함수형 업데이트로 최신 hazards를 스냅샷해 insert에 쓴다(클로저의 formData는 낡았을 수 있음).
+            const hazardsForSave: Hazard[] = await Promise.race([
+                new Promise<Hazard[]>(resolve => setFormData(prev => { resolve(prev.hazards); return prev; })),
+                new Promise<Hazard[]>(resolve => setTimeout(() => resolve(formData.hazards), 2_000)),
+            ]);
+
             const { data: logData, error: logError } = await supabase
                 .from('tbm_minutes')
                 .insert({
@@ -566,7 +586,7 @@ export default function TBMMinutesPage() {
                     ppe_check: formData.ppeCheck,
                     safety_phrase: formData.safetyPhrase,
                     instructions: formData.instructions,
-                    hazards: formData.hazards,
+                    hazards: hazardsForSave,
                     // 음성 인식 원문 보관(재가공용). 없으면 null. 개인정보 포함 가능 → 판매 전 별도 동의 필요.
                     // 저장 직전 계단식 중복 최종 제거 — 수신 보정을 뚫고 온 팽창도 DB엔 못 들어간다
                     raw_transcript: collapseSttCascade(accumulatedTranscript) || null
