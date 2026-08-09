@@ -189,6 +189,17 @@ function LoginScreen() {
             >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "로그인"}
             </Button>
+
+            {/* 아이디 계정은 비밀번호를 잃으면 복구 수단이 없다 — 잠기기 전에 여기서 빠져나갈 수 있어야 한다 */}
+            <div className="flex items-center justify-center gap-2 text-[13px] text-cur-muted">
+                <a href="/forgot-id" className="hover:text-cur-ink hover:underline rounded-[4px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary">
+                    아이디 찾기
+                </a>
+                <span className="text-cur-hairline-strong">·</span>
+                <a href="/forgot-password" className="hover:text-cur-ink hover:underline rounded-[4px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary">
+                    비밀번호 찾기
+                </a>
+            </div>
         </form>
     )
 
