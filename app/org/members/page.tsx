@@ -59,6 +59,9 @@ export default function OrgMembersPage() {
     const [addMsg, setAddMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 청구 미리보기용 구독 정보 (체험 여부·다음 결제일)
     const [sub, setSub] = useState<SubscriptionRow | null>(null)
+    // 청구 주체 — 'google_play'·'app_store'(스토어 소유주)는 본인 몫을 스토어가 받고
+    // 등록 카드로는 좌석 몫만 청구된다(lib/billing.ts resolveBillableAmount). 미리보기 분기용.
+    const [subSource, setSubSource] = useState<string | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
     // 초대 링크
@@ -100,17 +103,29 @@ export default function OrgMembersPage() {
         load()
     }, [ctx, ctxLoading, router, load])
 
-    // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우 발급 모달을 바로 연다.
+    // 첫 진입 온보딩("현장 계정 만들기")에서 넘어온 경우(?new=1) 발급 모달을 바로 연다.
     // useSearchParams는 정적 렌더에서 Suspense를 요구해 window로 직접 읽는다.
+    // count·method를 실어주던 /org/setup은 삭제됐지만(2026-08-09) 북마크·안내문서의 구 링크가
+    // 올 수 있어 파라미터는 계속 받는다. 단 어떤 조합이어도 현장명(names) 단계는 건너뛰지
+    // 않는다 — method=direct로 direct 단계에 직행하면 siteNames가 빈 채 발급돼 이름 없는
+    // 현장이 만들어지던 구멍의 봉합. 21개 이상은 조용히 1로 리셋하지 않고 20으로 절사+안내.
     useEffect(() => {
         if (typeof window === "undefined") return
         const sp = new URLSearchParams(window.location.search)
         if (sp.get("new") !== "1") return
-        // /org/setup에서 이미 고른 개수·방식은 다시 묻지 않고 해당 단계로 직행
-        const c = Math.floor(Number(sp.get("count")))
-        if (Number.isFinite(c) && c >= 1 && c <= 20) setCount(c)
-        const m = sp.get("method")
-        setAddStep(m === "direct" ? "direct" : m === "link" ? "method" : "count")
+        const raw = Math.floor(Number(sp.get("count")))
+        if (Number.isFinite(raw) && raw >= 1) {
+            const c = Math.min(raw, 20)
+            setCount(c)
+            if (raw > 20) setAddMsg({ type: "ok", text: `현장 계정은 한 번에 20개까지 만들 수 있어요. ${raw}개 대신 20개로 맞춰뒀어요.` })
+            if (sp.get("method")) {
+                // 방식까지 정해 들어온 구 딥링크 — 개수 단계만 건너뛰고 현장명부터 받는다
+                setSiteNames(Array.from({ length: c }, () => ""))
+                setAddStep("names")
+                return
+            }
+        }
+        setAddStep("count")
     }, [])
 
     // 아이디 시드 추천 — 회사명 로마자 (예: '하이' → hai01, hai02…)
@@ -123,10 +138,23 @@ export default function OrgMembersPage() {
             setStem((cur) => cur || sugg[0] || "")
             setInitPw((cur) => cur || suggestInitialPassword())
             setSub(await fetchSubscription())
+            // source는 공용 SubscriptionRow에 없는 컬럼이라 여기서만 따로 읽는다 (본인 행 RLS)
+            const { data: srcRow } = await supabase.from("subscriptions").select("source").maybeSingle()
+            setSubSource(((srcRow as { source?: string | null } | null)?.source as string | null) ?? null)
         })()
     }, [])
 
     const activeCount = members.filter((m) => m.status === "active").length
+
+    // ── 청구 미리보기 재료 (/org/setup 삭제로 이식) — 서버 청구 규칙과 같은 식이어야 한다.
+    // lib/billing.ts: resolveBillableAmount = (본인 1 + 활성 현장) × 3,900. 스토어(구글·애플)
+    // 소유주는 본인 몫을 스토어가 받으므로 카드 청구는 활성 현장 × 3,900만. 체험(trialing) 중에는
+    // chargeProratedAccount가 일할 청구를 하지 않고, 체험이 끝나는 날 cron이 늘어난 계정 수로 청구한다.
+    const SEAT_PRICE = 3900
+    const isTrialing = sub?.status === "trialing"
+    const storeOwner = subSource === "google_play" || subSource === "app_store"
+    const nextChargeDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
+    const monthlyAfter = ((storeOwner ? 0 : 1) + activeCount + count) * SEAT_PRICE
 
     // 한글·띄어쓰기를 입력해도 아이디 규칙으로 자동 변환 ("하이 물류" → hai_mulryu)
     const effStem = sanitizeStem(stem)
@@ -539,6 +567,23 @@ export default function OrgMembersPage() {
                                 <Label className="text-[12px]">공용 초기 비밀번호</Label>
                                 <Input value={initPw} onChange={(e) => setInitPw(e.target.value)} className={inputCls + " font-mono"} />
                                 <p className="text-[11px] text-cur-muted-soft">현장담당자가 처음 로그인하면 반드시 새 비밀번호로 바꾸게 돼요.</p>
+                            </div>
+                            {/* 청구 미리보기 — 언제, 얼마가 나가는지 발급 확인 자리에서 숫자로 */}
+                            <div className="rounded-[12px] bg-cur-elevated p-4 space-y-1.5">
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <span className="text-[13px] text-cur-body">
+                                        {storeOwner
+                                            ? `현장 계정 ${activeCount + count}개 × 3,900원`
+                                            : `내 계정 1 + 현장 ${activeCount + count} = 계정 ${1 + activeCount + count}개 × 3,900원`}
+                                    </span>
+                                    <span className="text-[17px] font-bold text-cur-ink shrink-0">월 {monthlyAfter.toLocaleString()}원</span>
+                                </div>
+                                <p className="text-[12px] text-cur-muted leading-relaxed">
+                                    {isTrialing
+                                        ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
+                                        : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
+                                    {storeOwner && " 내 계정 몫은 앱 스토어 구독으로 별도 결제돼요."}
+                                </p>
                             </div>
                             {formErr && (
                                 <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>

@@ -219,23 +219,27 @@ export default function AccountPage() {
                                                 <span className="text-cur-muted">월 사용료</span>
                                                 <span className="text-cur-muted font-medium">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
                                             </div>
-                                        ) : (
+                                        ) : accountCount > 1 ? (
                                         <>
                                             <div className="flex justify-between">
                                                 <span className="text-cur-muted">내 계정 (감독자)</span>
                                                 <span className="text-cur-ink font-medium">3,900원</span>
                                             </div>
-                                            {accountCount > 1 && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
-                                                    <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
-                                                </div>
-                                            )}
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">현장 계정 {accountCount - 1}개</span>
+                                                <span className="text-cur-ink font-medium">{((accountCount - 1) * SEAT_PRICE).toLocaleString()}원</span>
+                                            </div>
                                             <div className="flex justify-between pt-2 border-t border-cur-hairline">
                                                 <span className="text-cur-ink font-bold">월 합계</span>
                                                 <span className="text-cur-ink font-bold">{(accountCount * SEAT_PRICE).toLocaleString()}원</span>
                                             </div>
                                         </>
+                                        ) : (
+                                            // 계정 1개(솔로)에겐 '(감독자)' 분해·합계가 회사 문구 누수 — 앱과 같은 규칙으로 2개부터만 분해
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">월 사용료</span>
+                                                <span className="text-cur-ink font-medium">3,900원</span>
+                                            </div>
                                         )
                                     ) : (
                                         <div className="flex justify-between">

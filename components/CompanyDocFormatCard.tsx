@@ -7,11 +7,16 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { ExportFormatPicker } from "@/components/ExportFormatPicker"
 import { type ExportFormat } from "@/lib/exportFormats"
+import { useOrgContext } from "@/lib/useOrgContext"
 
 export function CompanyDocFormatCard({ onSaved }: { onSaved?: (format: ExportFormat) => void } = {}) {
     const [docFormat, setDocFormat] = useState<string>("")
     const [busy, setBusy] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
+    // 활성 현장 계정이 하나도 없으면(솔로 포함) '(회사 공통)'·'모든 현장 계정에 적용' 문구가
+    // 회사 문구 누수다 — usage_type이 아니라 실제 좌석(orgCtx 파생)으로 판정한다.
+    const { ctx } = useOrgContext()
+    const hasSeats = ctx?.kind === "owner" && (ctx.memberIds?.length ?? 0) > 0
 
     useEffect(() => {
         ;(async () => {
@@ -50,9 +55,9 @@ export function CompanyDocFormatCard({ onSaved }: { onSaved?: (format: ExportFor
     return (
         <section className="bg-cur-card rounded-2xl border border-cur-hairline p-5 space-y-3">
             <div>
-                <h2 className="text-[15px] font-bold text-cur-ink">문서 출력 형식 (회사 공통)</h2>
+                <h2 className="text-[15px] font-bold text-cur-ink">문서 출력 형식{hasSeats ? " (회사 공통)" : ""}</h2>
                 <p className="text-[12px] text-cur-muted mt-1 leading-relaxed">
-                    회의록·교육일지를 저장하는 형식이에요. 내 계정과 모든 현장 계정에 함께 적용됩니다.
+                    회의록·교육일지를 저장하는 형식이에요.{hasSeats ? " 내 계정과 모든 현장 계정에 함께 적용됩니다." : ""}
                 </p>
             </div>
             {msg && (

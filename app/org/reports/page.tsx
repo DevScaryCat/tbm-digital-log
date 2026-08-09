@@ -61,6 +61,8 @@ export default function OrgReportsPage() {
     }, [ctx, ctxLoading, router])
 
     const setupDone = !!docFormat && (!pro || counts.approved > 0)
+    // 활성 현장 계정 0이면 '모든 현장 계정에 적용' 문구가 솔로에게 회사 문구 누수 (CompanyDocFormatCard와 같은 규칙)
+    const hasSeats = ctx?.kind === "owner" && (ctx.memberIds?.length ?? 0) > 0
 
     const stepChip = (n: 1 | 2, label: string) => {
         const active = wizStep === n
@@ -93,7 +95,7 @@ export default function OrgReportsPage() {
                         {wizStep === 1 ? (
                             <>
                                 <p className="text-[13px] text-cur-muted leading-relaxed px-1">
-                                    회의록·교육일지를 어떤 형식으로 저장할지 정해주세요. 모든 현장 계정에 함께 적용돼요.
+                                    회의록·교육일지를 어떤 형식으로 저장할지 정해주세요.{hasSeats ? " 모든 현장 계정에 함께 적용돼요." : ""}
                                 </p>
                                 <CompanyDocFormatCard onSaved={(f) => setDocFormat(f)} />
                                 <button
