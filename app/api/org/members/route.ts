@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext, listOrgMembers, detachOrgMember } from "@/lib/org";
-import { chargeProratedAccount } from "@/lib/billing";
+import { chargeProratedAccount, resolveSeatCharge } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -52,6 +52,16 @@ async function requireOwner(
           { status: 402 }
         ),
       };
+    }
+    // 청구 자격까지 여기서 끝낸다 — 아래 POST는 createUser → claim_org_seat 를 먼저 하고
+    // 그 다음에야 chargeProratedAccount를 부른다. 결제수단이 없거나 주기가 만료된
+    // (past_due — subscriptionAllows는 통과시킨다) 감독자가 여기를 지나가면 계정·좌석을
+    // 만들어 놓고 402로 되돌리는 롤백 경로를 타고, 롤백이 부분 실패하면 청구되지 않는
+    // 유령 좌석이 남는다. 실제 청구와 **같은 함수**를 dry-run으로 부른다(조회 전용).
+    // 현재 화면은 bulk 라우트로만 발급하지만 이 엔드포인트도 살아 있는 인증 경로다.
+    const gate = await resolveSeatCharge(admin, data as any, { count: 1, seatsClaimed: false });
+    if (!gate.ok) {
+      return { error: NextResponse.json({ error: gate.error ?? "결제에 실패했습니다." }, { status: 402 }) };
     }
     sub = data as any;
   }

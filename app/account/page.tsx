@@ -53,9 +53,6 @@ export default function AccountPage() {
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 과금 계정 수(감독자 본인 1 + 활성 현장) — 여기가 '회사 전체 결제'라는 걸 명시하기 위한 값
     const [accountCount, setAccountCount] = useState<number>(1)
-    // '여러 현장' 사용 형태(usage_type=multi) — 스토어 구독자의 좌석 청구용 카드 섹션 노출 판정에 쓴다
-    // (현장 계정이 아직 0개여도 곧 만들 사람이면 카드를 미리 등록해 둘 수 있어야 한다)
-    const [multiSite, setMultiSite] = useState(false)
 
 
     const load = async () => {
@@ -66,7 +63,6 @@ export default function AccountPage() {
             router.replace("/login")
             return
         }
-        setMultiSite(user.user_metadata?.usage_type === "multi")
         // 소속 현장 계정은 결제 주체가 아니다 — 헤더 잠금을 뚫고 들어와도(역할 로딩 틈) 홈으로
         const ctx = await fetchOrgContext()
         if (ctx?.kind === "member") {
@@ -442,52 +438,61 @@ export default function AccountPage() {
                                 </SettingsCard>
 
                                 {/* 현장 계정 청구용 카드 — 좌석 몫(계정당 월 3,900원)은 스토어가 아니라 이 카드로
-                                    청구된다(서버 chargeGoogleOwnerSeats). 조직 소유이거나 '여러 현장' 사용 형태면
-                                    좌석이 0개여도 미리 등록해 둘 수 있게 남긴다. */}
-                                {(accountCount > 1 || multiSite) &&
-                                    (changingMethod ? (
-                                        <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
-                                            <p className="text-[15px] font-bold text-cur-ink">현장 계정 청구용 카드</p>
-                                            {methodLabel && (
-                                                <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
-                                                    <span className="text-[13px] text-cur-muted">현재 카드</span>
-                                                    <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
-                                                </div>
-                                            )}
-                                            <p className="text-[12px] text-cur-muted leading-relaxed">
-                                                이 카드는 현장 계정 몫(계정당 월 3,900원)에만 청구돼요. 내 구독(월 {STORE_PRICE.toLocaleString()}원)은 {storeName}에서 결제돼요.
-                                            </p>
-                                            <SubscribeButtons
-                                                mode="update"
-                                                seatOnly
-                                                currentMethod={currentMethodKey}
-                                                onSuccess={async () => {
-                                                    setChangingMethod(false)
-                                                    await load()
-                                                }}
-                                                ctaSuffix={methodLabel ? "로 변경" : "로 등록"}
-                                                successText="현장 계정 청구용 카드가 등록되었습니다."
-                                            />
-                                            <Button
-                                                variant="ghost"
-                                                onClick={() => setChangingMethod(false)}
-                                                className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
-                                            >
-                                                취소
-                                            </Button>
-                                        </div>
-                                    ) : (
-                                        <SettingsCard>
-                                            <SettingsRow
-                                                icon={<CreditCard className="w-[18px] h-[18px]" />}
-                                                label={methodLabel ? "현장 계정 청구용 카드" : "현장 계정 청구용 카드 등록"}
-                                                sublabel="현장 계정 몫(계정당 월 3,900원)에만 청구돼요"
-                                                value={methodLabel ?? undefined}
-                                                onClick={() => setChangingMethod(true)}
-                                                chevron
-                                            />
-                                        </SettingsCard>
-                                    ))}
+                                    청구된다(서버 chargeGoogleOwnerSeats).
+
+                                    2026-08-10: 노출 조건 (accountCount > 1 || multiSite)을 없앴다. 좌석을 만들려면
+                                    카드가 있어야 하는데(서버 invites/bulk의 선검사) 카드 등록 UI를 보려면 좌석이
+                                    이미 있거나 가입 때 '여러 현장'을 고른 사람이어야 해서, 신규 스토어 구독자는
+                                    좌석 0개·billing_key null인 채로 영원히 갇혔다(닭-달걀). 이 블록은 이미
+                                    !isGrandfather && storeManaged && active로 감싸여 있고, 소속 현장 계정(org member)은
+                                    load()에서 홈으로 돌려보내므로 — 여기 닿는 사람은 전부 좌석 청구의 결제 주체다. */}
+                                {changingMethod ? (
+                                    <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                        <p className="text-[15px] font-bold text-cur-ink">현장 계정 청구용 카드</p>
+                                        {methodLabel && (
+                                            <div className="rounded-xl bg-cur-elevated border border-cur-hairline p-3 flex items-center justify-between opacity-60">
+                                                <span className="text-[13px] text-cur-muted">현재 카드</span>
+                                                <span className="text-[14px] text-cur-ink font-medium">{methodLabel}</span>
+                                            </div>
+                                        )}
+                                        <p className="text-[12px] text-cur-muted leading-relaxed">
+                                            이 카드는 현장 계정 몫(계정당 월 3,900원)에만 청구돼요. 내 구독(월 {STORE_PRICE.toLocaleString()}원)은 {storeName}에서 결제돼요.
+                                        </p>
+                                        <SubscribeButtons
+                                            mode="update"
+                                            seatOnly
+                                            currentMethod={currentMethodKey}
+                                            onSuccess={async () => {
+                                                setChangingMethod(false)
+                                                await load()
+                                            }}
+                                            ctaSuffix={methodLabel ? "로 변경" : "로 등록"}
+                                            successText="현장 계정 청구용 카드가 등록되었습니다."
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => setChangingMethod(false)}
+                                            className="w-full h-9 text-cur-muted hover:text-cur-ink text-[13px]"
+                                        >
+                                            취소
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <SettingsCard>
+                                        <SettingsRow
+                                            icon={<CreditCard className="w-[18px] h-[18px]" />}
+                                            label={methodLabel ? "현장 계정 청구용 카드" : "현장 계정 청구용 카드 등록"}
+                                            sublabel={
+                                                methodLabel
+                                                    ? "현장 계정 몫(계정당 월 3,900원)에만 청구돼요"
+                                                    : "현장 계정을 만들려면 먼저 등록해야 해요 (계정당 월 3,900원)"
+                                            }
+                                            value={methodLabel ?? undefined}
+                                            onClick={() => setChangingMethod(true)}
+                                            chevron
+                                        />
+                                    </SettingsCard>
+                                )}
                             </>
                         )}
 

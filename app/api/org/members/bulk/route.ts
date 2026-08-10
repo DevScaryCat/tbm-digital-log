@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
-import { chargeProratedAccount } from "@/lib/billing";
+import { chargeProratedAccount, resolveSeatCharge } from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,9 +26,11 @@ export async function POST(request: Request) {
     }
 
     // 구독 검사가 조직 생성보다 먼저 — legacy 요금 보호 순서 규칙 (members 라우트와 동일)
+    // source 포함: resolveSeatCharge·chargeProratedAccount가 스토어(구글·애플) 소유주로 분기할 때
+    // source를 다시 조회하지 않게 한다(구 셀렉트가 undefined를 넘겨 gseat 주기 키 선점이 빠지던 자리)
     const { data: sub } = await admin
       .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key")
+      .select("id, user_id, status, plan, current_period_end, billing_key, source")
       .eq("user_id", user.id)
       .maybeSingle();
     // isBillablePlan: grandfather(영구 무료·카드 등록 불가)에게 좌석을 열면 무과금 좌석이 된다
@@ -38,6 +40,23 @@ export async function POST(request: Request) {
         { error: "현재 요금제로는 현장 계정을 추가할 수 없어요. 구독을 먼저 확인해주세요." },
         { status: 402 }
       );
+    }
+
+    // 청구 자격 선검사 — 계정을 만들기 **전에**. (invites 라우트 53-55행과 같은 자리)
+    // 없으면 계정 생성 → 좌석 점유(claim_org_seat) → 결제 실패 → rollback 순서를 타는데,
+    // rollback은 deleteUser·org_members·subscriptions 3단이라 부분 실패하면 청구되지 않는
+    // 활성 좌석(유령 좌석)이 남아 다음 주기부터 존재하지 않는 계정 몫이 과금된다.
+    //
+    // 조건을 손으로 옮겨 적지 않고 실제 청구와 **같은 함수**를 dry-run으로 부른다(검수 2026-08-10).
+    // 손으로 적었을 때는 결제수단 유무만 베꼈고, 주기 만료(past_due — subscriptionAllows가 통과시키는
+    // 상태의 정의 자체가 current_period_end 경과다) 거절이 빠져 유령 좌석 창이 그대로 열려 있었다.
+    // resolveSeatCharge는 조회만 한다(.select뿐 — PG 호출도, payments 기록도 없다).
+    // count는 금액에만 쓰이고 거절 판정(체험·결제수단·주기)에는 영향이 없어 1로 부른다 —
+    // 개수는 아래 본문 파싱에서야 나오는데, 자격 검사는 조직 생성(legacy 요금 보호 순서)보다
+    // 먼저 끝나야 하므로 여기서 판정만 앞당긴다.
+    const gate = await resolveSeatCharge(admin, sub as any, { count: 1, seatsClaimed: false });
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error ?? "결제에 실패했습니다." }, { status: 402 });
     }
 
     if (ctx.kind === "solo" && !ctx.orgLapsed) {

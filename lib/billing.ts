@@ -200,11 +200,51 @@ export async function resolveBillableAmount(
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * 현장 계정을 하나 추가할 때의 잔여기간 일할 청구.
- * 좌석 선구매를 없앤 뒤로 "계정 발급 = 즉시 일할 청구"가 되었고,
- * 다음 주기부터는 resolveBillableAmount가 알아서 늘어난 계정 수로 청구한다.
+ * 좌석 발급을 막은 **기계가 읽는** 사유. 화면이 한국어 문장을 되짚어 사유를 추측하면
+ * (검수 2026-08-10) legacy 요금제 거절이 "결제수단 문제"로 오독돼 결제수단만 바꿀 수 있는
+ * /account로 안내되는 새 막다른 길이 생긴다. 문장은 사람용, 이 코드가 분기용이다.
+ *
+ * - "plan"         요금제 자체가 좌석을 살 수 없다(grandfather 영구무료, legacy monthly_basic).
+ *                  결제수단을 바꿔도 풀리지 않는다 → **결제 화면으로 보내면 안 된다.**
+ * - "subscription" 구독이 없거나 만료·정지됐다(카드 없는 체험 종료 포함) → 구독 및 결제.
+ * - "method"       등록된 결제수단이 없다 → 구독 및 결제(카드 등록).
+ * - "period"       주기가 지났는데 정기 결제가 아직 안 붙었다(past_due) → 구독 및 결제.
+ *
+ * plan/subscription은 **자격** 문제라 초대·편입 라우트(app/api/org/invites)도 같은 판정으로
+ * 막는다. method/period는 **즉시 청구 실행** 조건이라 즉시 청구가 없는 초대·편입은 지나간다.
  */
-export async function chargeProratedAccount(
+export type SeatBlockReason = "plan" | "subscription" | "method" | "period";
+
+/** 현장 계정 추가 1건의 청구 계획 — 실제 청구와 화면 미리보기가 **같은 식**을 쓰게 하는 반환값 */
+export interface SeatChargePlan {
+  /** 청구를 진행해도 되는가. false면 error가 그대로 사용자에게 보여줄 문구다. */
+  ok: boolean;
+  error?: string;
+  /** ok=false일 때의 사유 코드 — 화면은 문장이 아니라 이걸로 분기한다 */
+  reason?: SeatBlockReason;
+  /** 추가분(count개)의 잔여기간 일할분 */
+  prorated: number;
+  /** 기존 활성 좌석의 이번 주기 소급분 — 스토어 소유주가 주기 키를 선점할 때만 > 0 */
+  periodBase: number;
+  /** 이번에 즉시 승인될 총액. 체험 중이면 0(받지 않는다). */
+  amount: number;
+  /** 실제 청구에 쓸 결제 키 (미리보기에서는 쓰지 않는다) */
+  paymentId: string;
+}
+
+/**
+ * 좌석 추가 청구액을 계산한다. **돈은 여기서 움직이지 않는다** — 실제 청구(chargeProratedAccount)와
+ * 발급 화면의 미리보기(/api/org/seat-preview)가 이 함수 하나를 공유한다.
+ *
+ * 분리한 이유(2026-08-10 검수): 미리보기가 화면 쪽 자체 계산식("남은 기간 요금이 먼저 결제")을
+ * 들고 있어 periodBase(기존 좌석 이번 주기 소급분)가 빠졌고, 좌석을 가진 스토어 감독자가 한 개를
+ * 더 추가하면 예고보다 훨씬 큰 금액이 즉시 승인됐다(결제 분쟁 소지). 두 곳이 같은 함수를 쓰면
+ * 한쪽만 바뀌어 어긋나는 일이 구조적으로 불가능해진다.
+ *
+ * @param opts.seatsClaimed 실제 청구 시점에는 좌석 점유(claim_org_seat)가 이미 끝나 추가분이
+ *   활성 좌석 수에 포함돼 있다(true). 미리보기는 아직 만들기 전이라 포함돼 있지 않다(false).
+ */
+export async function resolveSeatCharge(
   admin: SupabaseClient,
   sub: {
     id: string;
@@ -214,9 +254,10 @@ export async function chargeProratedAccount(
     current_period_end: string | null;
     source?: string | null;
   },
-  opts: { count?: number; customerEmail?: string } = {}
-): Promise<{ ok: boolean; charged: number; error?: string }> {
+  opts: { count?: number; seatsClaimed?: boolean } = {}
+): Promise<SeatChargePlan> {
   const count = opts.count ?? 1;
+  const zero = { prorated: 0, periodBase: 0, amount: 0, paymentId: "" };
   const now = new Date();
   const end = sub.current_period_end ? new Date(sub.current_period_end) : null;
 
@@ -243,12 +284,14 @@ export async function chargeProratedAccount(
     // 살아 있으므로 카드 없이 만든 좌석이 영원히 무과금으로 남는다. 청구는 체험 종료 후
     // 첫 정규 주기부터 cron이 한다(체험 중 좌석 무료 관례는 유지).
     if (isStoreSource(source) && !sub.billing_key) {
-      return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
+      return { ok: false, ...zero, reason: "method", error: "등록된 결제수단이 없습니다." };
     }
-    return { ok: true, charged: 0 };
+    return { ok: true, ...zero };
   }
 
-  if (!sub.billing_key) return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
+  if (!sub.billing_key) {
+    return { ok: false, ...zero, reason: "method", error: "등록된 결제수단이 없습니다." };
+  }
 
   // 주기가 이미 지났다 = 정기 결제가 아직 안 붙었거나 실패한 상태.
   // 여기서 '나중에 받으면 된다'고 통과시키면, past_due로 실패를 반복하는 감독자가
@@ -256,7 +299,8 @@ export async function chargeProratedAccount(
   if (!end || end.getTime() <= now.getTime()) {
     return {
       ok: false,
-      charged: 0,
+      ...zero,
+      reason: "period",
       error: "결제가 확인되지 않았습니다. 구독 및 결제에서 결제수단을 확인한 뒤 다시 시도해주세요.",
     };
   }
@@ -300,13 +344,46 @@ export async function chargeProratedAccount(
             .select("member_user_id", { count: "exact", head: true })
             .eq("org_id", (orgRow as any).id)
             .eq("status", "active");
-          // 지금 발급분(count)은 좌석 점유(claim)가 청구보다 먼저라 이미 active에 포함돼 있다
-          periodBase = Math.max(0, (activeSeats ?? 0) - count) * SEAT_PRICE;
+          // 실제 청구 시점에는 발급분(count)이 좌석 점유(claim)를 먼저 끝내 active에 이미 포함돼
+          // 있으므로 빼고 센다. 미리보기(seatsClaimed=false)는 아직 안 만들었으니 그대로 센다.
+          const already = opts.seatsClaimed ? count : 0;
+          periodBase = Math.max(0, (activeSeats ?? 0) - already) * SEAT_PRICE;
         }
       }
     }
   }
-  const amount = prorated + periodBase;
+  return { ok: true, prorated, periodBase, amount: prorated + periodBase, paymentId };
+}
+
+/**
+ * 현장 계정을 하나 추가할 때의 잔여기간 일할 청구.
+ * 좌석 선구매를 없앤 뒤로 "계정 발급 = 즉시 일할 청구"가 되었고,
+ * 다음 주기부터는 resolveBillableAmount가 알아서 늘어난 계정 수로 청구한다.
+ * 금액·결제 키 계산은 resolveSeatCharge가 전담한다(발급 화면 미리보기와 공유).
+ */
+export async function chargeProratedAccount(
+  admin: SupabaseClient,
+  sub: {
+    id: string;
+    user_id: string;
+    status?: string;
+    billing_key: string | null;
+    current_period_end: string | null;
+    source?: string | null;
+  },
+  opts: { count?: number; customerEmail?: string } = {}
+): Promise<{ ok: boolean; charged: number; error?: string }> {
+  const count = opts.count ?? 1;
+  const now = new Date();
+
+  const plan = await resolveSeatCharge(admin, sub, { count, seatsClaimed: true });
+  if (!plan.ok) return { ok: false, charged: 0, error: plan.error };
+  // 체험 중(amount 0) — 받을 것이 없으니 PG를 부르지 않는다. 일할 청구는 체험이 끝난 뒤부터.
+  if (plan.amount <= 0) return { ok: true, charged: 0 };
+  // 빌링키 재확인 — resolveSeatCharge가 이미 걸렀지만(ok=false) 타입을 좁히려면 여기서도 필요하다
+  if (!sub.billing_key) return { ok: false, charged: 0, error: "등록된 결제수단이 없습니다." };
+  const { paymentId, periodBase, amount } = plan;
+
   const res = await chargeWithBillingKey({
     paymentId,
     billingKey: sub.billing_key,

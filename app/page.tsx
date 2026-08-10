@@ -287,6 +287,13 @@ export default function MainPage() {
 
   // 역할 판정 — pendingAttach면 편입 수락 모달, owner면 활동 현황 옆 '통계 보기' 버튼 노출
   const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(cached?.orgCtx ?? null)
+  // 좌석(현장 계정)을 실제로 발급할 수 있는 계정인가 — 판정은 서버(/api/org/seat-preview) 것만 쓴다.
+  // 홈의 '현장 계정 추가하기' 유도는 자격 검사가 아예 없어서, 영구 무료(grandfather)·요금제
+  // 부적격·결제수단 없음 계정에도 매 방문마다 깜빡이는 카드가 떴다. 눌러도 갈 수 없는 곳으로
+  // 미는 유도라 커밋 1b01f52가 헤더·목록 행에서 걷어냈는데 이 입구만 남아 있었다(검수 2026-08-10).
+  // null = 아직 모른다(조회 중·실패) → 종전대로 보여준다. 조회 실패로 정상 감독자의 온보딩 입구가
+  // 사라지는 쪽이 더 나쁘다(/org/members 게이트와 같은 규율).
+  const [seatEligible, setSeatEligible] = useState<boolean | null>(null)
   // 보고서를 받을 사람이 아직 없음(=주간·월간 보고서가 아무 데도 안 나감).
   // 설정 입구가 헤더 드롭다운과 분석 보고서 게이트뿐이라 대부분 기능 존재 자체를 모른다.
   const [recipientGap, setRecipientGap] = useState<{ pending: number; noEmail: boolean } | null>(null)
@@ -452,6 +459,28 @@ export default function MainPage() {
     return () => { cancelled = true }
   }, [user, orgCtx])
 
+  // 좌석 발급 자격 조회 — '현장 계정 추가하기' 유도를 띄우기 전에 서버에 물어본다.
+  // 화면이 요금제·결제수단 조건을 다시 적지 않는다: 자격의 진실은 seat-preview 하나뿐이고
+  // 여기는 그 결과를 소비만 한다(조건을 또 베끼면 사본마다 어긋난다).
+  // '여러 현장' 선택자에게만 부르는 이유: 그 밖에는 카드 자체가 뜨지 않아 물어볼 이유가 없다.
+  useEffect(() => {
+    if (!user || !orgCtx || orgCtx.kind === "member") return
+    if (user.user_metadata?.usage_type !== "multi") return
+    let cancelled = false
+      ; (async () => {
+        try {
+          const { data } = await supabase.auth.getSession()
+          const res = await fetch("/api/org/seat-preview?count=1", {
+            headers: { Authorization: `Bearer ${data?.session?.access_token}` },
+          })
+          if (cancelled || !res.ok) return
+          const j = await res.json()
+          setSeatEligible(!!j.chargeable)
+        } catch { /* 무시 — 모르면 막지 않는다 */ }
+      })()
+    return () => { cancelled = true }
+  }, [user, orgCtx])
+
   const fetchUserStats = async (userId: string, currentWorkerType: string, silent = false) => {
     if (!silent) setStatsLoading(true)
     try {
@@ -610,9 +639,16 @@ export default function MainPage() {
   // '여러 현장' 선택자가 아직 첫 현장 계정을 안 만든 상태 — usage_type(단일 진실)+역할에서 파생.
   // 예전엔 localStorage 마커였는데, 카드 한 번 클릭에 영구 소멸하고 기기를 바꾸면 사라졌다.
   // 파생이므로 소멸 조건도 상태 그 자체다: 좌석이 생기거나(kind가 owner로) usage를 바꾸면 꺼진다.
-  // 웹 헤더·앱 헤더의 점 배지와 완전히 같은 판정이어야 한다(세 유도가 어긋나면 마커 시절과 같은 비동기).
+  // 웹 헤더·앱 헤더의 점 배지와 같은 자리에서 나온 판정이다(세 유도가 어긋나면 마커 시절과 같은 비동기).
+  // 다만 자격 검사는 여기가 더 엄격하다: 헤더(components/TBMHeader.tsx needsFirstSiteAccount)는
+  // plan !== "grandfather"를 손으로 적어 두었고, 여기는 서버 판정(seatEligible)을 그대로 쓴다.
+  // 그래서 legacy monthly_basic·결제수단 없음 계정에는 헤더 점만 남고 이 카드는 사라진다.
+  // 통일하려면 헤더도 seat-preview를 쓰면 된다(별건 — 점 하나는 유도가 아니라 표시라 급하지 않다).
   // owner인데 활성 좌석이 0인 경우(전부 해제)도 포함 — 헤더는 점을 띄우는데 홈만 침묵하면 어긋난다.
+  // 좌석을 실제로 발급할 수 있어야 유도한다(seatEligible !== false) — 자격 판정은 서버 것을
+  // 그대로 쓴다(위 useEffect). 이 조건이 없으면 갈 수 없는 곳으로 미는 카드가 된다.
   const hintAddSite = user?.user_metadata?.usage_type === "multi"
+    && seatEligible !== false
     && !!orgCtx
     && (orgCtx.kind === "owner"
       ? (orgCtx.memberIds ?? []).length === 0

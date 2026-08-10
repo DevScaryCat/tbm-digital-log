@@ -5,6 +5,7 @@
 // prompt/confirm 대신 전용 모달을 쓴다 — 인앱 브라우저에서 prompt가 막히는 케이스가 있었고, 안내 문구를 담을 자리도 필요하다.
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { supabase } from "@/lib/supabaseClient"
 import { TBMHeader } from "@/components/TBMHeader"
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,7 @@ import { Loader2, Copy, KeyRound, UserMinus, Plus, Minus, Link2, UserPlus2, Chec
 import { useOrgContext } from "@/lib/useOrgContext"
 import { suggestIdStems, suggestInitialPassword, sanitizeStem, STEM_RE } from "@/lib/romanize"
 import { fetchSubscription, isWhitelist, type SubscriptionRow } from "@/lib/useSubscription"
+import type { SeatBlockReason } from "@/lib/billing"
 
 const inputCls =
     "h-12 rounded-[8px] bg-cur-elevated border-cur-hairline text-[15px] font-medium text-cur-ink placeholder:text-cur-muted-soft focus-visible:ring-1 focus-visible:ring-cur-primary"
@@ -54,6 +56,9 @@ export default function OrgMembersPage() {
     const [count, setCount] = useState(1)
     const [initPw, setInitPw] = useState("")
     const [formErr, setFormErr] = useState<string | null>(null)
+    // 402(결제 자격·결제수단) 실패인가 — 이때만 오류 문구 아래에 /account 링크를 붙인다.
+    // 문구만 주고 갈 곳을 안 주면 감독자가 "그래서 어디서 등록하나요"에서 멈춘다.
+    const [formErrPay, setFormErrPay] = useState(false)
     const [createdIds, setCreatedIds] = useState<string[] | null>(null)
     // 위저드 모달 내부 알림 — 페이지 배너는 모달 뒤에 가려져 보이지 않는다
     const [addMsg, setAddMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
@@ -62,6 +67,22 @@ export default function OrgMembersPage() {
     // 청구 주체 — 'google_play'·'app_store'(스토어 소유주)는 본인 몫을 스토어가 받고
     // 등록 카드로는 좌석 몫만 청구된다(lib/billing.ts resolveBillableAmount). 미리보기 분기용.
     const [subSource, setSubSource] = useState<string | null>(null)
+    // 지금 즉시 승인될 금액 — 화면이 자체 계산하지 않고 서버(/api/org/seat-preview)에 묻는다.
+    // 실제 청구(lib/billing.ts resolveSeatCharge)와 같은 함수로 계산된 값이라 예고와 승인이 어긋나지 않는다.
+    const [immediate, setImmediate] = useState<{ amount: number; periodBase: number } | null>(null)
+    const [immediateLoading, setImmediateLoading] = useState(false)
+    // 발급 자격 — 화면이 서버 규칙을 베껴 계산하지 않고 /api/org/seat-preview에 묻는다.
+    // (종전엔 card_info 유무 + 체험/스토어 조합을 화면에서 다시 적었는데, 서버는 billing_key로
+    //  판정하고 주기 만료 거절도 따로 있어 언제든 조용히 갈라질 수 있는 세 번째 사본이었다.)
+    // null = 아직 모른다(조회 중·실패) → 막지 않는다.
+    // reason은 서버가 준 사유 코드다 — 화면은 한국어 문장을 되짚지 않고 이 코드로만 분기한다
+    // (lib/billing.ts SeatBlockReason 주석: 문장 되짚기가 legacy 요금제를 결제 화면으로 보냈다).
+    const [seatGate, setSeatGate] = useState<{
+        chargeable: boolean
+        error?: string
+        plan?: string | null
+        reason?: SeatBlockReason
+    } | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
     // 초대 링크
@@ -141,8 +162,38 @@ export default function OrgMembersPage() {
             // source는 공용 SubscriptionRow에 없는 컬럼이라 여기서만 따로 읽는다 (본인 행 RLS)
             const { data: srcRow } = await supabase.from("subscriptions").select("source").maybeSingle()
             setSubSource(((srcRow as { source?: string | null } | null)?.source as string | null) ?? null)
+            // 발급 자격은 서버가 판정한다 — count=1로 물어도 거절 사유(체험·결제수단·주기)는 같다.
+            // 실패하면 seatGate를 null로 두어 막지 않는다(조회 실패로 유료 감독자의 발급이 잠기는
+            // 쪽이 더 나쁘다 — 그 경우엔 종전대로 서버 402가 마지막 방어선이다).
+            try {
+                const res = await fetch("/api/org/seat-preview?count=1", { headers: await authHeaders() })
+                const j = await res.json()
+                if (res.ok) setSeatGate({ chargeable: !!j.chargeable, error: j.error, plan: j.plan ?? null, reason: j.reason })
+            } catch { /* 무시 — 막지 않는다 */ }
         })()
     }, [])
+
+    // 확인 단계(direct)에 들어올 때마다 '지금 결제될 금액'을 서버에 묻는다.
+    // 개수(count)는 이 단계 전에 확정되므로 한 번만 부르면 되고, 뒤로 갔다 오면 다시 부른다.
+    useEffect(() => {
+        if (addStep !== "direct") { setImmediate(null); return }
+        let alive = true
+        ;(async () => {
+            setImmediateLoading(true)
+            try {
+                const res = await fetch(`/api/org/seat-preview?count=${count}`, { headers: await authHeaders() })
+                const j = await res.json()
+                if (!alive) return
+                // 조회 실패·청구 불가면 null로 두고 종전의 서술형 문구로 되돌아간다(거짓 숫자보다 낫다)
+                setImmediate(res.ok && j.chargeable ? { amount: Number(j.amount) || 0, periodBase: Number(j.periodBase) || 0 } : null)
+            } catch {
+                if (alive) setImmediate(null)
+            } finally {
+                if (alive) setImmediateLoading(false)
+            }
+        })()
+        return () => { alive = false }
+    }, [addStep, count])
 
     const activeCount = members.filter((m) => m.status === "active").length
 
@@ -156,15 +207,92 @@ export default function OrgMembersPage() {
     const nextChargeDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
     const monthlyAfter = ((storeOwner ? 0 : 1) + activeCount + count) * SEAT_PRICE
 
+    // 청구 자격 선검사 — 위저드에 들어가기 **전에**. 종전에는 현장명·아이디·비밀번호를 다 입력하고
+    // 'N개 만들기'를 누른 뒤에야 서버가 402 한 문장으로 전부 롤백했다(갈 곳 링크도 없었다).
+    // 판정과 문구는 서버(resolveSeatCharge)의 것을 그대로 쓴다 — 결제수단 없음뿐 아니라
+    // 주기 만료(past_due) 거절도 같이 걸린다.
+    // seatGate가 null(로딩 중·조회 실패)이면 막지 않는다 — 조회 실패로 유료 감독자의 발급이
+    // 잠기는 쪽이 더 나쁘다(바로 아래 grandfather 분기와 같은 규율).
+    const seatBlocked = !!seatGate && !seatGate.chargeable
+    // 영구 무료(grandfather)는 결제 자격이 아니라 정책으로 막힌다 — 결제 유도를 붙이면
+    // 결제 UI를 걷어낸 계정에게 갈 곳 없는 안내가 된다(커밋 1b01f52와 같은 규율).
+    // 구독 조회(sub)가 실패해도 서버가 돌려준 plan으로 다시 확인한다 — 둘 중 하나만 알아도
+    // 결제 유도가 새어 나가면 안 되는 쪽이다.
+    const whitelisted = isWhitelist(sub) || seatGate?.plan === "grandfather"
+    const seatReason = seatGate?.reason
+
+    // 차단 범위를 사유로 나눈다 — 위저드는 세 가지 행동(직접 발급 / 초대 링크 / 편입)을 담는데
+    // 즉시 청구를 하는 건 직접 발급 하나뿐이다. 초대·편입이 만드는 좌석은 가입·수락 시점에
+    // 생기고 chargeProratedAccount를 부르지 않는다(app/api/signup, app/api/org/attach).
+    //   plan·subscription = **자격** 문제 → 서버 초대 라우트도 같은 판정(subscriptionAllows +
+    //     isBillablePlan)으로 막으므로 위저드를 통째로 닫는다. 열어두면 초대 버튼이 402로 죽는다.
+    //   method·period     = **즉시 청구 실행** 조건 → 초대·편입은 지금 돈을 받지 않으므로 열어둔다.
+    //     (직접 발급만 아래 method 단계에서 막는다)
+    // ⚠️ 한 가지 어긋남을 남긴 채로 둔다: app/api/org/invites/route.ts 46-55행의 게이트는 이 화면과
+    //    **다른 규칙**이다 — 거기선 store source + billing_key 없음만 402를 내고 current_period_end는
+    //    보지 않는다. 즉 웹 카드 감독자의 '결제수단 없음'은 초대에서 통과한다(청구가 없으니 유령
+    //    좌석도 안 생긴다). 근본 해결은 invites도 resolveSeatCharge dry run으로 통일하되 "즉시 청구
+    //    없음"을 인자로 구분하는 것이고, 그건 별건이다(이번 라운드 범위 밖 — notFixed에 기록).
+    const blockAll = whitelisted || (seatBlocked && (seatReason === "plan" || seatReason === "subscription"))
+    // 사유 코드를 모르는 채 chargeable=false만 온 경우(구 응답·예상 못한 값)는 안전하게 전부 막는다
+    const blockUnknown = seatBlocked && !seatReason
+    // 스토어 소유주의 method(카드 없음)는 예외로 위저드까지 닫는다 — invites 라우트(46-55행)가
+    // 막는 유일한 케이스가 정확히 'store source + billing_key 없음'이라, 열어두면 초대·편입 버튼이
+    // 100% 402로 죽는다. 위 ⚠️의 "웹 카드 감독자는 통과"와 방향이 반대인 쪽이다(검수 2026-08-10).
+    const blockWizard = blockAll || blockUnknown || (storeOwner && seatReason === "method")
+    // 직접 발급만 막히는 경우 — 위저드는 열리고 method 단계에서 이 분기만 잠긴다
+    const blockDirect = seatBlocked || whitelisted
+
+    // 결제 화면으로 보내도 되는 사유인가. plan(요금제 부적격)은 /account에 바꿀 수단이 없어
+    // 링크를 붙이는 순간 '안내받은 막다른 길'이 된다 — grandfather도 같다(결제 UI 자체가 없다).
+    const payLinkOk = !whitelisted && seatReason !== "plan"
+
+    // 발급을 막을 때 보여줄 패널 — 목록 마지막 행과 위저드 모달 본문이 **같은 것**을 쓴다.
+    // 버튼만 막으면 ?new=1 딥링크(홈 온보딩 카드가 미는 바로 그 URL)가 게이트를 통째로 지나쳐
+    // 위저드가 열리고, 다 입력한 끝에 402 벽을 다시 만난다(검수 2026-08-10).
+    const blockedPanel = whitelisted ? (
+        <p className="text-[13px] text-cur-muted leading-relaxed">
+            영구 무료 계정은 현장 계정을 추가할 수 없어요. 정책 변경 전까지 무료로 사용 가능합니다.
+        </p>
+    ) : (
+        <>
+            {/* 사유 문구는 서버가 준 것 그대로 — 화면이 따로 지어내면 실제 거절 이유와 갈라진다 */}
+            <p className="text-[13px] text-cur-body leading-relaxed">{seatGate?.error || "지금은 현장 계정을 만들 수 없어요."}</p>
+            {/* 이 한 줄은 스토어(구글·애플) 구독자 전용 설명이다 — 본인 몫은 스토어가 받고 좌석만
+                카드로 청구되는 구조를 설명한다. 웹 카드 감독자·카드 없는 체험자·요금제 부적격자에게
+                띄우면 서버가 준 진짜 사유 바로 밑에 틀린 두 번째 문장이 붙는다(검수 2026-08-10 지적 4). */}
+            {storeOwner && seatReason === "method" && (
+                <p className="text-[12px] text-cur-muted leading-relaxed">현장 계정 몫(계정당 월 3,900원)은 등록한 카드로 청구돼요.</p>
+            )}
+            {payLinkOk ? (
+                <Link
+                    href="/account"
+                    className="inline-flex items-center gap-1 text-[13px] font-bold text-cur-primary rounded-[6px] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                >
+                    구독 및 결제로 가기
+                    <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
+            ) : (
+                /* 갈 곳을 약속하지 않는다 — 요금제 전환은 화면에 수단이 없으므로 사실과 연락처만 준다 */
+                <p className="text-[12px] text-cur-muted leading-relaxed">
+                    요금제 전환이 필요해요. 고객센터 <b className="text-cur-body font-semibold">032-229-1556</b> 또는{" "}
+                    <a href="mailto:support@bitflip.team" className="text-cur-primary font-semibold hover:underline">support@bitflip.team</a>
+                    로 문의해주세요.
+                </p>
+            )}
+        </>
+    )
+
     // 한글·띄어쓰기를 입력해도 아이디 규칙으로 자동 변환 ("하이 물류" → hai_mulryu)
     const effStem = sanitizeStem(stem)
 
     // 추가 위저드는 단계 상태에서 열림을 유도한다 — ?new=1 딥링크도 같은 경로로 모달이 열린다
     const addOpen = addStep !== null || createdIds !== null
-    const closeAdd = () => { setAddStep(null); setCreatedIds(null); setFormErr(null); setAddMsg(null) }
+    const closeAdd = () => { setAddStep(null); setCreatedIds(null); setFormErr(null); setFormErrPay(false); setAddMsg(null) }
 
     const createBulk = async () => {
         setFormErr(null)
+        setFormErrPay(false)
         setAddMsg(null)
         if (!STEM_RE.test(effStem)) { setFormErr("아이디로 만들 수 있는 글자가 부족해요. 영문·숫자·한글 2자 이상 입력해주세요."); return }
         if (initPw.length < 8) { setFormErr("초기 비밀번호는 8자 이상이어야 해요."); return }
@@ -176,7 +304,8 @@ export default function OrgMembersPage() {
                 body: JSON.stringify({ stem: effStem, count, password: initPw, siteNames: siteNames.map((n) => n.trim()) }),
             })
             const j = await res.json()
-            if (!res.ok) { setFormErr(j.error || "발급 실패") ; return }
+            // 402는 '결제 자격·결제수단' 실패다 — 문구만 주면 갈 곳이 없으니 /account 링크를 함께 띄운다
+            if (!res.ok) { setFormErr(j.error || "발급 실패"); setFormErrPay(res.status === 402); return }
             setCreatedIds(j.created ?? [])
             await load()
         } finally {
@@ -201,6 +330,7 @@ export default function OrgMembersPage() {
 
     const createInviteLink = async () => {
         setAddMsg(null)
+        setFormErrPay(false)
         setBusy("link")
         try {
             const res = await fetch("/api/org/invites", {
@@ -209,7 +339,9 @@ export default function OrgMembersPage() {
                 body: JSON.stringify({ kind: "link", siteNames: siteNames.map((n) => n.trim()).filter(Boolean) }),
             })
             const j = await res.json()
-            if (!res.ok) { setAddMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
+            // 초대 링크 경로도 402(결제 자격·결제수단)를 낸다 — 게이트가 앞에서 걸러도
+            // 자격이 그 사이에 바뀌면(주기 만료·카드 삭제) 여기로 떨어지므로 갈 곳을 같이 준다
+            if (!res.ok) { setFormErrPay(res.status === 402); setAddMsg({ type: "err", text: j.error || "링크 생성 실패" }); return }
             setAddStep("link")
             setInviteUrl(`${window.location.origin}/join/${j.token}`)
         } finally {
@@ -219,6 +351,7 @@ export default function OrgMembersPage() {
 
     const requestAttach = async () => {
         setAddMsg(null)
+        setFormErrPay(false)
         setBusy("attach")
         try {
             const res = await fetch("/api/org/invites", {
@@ -227,7 +360,7 @@ export default function OrgMembersPage() {
                 body: JSON.stringify({ kind: "attach", loginId: attachId }),
             })
             const j = await res.json()
-            if (!res.ok) { setAddMsg({ type: "err", text: j.error || "편입 초대 실패" }); return }
+            if (!res.ok) { setFormErrPay(res.status === 402); setAddMsg({ type: "err", text: j.error || "편입 초대 실패" }); return }
             setAddMsg({ type: "ok", text: `편입 초대를 보냈어요. [${attachId}] 계정이 다음 로그인 때 수락하면 연결됩니다.` })
             setAttachId("")
         } finally {
@@ -372,10 +505,12 @@ export default function OrgMembersPage() {
                                 갈 곳 없는 유도가 된다. 앱 org-members.tsx의 canIssueSeats와 같은 규율.
                                 (sub 로딩 중에는 null이라 기존처럼 버튼을 보여준다 — 조회 실패로
                                  유료 감독자의 발급이 잠기는 쪽이 더 나쁘다) */}
-                            {isWhitelist(sub) ? (
-                                <p className="text-[13px] text-cur-muted leading-relaxed p-4">
-                                    영구 무료 계정은 현장 계정을 추가할 수 없어요. 정책 변경 전까지 무료로 사용 가능합니다.
-                                </p>
+                            {blockWizard ? (
+                                /* 자격(plan·subscription)이 없으면 위저드를 열지 않는다 — 세 경로가 전부
+                                   서버에서 막히므로 다 입력한 뒤 402로 되돌려보내는 대신 여기서 이유와
+                                   갈 곳을 함께 준다. 결제수단·주기 문제(method·period)는 초대·편입이
+                                   살아 있으므로 여기서 막지 않는다 (blockAll 주석 참조) */
+                                <div className="p-4 space-y-2">{blockedPanel}</div>
                             ) : (
                             <button
                                 type="button"
@@ -402,9 +537,22 @@ export default function OrgMembersPage() {
                         <DialogTitle className={dialogTitleCls}>현장 계정 추가</DialogTitle>
                     </DialogHeader>
                     {addMsg && (
-                        <div className={`text-[13px] rounded-[8px] px-3 py-2 ${addMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/5 border border-cur-error/20 text-cur-error"}`}>{addMsg.text}</div>
+                        <div className={`text-[13px] rounded-[8px] px-3 py-2 space-y-1.5 ${addMsg.type === "ok" ? "bg-cur-primary/10 text-cur-primary" : "bg-cur-error/5 border border-cur-error/20 text-cur-error"}`}>
+                            <p>{addMsg.text}</p>
+                            {/* 402는 결제 자격·결제수단 문제 — 문구만 주면 "그래서 어디서 등록하나요"에서 멈춘다.
+                                단 요금제 부적격(payLinkOk=false)에는 붙이지 않는다 — /account에 바꿀 수단이 없다 */}
+                            {addMsg.type === "err" && formErrPay && payLinkOk && (
+                                <Link
+                                    href="/account"
+                                    className="inline-flex items-center gap-1 font-bold text-cur-primary rounded-[6px] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                >
+                                    구독 및 결제로 가기
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                </Link>
+                            )}
+                        </div>
                     )}
-                    {ctx?.kind === "solo" && addStep !== null && !createdIds && (
+                    {ctx?.kind === "solo" && addStep !== null && !createdIds && !blockWizard && (
                         <div className="rounded-xl bg-cur-primary/[0.06] border border-cur-primary/25 px-4 py-3 space-y-1">
                             <p className="text-[13px] font-bold text-cur-primary">첫 현장 계정을 만들면 이 계정이 회사 감독자가 돼요</p>
                             <p className="text-[12px] text-cur-muted leading-relaxed">
@@ -434,6 +582,15 @@ export default function OrgMembersPage() {
                                 </Button>
                                 <Button onClick={closeAdd} variant="outline" className="h-12 px-4 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                             </div>
+                        </div>
+                    ) : blockWizard ? (
+                        /* 자격이 없으면 위저드 대신 이유와 갈 곳만 — 버튼만 막으면 ?new=1 딥링크가
+                           그 게이트를 지나쳐 여기까지 들어온다(홈 온보딩 카드가 미는 URL이 그것이다).
+                           모달을 조용히 닫지 않는 이유: 눌렀는데 아무 일도 안 일어나면 그게 또 다른
+                           막다른 길이다. 열되, 왜 못 만드는지를 이 자리에서 말한다. */
+                        <div className="space-y-2">
+                            {blockedPanel}
+                            <Button onClick={closeAdd} variant="outline" className="w-full h-12 mt-2 rounded-lg border-cur-hairline text-cur-muted font-semibold">닫기</Button>
                         </div>
                     ) : addStep === "count" ? (
                         /* 1단계 — 몇 개? */
@@ -494,6 +651,14 @@ export default function OrgMembersPage() {
                         /* 2단계 — 계정을 누가 만들까? */
                         <div className="space-y-3">
                             <p className="text-[14px] font-semibold text-cur-ink">계정 {count}개, 어떻게 만들까요?</p>
+                            {blockDirect ? (
+                                /* 직접 발급만 잠근다 — 이 분기만 그 자리에서 즉시 청구된다(bulk → chargeProratedAccount).
+                                   아래 초대 링크·편입은 좌석이 가입/수락 때 생기고 지금 돈을 받지 않으므로 열어둔다. */
+                                <div className="rounded-[12px] border border-cur-hairline bg-cur-elevated p-4 space-y-2">
+                                    <p className="text-[14px] font-bold text-cur-muted">내가 만들어서 현장담당자에게 줄래요</p>
+                                    {blockedPanel}
+                                </div>
+                            ) : (
                             <button
                                 onClick={() => setAddStep("direct")}
                                 className="w-full flex items-center gap-3.5 p-4 rounded-[12px] border border-cur-hairline bg-cur-elevated hover:border-cur-primary/40 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
@@ -505,6 +670,7 @@ export default function OrgMembersPage() {
                                 </span>
                                 <ChevronRight className="w-4 h-4 shrink-0 text-cur-muted-soft" />
                             </button>
+                            )}
                             <button
                                 onClick={createInviteLink}
                                 disabled={busy === "link"}
@@ -554,6 +720,13 @@ export default function OrgMembersPage() {
                             </details>
                             <Button onClick={closeAdd} variant="outline" className="w-full h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">완료</Button>
                         </div>
+                    ) : addStep === "direct" && blockDirect ? (
+                        /* 자격 조회가 늦게 도착해 이미 직접 발급 단계에 들어와 있는 경우 —
+                           입력을 다 받아놓고 끝에서 402로 되돌려보내지 않는다 */
+                        <div className="space-y-2">
+                            {blockedPanel}
+                            <Button onClick={() => setAddStep("method")} variant="outline" className="w-full h-12 mt-2 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
+                        </div>
                     ) : addStep === "direct" ? (
                         /* 직접 발급 — 아이디 규칙 설명을 눈앞에서 예시로 */
                         <div className="space-y-4">
@@ -591,15 +764,44 @@ export default function OrgMembersPage() {
                                         월 {(storeOwner ? 4900 + monthlyAfter : monthlyAfter).toLocaleString()}원
                                     </span>
                                 </div>
+                                {/* 지금 승인될 금액 — 서버 청구식 그대로. 종전엔 "이번 달 남은 기간 요금이 먼저
+                                    결제되고"라고만 적어, 좌석을 가진 스토어 감독자에게 붙는 기존 좌석 이번 주기
+                                    소급분(periodBase)이 통째로 빠졌다. 예고보다 큰 금액이 승인되는 건 분쟁거리다. */}
+                                {!isTrialing && (immediateLoading || immediate) && (
+                                    <div className="flex items-baseline justify-between gap-3 pt-2 border-t border-cur-hairline">
+                                        <span className="text-[13px] text-cur-body">
+                                            지금 결제{immediate && immediate.periodBase > 0 ? " · 남은 기간분 + 기존 현장 이번 주기분" : " · 남은 기간분"}
+                                        </span>
+                                        <span className="text-[15px] font-bold text-cur-ink shrink-0">
+                                            {immediate ? `${immediate.amount.toLocaleString()}원` : "계산 중…"}
+                                        </span>
+                                    </div>
+                                )}
                                 <p className="text-[12px] text-cur-muted leading-relaxed">
                                     {isTrialing
                                         ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
-                                        : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
+                                        : immediate || immediateLoading
+                                          // 즉시 결제액을 바로 위 행에서 숫자로 보여줬으니 여기선 다음 주기만 말한다
+                                          ? `${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
+                                          : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
                                     {storeOwner && " 내 구독 4,900원은 앱 스토어가 따로 청구해요."}
                                 </p>
                             </div>
                             {formErr && (
-                                <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{formErr}</p>
+                                <div className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2 space-y-1.5">
+                                    <p>{formErr}</p>
+                                    {/* 402는 결제 자격·결제수단 문제 — 갈 곳을 같이 준다.
+                                        요금제 부적격(payLinkOk=false)만 예외 — 결제 화면엔 바꿀 수단이 없다 */}
+                                    {formErrPay && payLinkOk && (
+                                        <Link
+                                            href="/account"
+                                            className="inline-flex items-center gap-1 font-bold text-cur-primary rounded-[6px] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
+                                        >
+                                            구독 및 결제로 가기
+                                            <ChevronRight className="w-3.5 h-3.5" />
+                                        </Link>
+                                    )}
+                                </div>
                             )}
                             <div className="flex gap-2">
                                 <Button onClick={() => { setAddStep("method"); setFormErr(null) }} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
