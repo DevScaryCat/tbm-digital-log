@@ -62,6 +62,8 @@ async function run(request: Request) {
       googleSeatPaid: 0,
       googleSeatFailed: 0,
       grandfatherRestored: 0,
+      /** 정원제인데 실계정이 정원을 넘은 행 수 — 0이 아니면 즉시 원인을 봐야 한다 */
+      capacityOver: 0,
     };
     for (const sub of (due || []) as SubscriptionRow[]) {
       results.processed++;
@@ -79,9 +81,12 @@ async function run(request: Request) {
     {
       const { data: googleDue, error: gErr } = await admin
         .from("subscriptions")
-        .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts, source")
+        .select("id, user_id, plan, pending_plan, billing_key, billing_key_verified, amount, status, current_period_end, failed_attempts, source, store_seat_capacity")
         .in("source", STORE_SOURCES as unknown as string[])
         .not("billing_key", "is", null)
+        // 스토어 정원제(seats-NN) 구독은 좌석 값까지 스토어가 받는다 — 카드로 또 긁으면 이중청구.
+        // 기존 google_play 구독자는 이 값이 NULL로 남아 종전대로 여기서 좌석 몫이 청구된다.
+        .is("store_seat_capacity", null)
         // trialing 제외: 체험 중 좌석 무료(포트원 관례와 동일) — 체험 종료로 스토어가 첫 정규 주기를
         // 열면(만료일 전진→새 주기 키) 그때 온전히 청구된다. canceled 제외: 끊긴 구독에 청구 금지.
         // past_due(구글 grace) 제외(검수 발견): grace 중 구글은 만료일을 grace 종료일로 연장해
@@ -105,6 +110,78 @@ async function run(request: Request) {
           if (r.status === "paid") results.googleSeatPaid++;
           else if (r.status === "failed") results.googleSeatFailed++;
           // skipped(이미 결제·좌석 없음·키 검증 대기)는 집계하지 않는다 — 매일 대부분이 스킵이다
+        }
+      }
+    }
+
+    // ── 스토어 정원제 sanity 리포트 (관측 전용 — 아무것도 바꾸지 않는다) ──────
+    // store_seat_capacity를 쓰는 순간 그 감독자의 카드 좌석 청구가 멈춘다(위 쿼리에서 제외).
+    // 조건이 잘못 걸리면 정원제가 아닌 구독자까지 빠져 무과금 누수가 조용히 자란다.
+    // '정원보다 실계정이 많은' 행을 매일 뽑아 즉시 관측되게 한다.
+    //
+    // ⚠️ '쓰고 있는 계정'은 org_members active가 아니라 **미러 구독이 살아 있는** 멤버다.
+    // reconcileCapacitySeats는 정원 초과분의 미러(plan='org_seat')만 접고 org_members는 active로
+    // 남긴다(정원을 다시 올리면 자동 복원하려는 의도된 설계). active 수로 세면 감액을 한 감독자가
+    // 연결 해제를 할 때까지 매일 경보를 울려, 상시 켜진 경보가 진짜 누수를 가린다(2026-08-10 검수).
+    // 질의도 행마다 2회에서 전체 3회로 접는다(고객 수에 선형으로 늘던 자리).
+    {
+      const { data: capRows } = await admin
+        .from("subscriptions")
+        .select("id, user_id, store_seat_capacity, store_base_plan_id")
+        .not("store_seat_capacity", "is", null)
+        .limit(500);
+      const caps = ((capRows as any[]) || []);
+      if (caps.length > 0) {
+        const ownerIds = caps.map((s) => s.user_id as string);
+        const { data: orgs } = await admin
+          .from("organizations")
+          .select("id, owner_user_id")
+          .in("owner_user_id", ownerIds);
+        const orgByOwner = new Map<string, string>();
+        for (const o of ((orgs as any[]) || [])) orgByOwner.set(o.owner_user_id as string, o.id as string);
+
+        const orgIds = [...orgByOwner.values()];
+        const { data: mems } = orgIds.length
+          ? await admin
+              .from("org_members")
+              .select("org_id, member_user_id")
+              .in("org_id", orgIds)
+              .eq("status", "active")
+          : { data: [] as any[] };
+        const memberRows = ((mems as any[]) || []);
+
+        const alive = new Set<string>();
+        if (memberRows.length > 0) {
+          const { data: mirrors } = await admin
+            .from("subscriptions")
+            .select("user_id")
+            .in("user_id", memberRows.map((m) => m.member_user_id as string))
+            .eq("plan", "org_seat")
+            .eq("status", "active");
+          for (const m of ((mirrors as any[]) || [])) alive.add(m.user_id as string);
+        }
+
+        const usedByOrg = new Map<string, number>();
+        for (const m of memberRows) {
+          if (!alive.has(m.member_user_id as string)) continue; // 접힌 멤버 = 이미 이용 중단
+          const k = m.org_id as string;
+          usedByOrg.set(k, (usedByOrg.get(k) ?? 0) + 1);
+        }
+
+        for (const s of caps) {
+          const orgId = orgByOwner.get(s.user_id as string);
+          if (!orgId) continue;
+          const used = 1 + (usedByOrg.get(orgId) ?? 0); // 감독자 본인 + 살아 있는 좌석
+          if (used > Number(s.store_seat_capacity)) {
+            results.capacityOver++;
+            console.error("STORE_CAPACITY_OVER", {
+              subId: s.id,
+              userId: s.user_id,
+              basePlanId: s.store_base_plan_id,
+              capacity: s.store_seat_capacity,
+              used,
+            });
+          }
         }
       }
     }

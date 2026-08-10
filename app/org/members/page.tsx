@@ -67,10 +67,21 @@ export default function OrgMembersPage() {
     // 청구 주체 — 'google_play'·'app_store'(스토어 소유주)는 본인 몫을 스토어가 받고
     // 등록 카드로는 좌석 몫만 청구된다(lib/billing.ts resolveBillableAmount). 미리보기 분기용.
     const [subSource, setSubSource] = useState<string | null>(null)
-    // 지금 즉시 승인될 금액 — 화면이 자체 계산하지 않고 서버(/api/org/seat-preview)에 묻는다.
-    // 실제 청구(lib/billing.ts resolveSeatCharge)와 같은 함수로 계산된 값이라 예고와 승인이 어긋나지 않는다.
-    const [immediate, setImmediate] = useState<{ amount: number; periodBase: number } | null>(null)
-    const [immediateLoading, setImmediateLoading] = useState(false)
+    // 이번 개수(count)로 서버가 판정한 결과 전체 — 금액뿐 아니라 **거절 여부·사유까지** 그대로 쓴다.
+    // 종전에는 금액(chargeable일 때만)만 받아두고, 정원제 분기는 화면이 usedAfter/seatCapacity를
+    // 다시 계산해 조건 없이 "정원 안이라 추가 결제는 없어요"를 붙였다 — 정원을 넘긴 수량에도
+    // 그렇게 말했다(2026-08-10 검수). 화면은 숫자를 다시 계산하지 않는다.
+    const [preview, setPreview] = useState<{
+        chargeable: boolean
+        amount: number
+        periodBase: number
+        reason?: SeatBlockReason
+        error?: string
+    } | null>(null)
+    const [previewLoading, setPreviewLoading] = useState(false)
+    // 청구액 표시는 '청구 가능'일 때만 — 거절된 미리보기의 0원을 금액처럼 보여주지 않는다
+    const immediate = preview?.chargeable ? preview : null
+    const immediateLoading = previewLoading
     // 발급 자격 — 화면이 서버 규칙을 베껴 계산하지 않고 /api/org/seat-preview에 묻는다.
     // (종전엔 card_info 유무 + 체험/스토어 조합을 화면에서 다시 적었는데, 서버는 billing_key로
     //  판정하고 주기 만료 거절도 따로 있어 언제든 조용히 갈라질 수 있는 세 번째 사본이었다.)
@@ -82,6 +93,10 @@ export default function OrgMembersPage() {
         error?: string
         plan?: string | null
         reason?: SeatBlockReason
+        /** 스토어 정원제(seats-NN)면 총 계정 정원, 아니면 null — 금액 문구를 통째로 가르는 값 */
+        seatCapacity?: number | null
+        /** 다음 결제일부터 적용될 감액 예약 정원 (앱에서 '-'로 예약한 값). 안내 전용 */
+        pendingSeatCapacity?: number | null
     } | null>(null)
     // 편입 폼
     const [attachId, setAttachId] = useState("")
@@ -168,28 +183,43 @@ export default function OrgMembersPage() {
             try {
                 const res = await fetch("/api/org/seat-preview?count=1", { headers: await authHeaders() })
                 const j = await res.json()
-                if (res.ok) setSeatGate({ chargeable: !!j.chargeable, error: j.error, plan: j.plan ?? null, reason: j.reason })
+                if (res.ok) setSeatGate({
+                    chargeable: !!j.chargeable,
+                    error: j.error,
+                    plan: j.plan ?? null,
+                    reason: j.reason,
+                    seatCapacity: j.seatCapacity ?? null,
+                    pendingSeatCapacity: j.pendingSeatCapacity ?? null,
+                })
             } catch { /* 무시 — 막지 않는다 */ }
         })()
     }, [])
 
-    // 확인 단계(direct)에 들어올 때마다 '지금 결제될 금액'을 서버에 묻는다.
-    // 개수(count)는 이 단계 전에 확정되므로 한 번만 부르면 되고, 뒤로 갔다 오면 다시 부른다.
+    // 확인 단계(direct)에 들어올 때마다 이번 개수(count)의 판정을 서버에 묻는다.
+    // 개수는 이 단계 전에 확정되므로 한 번만 부르면 되고, 뒤로 갔다 오면 다시 부른다.
+    // 금액뿐 아니라 거절 여부(chargeable)·사유(reason)·문구(error)까지 받아 그대로 쓴다 —
+    // 정원 초과를 화면이 스스로 판정하지 않는다.
     useEffect(() => {
-        if (addStep !== "direct") { setImmediate(null); return }
+        if (addStep !== "direct") { setPreview(null); return }
         let alive = true
         ;(async () => {
-            setImmediateLoading(true)
+            setPreviewLoading(true)
             try {
                 const res = await fetch(`/api/org/seat-preview?count=${count}`, { headers: await authHeaders() })
                 const j = await res.json()
                 if (!alive) return
-                // 조회 실패·청구 불가면 null로 두고 종전의 서술형 문구로 되돌아간다(거짓 숫자보다 낫다)
-                setImmediate(res.ok && j.chargeable ? { amount: Number(j.amount) || 0, periodBase: Number(j.periodBase) || 0 } : null)
+                // 조회 실패면 null — 종전의 서술형 문구로 되돌아가고 막지도 않는다(거짓 숫자·거짓 차단보다 낫다)
+                setPreview(res.ok ? {
+                    chargeable: !!j.chargeable,
+                    amount: Number(j.amount) || 0,
+                    periodBase: Number(j.periodBase) || 0,
+                    reason: j.reason,
+                    error: j.error,
+                } : null)
             } catch {
-                if (alive) setImmediate(null)
+                if (alive) setPreview(null)
             } finally {
-                if (alive) setImmediateLoading(false)
+                if (alive) setPreviewLoading(false)
             }
         })()
         return () => { alive = false }
@@ -206,6 +236,29 @@ export default function OrgMembersPage() {
     const storeOwner = subSource === "google_play" || subSource === "app_store"
     const nextChargeDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
     const monthlyAfter = ((storeOwner ? 0 : 1) + activeCount + count) * SEAT_PRICE
+
+    // ── 스토어 정원제(seats-NN) 감독자 ───────────────────────────────────────
+    // 이들은 정원 값까지 앱 스토어에 이미 냈다 — 카드로는 **0원**이 청구된다
+    // (lib/billing.ts resolveBillableAmount·resolveSeatCharge가 0으로 못박고 좌석 크론에서도 제외).
+    // 그런데 이 화면은 SEAT_PRICE를 스스로 곱해 "N개 × 3,900원(카드)"을 통보했다 —
+    // 앱에서는 다 걷어낸 문구가 웹에만 남아 있었다(2026-08-10 검수). 값은 화면이 다시 계산하지
+    // 않고 서버(/api/org/seat-preview)가 준 seatCapacity로 분기한다.
+    const seatCapacity = seatGate?.seatCapacity ?? null
+    const capacityMode = seatCapacity != null
+    const pendingCapacity = seatGate?.pendingSeatCapacity ?? null
+    // 이번 발급 후의 총 계정 수(감독자 본인 포함) — 정원과 같은 단위다
+    const usedAfter = 1 + activeCount + count
+    // 한 번에 만들 수 있는 최대 개수. 정원제면 **정원 여유분**이 상한이다(앱 org-members.tsx의
+    // seatRoom과 같은 식). 종전에는 웹만 정원과 무관하게 20까지 올라가, 넘긴 수량을 다 입력한
+    // 끝에서 서버 402로 되돌려보냈다(2026-08-10 검수). 20은 bulk 라우트의 MAX_BULK 상한.
+    const seatRoom = capacityMode ? Math.max(0, (seatCapacity as number) - 1 - activeCount) : 20
+    const maxCount = Math.max(1, Math.min(20, seatRoom))
+
+    // 상한이 늦게 도착하는 경우(자격 조회가 ?new=1 딥링크보다 느릴 때) 이미 올려둔 수량을 내린다.
+    // 상한 자체는 서버 판정이 도착해야 알 수 있으므로, 도착하는 즉시 화면 숫자를 맞춘다.
+    useEffect(() => {
+        setCount((c) => Math.min(c, maxCount))
+    }, [maxCount])
 
     // 청구 자격 선검사 — 위저드에 들어가기 **전에**. 종전에는 현장명·아이디·비밀번호를 다 입력하고
     // 'N개 만들기'를 누른 뒤에야 서버가 402 한 문장으로 전부 롤백했다(갈 곳 링크도 없었다).
@@ -239,13 +292,25 @@ export default function OrgMembersPage() {
     // 스토어 소유주의 method(카드 없음)는 예외로 위저드까지 닫는다 — invites 라우트(46-55행)가
     // 막는 유일한 케이스가 정확히 'store source + billing_key 없음'이라, 열어두면 초대·편입 버튼이
     // 100% 402로 죽는다. 위 ⚠️의 "웹 카드 감독자는 통과"와 방향이 반대인 쪽이다(검수 2026-08-10).
-    const blockWizard = blockAll || blockUnknown || (storeOwner && seatReason === "method")
+    // 정원이 가득 찬 경우도 위저드를 통째로 닫는다 — 초대(app/api/org/invites)·편입
+    // (app/api/org/attach)도 서버가 같은 정원 판정으로 막으므로, 열어두면 세 버튼이 전부
+    // 402/409로 죽는 막다른 길이 된다(위 storeOwner+method와 같은 규율).
+    const blockWizard = blockAll || blockUnknown || (storeOwner && seatReason === "method") || seatReason === "capacity"
     // 직접 발급만 막히는 경우 — 위저드는 열리고 method 단계에서 이 분기만 잠긴다
     const blockDirect = seatBlocked || whitelisted
 
     // 결제 화면으로 보내도 되는 사유인가. plan(요금제 부적격)은 /account에 바꿀 수단이 없어
     // 링크를 붙이는 순간 '안내받은 막다른 길'이 된다 — grandfather도 같다(결제 UI 자체가 없다).
-    const payLinkOk = !whitelisted && seatReason !== "plan"
+    // capacity(정원 가득 참)도 결제수단 문제가 아니다 — /account에는 정원을 늘릴 수단이 없고,
+    // 늘리는 자리는 앱의 정원 스테퍼다(lib/billing.ts SeatBlockReason 주석).
+    // period도 **정원제일 때는** 같다(2026-08-10 검수): 정원제 감독자의 period는 스토어 결제
+    // 미확인(grace)이고, 그들에게 /account는 카드 등록 블록조차 숨긴다(app/account/page.tsx의
+    // storeCapacity 분기) — 링크를 붙이는 순간 '안내받은 막다른 길'이 된다.
+    const payLinkOk =
+        !whitelisted &&
+        seatReason !== "plan" &&
+        seatReason !== "capacity" &&
+        !(capacityMode && seatReason === "period")
 
     // 발급을 막을 때 보여줄 패널 — 목록 마지막 행과 위저드 모달 본문이 **같은 것**을 쓴다.
     // 버튼만 막으면 ?new=1 딥링크(홈 온보딩 카드가 미는 바로 그 URL)가 게이트를 통째로 지나쳐
@@ -261,8 +326,23 @@ export default function OrgMembersPage() {
             {/* 이 한 줄은 스토어(구글·애플) 구독자 전용 설명이다 — 본인 몫은 스토어가 받고 좌석만
                 카드로 청구되는 구조를 설명한다. 웹 카드 감독자·카드 없는 체험자·요금제 부적격자에게
                 띄우면 서버가 준 진짜 사유 바로 밑에 틀린 두 번째 문장이 붙는다(검수 2026-08-10 지적 4). */}
-            {storeOwner && seatReason === "method" && (
+            {/* 정원제 감독자에게는 어떤 3,900원 문구도 참이 아니다 — 좌석 값까지 스토어에 냈다 */}
+            {storeOwner && seatReason === "method" && !capacityMode && (
                 <p className="text-[12px] text-cur-muted leading-relaxed">현장 계정 몫(계정당 월 3,900원)은 등록한 카드로 청구돼요.</p>
+            )}
+            {/* 정원 초과 — 늘리는 자리는 앱(안드로이드)의 스테퍼다. 서버 문구는 플랫폼을 말하지
+                않으므로(lib/billing.ts CAPACITY_FULL_MESSAGE) 위치 안내는 여기서 붙인다. */}
+            {capacityMode && seatReason === "capacity" && (
+                <p className="text-[12px] text-cur-muted leading-relaxed">
+                    지금 정원은 {seatCapacity}개(내 계정 포함)이고 {1 + activeCount}개를 쓰고 있어요. 정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 늘릴 수 있어요.
+                </p>
+            )}
+            {/* 정원제의 period = 스토어 결제 미확인(grace). 카드 문제가 아니라 스토어 문제라
+                /account로 보내지 않는다(payLinkOk에서 제외) — 대신 어디를 봐야 하는지만 말한다. */}
+            {capacityMode && seatReason === "period" && (
+                <p className="text-[12px] text-cur-muted leading-relaxed">
+                    구독 결제가 회복되면 다시 만들 수 있어요. 결제한 스토어의 <b className="text-cur-ink">구독 설정</b>에서 결제수단을 확인해주세요.
+                </p>
             )}
             {payLinkOk ? (
                 <Link
@@ -600,13 +680,27 @@ export default function OrgMembersPage() {
                                 <button onClick={() => setCount((c) => Math.max(1, c - 1))} disabled={count <= 1} aria-label="줄이기"
                                     className="w-11 h-12 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Minus className="w-4 h-4" /></button>
                                 <span className="w-12 text-center text-[28px] font-bold tabular-nums">{count}</span>
-                                <button onClick={() => setCount((c) => Math.min(20, c + 1))} aria-label="늘리기"
-                                    className="w-11 h-12 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Plus className="w-4 h-4" /></button>
+                                {/* 상한은 정원 여유분(seatRoom) — 정원제 감독자가 살 수 없는 수량까지
+                                    올려놓고 끝에서 402를 맞는 일이 없게 한다(앱과 같은 캡) */}
+                                <button onClick={() => setCount((c) => Math.min(maxCount, c + 1))} disabled={count >= maxCount} aria-label="늘리기"
+                                    className="w-11 h-12 rounded-[8px] border border-cur-hairline bg-cur-elevated text-cur-ink flex items-center justify-center disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"><Plus className="w-4 h-4" /></button>
                             </div>
-                            {/* 요금 계산기 카드가 사라진 자리 — 청구 규칙 한 줄만 남긴다 */}
+                            {/* 요금 계산기 카드가 사라진 자리 — 청구 규칙 한 줄만 남긴다.
+                                정원제(스토어 seats-NN) 감독자에게 3,900원을 말하면 거짓이다 —
+                                그 몫은 이미 앱 스토어에 냈고 카드로는 0원이 청구된다.
+                                "추가 결제는 없어요"를 조건 없이 붙이지 않는다 — 정원 여유분을
+                                먼저 말하고, 실제 청구 여부는 확인 단계에서 서버 응답으로 확정한다. */}
                             <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
-                                계정 1개당 월 3,900원 · {sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}
+                                {capacityMode
+                                    ? `정원 ${seatCapacity}개 중 ${1 + activeCount}개 사용 중 · ${maxCount}개까지 더 만들 수 있어요`
+                                    : `계정 1개당 월 3,900원 · ${sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}`}
                             </p>
+                            {/* 감액 예약(앱 '-')을 웹이 모르면, 갱신일에 최근 만든 계정부터 조용히 잠긴다 */}
+                            {capacityMode && pendingCapacity != null && pendingCapacity < (seatCapacity as number) && (
+                                <p className="text-[12px] text-cur-body bg-cur-elevated border border-cur-hairline rounded-[8px] px-3 py-2 leading-relaxed">
+                                    다음 결제일부터 정원이 {pendingCapacity}개로 줄어들 예정이에요. 그때 정원을 넘는 계정은 최근에 만든 것부터 이용이 멈춰요.
+                                </p>
+                            )}
                             <div className="flex gap-2">
                                 <Button onClick={closeAdd} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">취소</Button>
                                 <Button onClick={() => { setSiteNames((prev) => Array.from({ length: count }, (_, i) => prev[i] ?? "")); setAddStep("names") }} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">다음</Button>
@@ -752,44 +846,93 @@ export default function OrgMembersPage() {
                             </div>
                             {/* 청구 미리보기 — 언제, 얼마가 나가는지 발급 확인 자리에서 숫자로 */}
                             <div className="rounded-[12px] bg-cur-elevated p-4 space-y-1.5">
-                                {/* 스토어 구독자는 두 레일(스토어 4,900 + 카드 좌석)로 나가므로, 카드 몫만 보여주면
-                                    "내 돈이 얼마 나가는지"를 알 수 없다(Chris 2026-08-10) — 합계를 먼저, 분해를 아래에. */}
-                                <div className="flex items-baseline justify-between gap-3">
-                                    <span className="text-[13px] text-cur-body">
-                                        {storeOwner
-                                            ? `내 구독 4,900원(앱 스토어) + 현장 계정 ${activeCount + count}개 × 3,900원(카드)`
-                                            : `내 계정 1 + 현장 ${activeCount + count} = 계정 ${1 + activeCount + count}개 × 3,900원`}
-                                    </span>
-                                    <span className="text-[17px] font-bold text-cur-ink shrink-0">
-                                        월 {(storeOwner ? 4900 + monthlyAfter : monthlyAfter).toLocaleString()}원
-                                    </span>
-                                </div>
-                                {/* 지금 승인될 금액 — 서버 청구식 그대로. 종전엔 "이번 달 남은 기간 요금이 먼저
-                                    결제되고"라고만 적어, 좌석을 가진 스토어 감독자에게 붙는 기존 좌석 이번 주기
-                                    소급분(periodBase)이 통째로 빠졌다. 예고보다 큰 금액이 승인되는 건 분쟁거리다. */}
-                                {!isTrialing && (immediateLoading || immediate) && (
-                                    <div className="flex items-baseline justify-between gap-3 pt-2 border-t border-cur-hairline">
-                                        <span className="text-[13px] text-cur-body">
-                                            지금 결제{immediate && immediate.periodBase > 0 ? " · 남은 기간분 + 기존 현장 이번 주기분" : " · 남은 기간분"}
-                                        </span>
-                                        <span className="text-[15px] font-bold text-cur-ink shrink-0">
-                                            {immediate ? `${immediate.amount.toLocaleString()}원` : "계산 중…"}
-                                        </span>
-                                    </div>
+                                {capacityMode ? (
+                                    /* 스토어 정원제(seats-NN) — **카드로 나가는 돈이 0원**이다(서버가 못박는다).
+                                       여기서 3,900원을 곱해 보여주면 실제로 청구되지 않을 금액을 통보하는 것이
+                                       된다(2026-08-10 검수). 화면은 금액을 다시 계산하지 않고 정원·사용량만 말한다.
+                                       '추가 결제 없음'도 화면이 판정하지 않는다 — 이 개수(count)로 서버에 물어본
+                                       결과(preview.chargeable·error)를 그대로 쓴다. 종전엔 정원을 넘긴 수량에도
+                                       조건 없이 "이미 정원 안이라 추가 결제는 없어요"를 붙였다. */
+                                    <>
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <span className="text-[13px] text-cur-body">현장 계정 정원(내 계정 포함)</span>
+                                            <span className="text-[17px] font-bold text-cur-ink shrink-0 tabular-nums">
+                                                {usedAfter} / {seatCapacity}
+                                            </span>
+                                        </div>
+                                        {previewLoading ? (
+                                            <p className="text-[12px] text-cur-muted leading-relaxed">확인 중…</p>
+                                        ) : preview && !preview.chargeable ? (
+                                            <>
+                                                {/* 사유 문구는 서버가 준 것 그대로 — 화면이 지어내면 실제 거절 이유와 갈라진다 */}
+                                                <p className="text-[12px] font-semibold text-cur-error leading-relaxed">{preview.error || "지금은 이 개수로 만들 수 없어요."}</p>
+                                                <p className="text-[12px] text-cur-muted leading-relaxed">
+                                                    {preview.reason === "capacity"
+                                                        ? <>정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 늘려주세요.</>
+                                                        : "결제가 정상 처리된 뒤 다시 시도해주세요."}
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <p className="text-[12px] text-cur-muted leading-relaxed">
+                                                정원 안이라 추가 결제는 없어요. 구독료는 앱 스토어가 요금제 그대로 청구해요.
+                                                정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 조절할 수 있어요.
+                                            </p>
+                                        )}
+                                        {pendingCapacity != null && pendingCapacity < (seatCapacity as number) && (
+                                            <p className="text-[12px] text-cur-body leading-relaxed pt-2 border-t border-cur-hairline">
+                                                다음 결제일부터 정원이 {pendingCapacity}개로 줄어들 예정이에요 — 그때 정원을 넘는 계정은 최근에 만든 것부터 이용이 멈춰요.
+                                            </p>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* 스토어 구독자는 두 레일(스토어 4,900 + 카드 좌석)로 나가므로, 카드 몫만 보여주면
+                                            "내 돈이 얼마 나가는지"를 알 수 없다(Chris 2026-08-10) — 합계를 먼저, 분해를 아래에. */}
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <span className="text-[13px] text-cur-body">
+                                                {storeOwner
+                                                    ? `내 구독 4,900원(앱 스토어) + 현장 계정 ${activeCount + count}개 × 3,900원(카드)`
+                                                    : `내 계정 1 + 현장 ${activeCount + count} = 계정 ${1 + activeCount + count}개 × 3,900원`}
+                                            </span>
+                                            <span className="text-[17px] font-bold text-cur-ink shrink-0">
+                                                월 {(storeOwner ? 4900 + monthlyAfter : monthlyAfter).toLocaleString()}원
+                                            </span>
+                                        </div>
+                                        {/* 지금 승인될 금액 — 서버 청구식 그대로. 종전엔 "이번 달 남은 기간 요금이 먼저
+                                            결제되고"라고만 적어, 좌석을 가진 스토어 감독자에게 붙는 기존 좌석 이번 주기
+                                            소급분(periodBase)이 통째로 빠졌다. 예고보다 큰 금액이 승인되는 건 분쟁거리다. */}
+                                        {!isTrialing && (immediateLoading || immediate) && (
+                                            <div className="flex items-baseline justify-between gap-3 pt-2 border-t border-cur-hairline">
+                                                <span className="text-[13px] text-cur-body">
+                                                    지금 결제{immediate && immediate.periodBase > 0 ? " · 남은 기간분 + 기존 현장 이번 주기분" : " · 남은 기간분"}
+                                                </span>
+                                                <span className="text-[15px] font-bold text-cur-ink shrink-0">
+                                                    {immediate ? `${immediate.amount.toLocaleString()}원` : "계산 중…"}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <p className="text-[12px] text-cur-muted leading-relaxed">
+                                            {isTrialing
+                                                ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
+                                                : immediate || immediateLoading
+                                                  // 즉시 결제액을 바로 위 행에서 숫자로 보여줬으니 여기선 다음 주기만 말한다
+                                                  ? `${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
+                                                  : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
+                                            {storeOwner && " 내 구독 4,900원은 앱 스토어가 따로 청구해요."}
+                                        </p>
+                                    </>
                                 )}
-                                <p className="text-[12px] text-cur-muted leading-relaxed">
-                                    {isTrialing
-                                        ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
-                                        : immediate || immediateLoading
-                                          // 즉시 결제액을 바로 위 행에서 숫자로 보여줬으니 여기선 다음 주기만 말한다
-                                          ? `${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
-                                          : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
-                                    {storeOwner && " 내 구독 4,900원은 앱 스토어가 따로 청구해요."}
-                                </p>
                             </div>
                             {formErr && (
                                 <div className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2 space-y-1.5">
                                     <p>{formErr}</p>
+                                    {/* 서버 문구는 플랫폼을 말하지 않는다(iOS에 없는 화면을 가리키지 않으려고) —
+                                        정원을 늘리는 자리는 웹이 여기서 붙인다(레이스로 409를 맞은 경우 포함) */}
+                                    {capacityMode && (
+                                        <p className="text-[12px] font-normal text-cur-muted leading-relaxed">
+                                            정원은 앱(안드로이드)의 <b className="text-cur-body font-semibold">현장 계정 정원</b>에서 늘릴 수 있어요.
+                                        </p>
+                                    )}
                                     {/* 402는 결제 자격·결제수단 문제 — 갈 곳을 같이 준다.
                                         요금제 부적격(payLinkOk=false)만 예외 — 결제 화면엔 바꿀 수단이 없다 */}
                                     {formErrPay && payLinkOk && (
@@ -805,7 +948,9 @@ export default function OrgMembersPage() {
                             )}
                             <div className="flex gap-2">
                                 <Button onClick={() => { setAddStep("method"); setFormErr(null) }} variant="outline" className="flex-1 h-12 rounded-lg border-cur-hairline text-cur-muted font-semibold">이전</Button>
-                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">
+                                {/* 서버가 이 개수로 못 만든다고 했으면 버튼도 잠근다 — 눌러서 402를
+                                    맞게 두면 위 안내가 무슨 소용인가. preview=null(조회 실패)은 막지 않는다. */}
+                                <Button onClick={createBulk} disabled={busy === "create" || !STEM_RE.test(effStem) || !initPw || (!!preview && !preview.chargeable)} className="flex-[2] h-12 rounded-lg bg-cur-primary text-white font-bold">
                                     {busy === "create" ? <Loader2 className="w-4 h-4 animate-spin" /> : `${count}개 만들기`}
                                 </Button>
                             </div>
@@ -899,7 +1044,10 @@ export default function OrgMembersPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-[8px] bg-cur-elevated border border-cur-hairline px-3.5 py-3 text-[12px] text-cur-muted leading-relaxed">
-                        계정·데이터는 보존되고 연결만 해제됩니다. 해제 즉시 그 계정은 회사 이용권을 잃고, 다음 결제부터 요금에서 빠져요.
+                        계정·데이터는 보존되고 연결만 해제됩니다. 해제 즉시 그 계정은 회사 이용권을 잃고,{" "}
+                        {/* 정원제는 해제해도 요금이 내려가지 않는다 — 정원 자체를 줄여야 내려간다(앱 스테퍼).
+                            "요금에서 빠져요"는 정원제 감독자에게 지키지 못할 약속이다. */}
+                        {capacityMode ? "정원에 한 자리가 비어요(요금은 정원을 줄여야 내려가요)." : "다음 결제부터 요금에서 빠져요."}
                     </div>
                     {modalErr && (
                         <p className="text-[13px] font-medium text-cur-error bg-cur-error/5 border border-cur-error/20 rounded-[8px] px-3 py-2">{modalErr}</p>

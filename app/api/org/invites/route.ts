@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
-import { isStoreSource } from "@/lib/billing";
+import { isStoreSource, checkSeatCapacity, getStoreSeatCapacity } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     {
       const { data: sub } = await admin
         .from("subscriptions")
-        .select("status, plan, current_period_end, billing_key, source")
+        .select("status, plan, current_period_end, billing_key, source, store_seat_capacity")
         .eq("user_id", user.id)
         .maybeSingle();
       // isBillablePlan: grandfather(영구 무료·카드 등록 불가)는 초대로도 좌석을 못 만든다
@@ -48,9 +48,24 @@ export async function POST(request: Request) {
       if (!sub || !subscriptionAllows(sub) || !isBillablePlan(sub.plan)) {
         return NextResponse.json({ error: "현재 요금제로는 현장을 초대할 수 없어요. 구독을 먼저 확인해주세요." }, { status: 402 });
       }
-      // 인앱결제(구글·애플) 소유주는 좌석 청구용 카드가 필수 — 없으면 초대 경로로 만든 좌석이
-      // 월 청구 크론(billing_key NOT NULL 필터)에서 영영 빠져 무기한 무과금이 된다.
-      if (isStoreSource((sub as { source?: string | null }).source) && !sub.billing_key) {
+      // 스토어 정원제(seats-NN)는 카드가 없어도 된다 — 좌석 값까지 스토어가 이미 받았다.
+      // 대신 **정원**이 자격 조건이 된다(lib/billing.ts SeatBlockReason 주석).
+      // 이 검사를 빼면 초대 링크가 정원을 무제한 우회하는 통로가 된다.
+      // source를 같이 넘긴다 — 정원은 **스토어 출처일 때만** 존재한다(getStoreSeatCapacity 주석).
+      // 넘기지 않으면 함수가 출처를 확인하려고 한 번 더 조회한다.
+      const capacity = await getStoreSeatCapacity(admin, {
+        user_id: user.id,
+        source: (sub as any).source ?? null,
+        store_seat_capacity: (sub as any).store_seat_capacity,
+      });
+      if (capacity != null) {
+        const cap = await checkSeatCapacity(admin, { userId: user.id, capacity, count: 1 });
+        if (!cap.ok) {
+          return NextResponse.json({ error: cap.error, reason: "capacity" }, { status: 402 });
+        }
+      } else if (isStoreSource((sub as { source?: string | null }).source) && !sub.billing_key) {
+        // 인앱결제(구글·애플) 소유주는 좌석 청구용 카드가 필수 — 없으면 초대 경로로 만든 좌석이
+        // 월 청구 크론(billing_key NOT NULL 필터)에서 영영 빠져 무기한 무과금이 된다.
         return NextResponse.json({ error: "등록된 결제수단이 없습니다." }, { status: 402 });
       }
     }

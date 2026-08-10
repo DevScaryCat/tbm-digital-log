@@ -65,7 +65,13 @@ async function getAccessToken(): Promise<string> {
 export interface GooglePurchase {
     subscriptionState: string
     productId: string | null
+    /** 이 구독이 현재 붙어 있는 요금제(base plan). 좌석 정원(store_products)을 정하는 키다.
+     *  productId는 상품 하나(antok_monthly)로 고정이라 정원 구분은 오직 이 값으로만 된다. */
+    basePlanId: string | null
     expiryTime: string | null
+    /** 요금제 교체(업/다운그레이드) 시 구글이 새 purchaseToken을 발급하고 여기에 구 토큰을 싣는다.
+     *  RTDN은 새 토큰으로 오는데 우리 DB엔 구 토큰이 있어, 이 폴백이 없으면 요금제 변경을 통째로 놓친다. */
+    linkedPurchaseToken: string | null
     autoRenewing: boolean
     acknowledged: boolean
     isTrial: boolean
@@ -74,6 +80,17 @@ export interface GooglePurchase {
     /** 우리가 결제 시작 때 심은 값(= 우리 user_id) — 계정 도용 방지 대조용 */
     obfuscatedExternalAccountId: string | null
     testPurchase: boolean
+}
+
+/**
+ * 결제 시작 때 앱이 심는 계정 표식의 정규형. 구글은 이 값을 우리가 넣은 그대로 돌려준다.
+ *
+ * verify(로그인 계정 대조)와 RTDN(토큰 회전 폴백 대조)이 **같은 식**을 써야 한다 —
+ * 한쪽만 다르게 자르면 한쪽은 통과하고 한쪽은 막히는 비대칭이 생기고, 그 틈이 곧
+ * "남의 결제로 남의 구독이 살아나는" 경로가 된다(2026-08-10 검수).
+ */
+export function obfuscatedAccountIdFor(userId: string): string {
+    return userId.replace(/-/g, "").slice(0, 64)
 }
 
 /** purchaseToken으로 구독 실제 상태 조회 (subscriptionsv2) */
@@ -98,7 +115,10 @@ export async function getSubscription(purchaseToken: string): Promise<GooglePurc
     return {
         subscriptionState: String(j.subscriptionState ?? ""),
         productId: item?.productId ? String(item.productId) : null,
+        // offerDetails에 basePlanId와 offerId가 함께 온다(offerId는 아래 isTrial 판정에 이미 쓰고 있다)
+        basePlanId: offer.basePlanId ? String(offer.basePlanId) : null,
         expiryTime: item?.expiryTime ? String(item.expiryTime) : null,
+        linkedPurchaseToken: j.linkedPurchaseToken ? String(j.linkedPurchaseToken) : null,
         autoRenewing: autoPlan?.autoRenewEnabled === true,
         acknowledged: String(j.acknowledgementState ?? "") === "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
         // 무료체험은 offerId가 붙은 프로모션으로 판매된다(기본 요금제엔 offerId가 없다)

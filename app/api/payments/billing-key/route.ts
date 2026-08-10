@@ -16,6 +16,23 @@ export const runtime = "nodejs";
 // 카카오페이 빌링키 검증 재시도(백오프 ~9s)를 위해 실행시간 여유 확보
 export const maxDuration = 30;
 
+/**
+ * 스토어(구글·애플) 잔재를 비우는 패치 조각 — **source를 'portone'으로 되돌리는 자리에서만** 쓴다.
+ *
+ * 스토어 구독이 끝난 계정이 웹 카드로 재구독하면 청구 주체가 우리 크론으로 돌아온다.
+ * 이때 store_seat_capacity가 남아 있으면 lib/billing.ts의 정원 분기가 그 값을 보고
+ * "좌석 값은 스토어가 이미 받았다"고 판정해 카드 감독자의 발급이 전부 무과금이 되고,
+ * 동시에 죽은 정원이 상한이 되어 정당한 발급이 CAPACITY_FULL로 막힌다(2026-08-10 검수).
+ * store_purchase_token을 남기면 그 구독의 RTDN이 이 행을 찾아 status·기간을 덮어쓴다.
+ */
+const STORE_FIELDS_CLEARED = {
+  store_seat_capacity: null,
+  store_base_plan_id: null,
+  store_pending_seat_capacity: null,
+  store_purchase_token: null,
+  store_product_id: null,
+} as const;
+
 const PROVIDER_LABEL: Record<string, string> = {
   card: "카드",
   kakaopay: "카카오페이",
@@ -208,6 +225,11 @@ export async function POST(request: Request) {
             // 과거 인앱결제(google_play) 이력이 남은 계정이 크론의 source=portone 필터에서
             // 빠져 영영 무과금이 되는 구멍이 없다.
             source: "portone",
+            // 출처를 되돌리는 자리에서 스토어 잔재도 같이 지운다(2026-08-10 검수).
+            // 남겨두면 죽은 정원이 상한으로 살아남아 (a) 카드 좌석 발급이 전부 무과금이 되고
+            // (b) 정당한 발급이 CAPACITY_FULL로 막힌다. 스토어 토큰도 지운다 — 남기면 그
+            // 구독의 RTDN(만료·환불)이 이 행의 status·기간을 덮어 카드 구독을 끊는다.
+            ...STORE_FIELDS_CLEARED,
             billing_key: billingKey,
             card_info: cardInfo,
             billing_key_verified: !acceptedUnverified,
@@ -259,6 +281,8 @@ export async function POST(request: Request) {
           status: "active",
           // 재구독도 우리 크론 청구로 개통 — 인앱결제에서 웹 결제로 돌아온 계정의 출처 원복
           source: "portone",
+          // 출처를 되돌리는 자리에서 스토어 잔재도 같이 지운다 — 위 신규 구독 upsert와 같은 이유
+          ...STORE_FIELDS_CLEARED,
           billing_key: billingKey,
           card_info: cardInfo,
           amount: selectedPlan.amount,

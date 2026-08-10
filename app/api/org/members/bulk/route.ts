@@ -4,7 +4,12 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
-import { chargeProratedAccount, resolveSeatCharge } from "@/lib/billing";
+import {
+  chargeProratedAccount,
+  resolveSeatCharge,
+  getStoreSeatCapacity,
+  CAPACITY_FULL_MESSAGE,
+} from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -30,7 +35,7 @@ export async function POST(request: Request) {
     // source를 다시 조회하지 않게 한다(구 셀렉트가 undefined를 넘겨 gseat 주기 키 선점이 빠지던 자리)
     const { data: sub } = await admin
       .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key, source")
+      .select("id, user_id, status, plan, current_period_end, billing_key, source, store_seat_capacity")
       .eq("user_id", user.id)
       .maybeSingle();
     // isBillablePlan: grandfather(영구 무료·카드 등록 불가)에게 좌석을 열면 무과금 좌석이 된다
@@ -51,31 +56,12 @@ export async function POST(request: Request) {
     // 손으로 적었을 때는 결제수단 유무만 베꼈고, 주기 만료(past_due — subscriptionAllows가 통과시키는
     // 상태의 정의 자체가 current_period_end 경과다) 거절이 빠져 유령 좌석 창이 그대로 열려 있었다.
     // resolveSeatCharge는 조회만 한다(.select뿐 — PG 호출도, payments 기록도 없다).
-    // count는 금액에만 쓰이고 거절 판정(체험·결제수단·주기)에는 영향이 없어 1로 부른다 —
-    // 개수는 아래 본문 파싱에서야 나오는데, 자격 검사는 조직 생성(legacy 요금 보호 순서)보다
-    // 먼저 끝나야 하므로 여기서 판정만 앞당긴다.
-    const gate = await resolveSeatCharge(admin, sub as any, { count: 1, seatsClaimed: false });
-    if (!gate.ok) {
-      return NextResponse.json({ error: gate.error ?? "결제에 실패했습니다." }, { status: 402 });
-    }
-
-    if (ctx.kind === "solo" && !ctx.orgLapsed) {
-      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-      const name = String(meta.company_name ?? "").trim() || String(meta.full_name ?? "").trim() || "우리 회사";
-      const { error: orgErr } = await admin
-        .from("organizations")
-        .upsert({ owner_user_id: user.id, name, seat_count: 1, pending_seat_count: null }, { onConflict: "owner_user_id" });
-      if (orgErr) {
-        console.error("org lazy-create error (bulk):", orgErr);
-        return NextResponse.json({ error: "회사 생성에 실패했습니다." }, { status: 500 });
-      }
-      ctx = await getOrgContext(user.id, admin);
-    }
-    if (ctx.kind !== "owner" || !ctx.org) {
-      return NextResponse.json({ error: "회사 정보를 확인할 수 없습니다." }, { status: 500 });
-    }
-    const org = ctx.org;
-
+    //
+    // ⚠️ count를 1로 고정하면 안 된다(2026-08-10 정원제 도입). 종전 주석은 "count는 금액에만
+    // 쓰이고 거절 판정에는 영향이 없다"고 단언했는데, 스토어 정원제가 생기면서 **거짓이 되었다**:
+    // 정원 5·현재 4계정인 감독자가 한 번에 10개를 요청하면 count=1 검사는 통과한다.
+    // 그래서 본문 파싱을 이 게이트보다 **앞으로** 옮기고 실제 개수로 판정한다.
+    // (게이트 자체의 위치는 그대로 — 조직 생성보다 먼저여야 legacy 요금이 보호된다)
     const body = await request.json().catch(() => ({}));
     const stem = String(body.stem ?? "").trim().toLowerCase();
     const count = Math.floor(Number(body.count));
@@ -94,6 +80,31 @@ export async function POST(request: Request) {
     if (password.length < 8) {
       return NextResponse.json({ error: "초기 비밀번호는 8자 이상으로 입력해주세요." }, { status: 400 });
     }
+
+    const gate = await resolveSeatCharge(admin, sub as any, { count, seatsClaimed: false });
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error ?? "결제에 실패했습니다.", reason: gate.reason }, { status: 402 });
+    }
+    // 좌석 점유(claim_org_seat)에 넘길 정원 — 여기가 최종 방어선이다(advisory lock 안에서 센다).
+    // 위 게이트를 두 요청이 동시에 통과해도 초과 점유 자체가 불가능해진다.
+    const seatCapacity = await getStoreSeatCapacity(admin, sub as any);
+
+    if (ctx.kind === "solo" && !ctx.orgLapsed) {
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+      const name = String(meta.company_name ?? "").trim() || String(meta.full_name ?? "").trim() || "우리 회사";
+      const { error: orgErr } = await admin
+        .from("organizations")
+        .upsert({ owner_user_id: user.id, name, seat_count: 1, pending_seat_count: null }, { onConflict: "owner_user_id" });
+      if (orgErr) {
+        console.error("org lazy-create error (bulk):", orgErr);
+        return NextResponse.json({ error: "회사 생성에 실패했습니다." }, { status: 500 });
+      }
+      ctx = await getOrgContext(user.id, admin);
+    }
+    if (ctx.kind !== "owner" || !ctx.org) {
+      return NextResponse.json({ error: "회사 정보를 확인할 수 없습니다." }, { status: 500 });
+    }
+    const org = ctx.org;
 
     // 연번은 01부터 비어있는 번호를 찾아 배정 — 이미 쓰는 아이디는 건너뛴다
     // 문서 출력 형식·근로자 구분·업종·공종은 회사 공통 — 감독자 값을 복사 (members 라우트와 동일)
@@ -145,10 +156,13 @@ export async function POST(request: Request) {
         const { data: claim, error: claimErr } = await admin.rpc("claim_org_seat", {
           p_org: org.id,
           p_member: createdUser.user.id,
+          p_capacity: seatCapacity,
         });
         if (claimErr || claim !== "ok") {
           await admin.auth.admin.deleteUser(createdUser.user.id);
-          throw new Error("현장 배정에 실패했습니다.");
+          throw new Error(
+            claim === "over_capacity" ? CAPACITY_FULL_MESSAGE : "현장 배정에 실패했습니다."
+          );
         }
         created.push({ userId: createdUser.user.id, loginId });
       }

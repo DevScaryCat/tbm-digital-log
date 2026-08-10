@@ -6,8 +6,15 @@
 
 import { NextResponse } from "next/server"
 import { getUserFromRequest, getAdminClient } from "@/lib/portone"
-import { getSubscription, acknowledge, toLocalStatus, isRevokedState } from "@/lib/googlePlay"
+import {
+    getSubscription,
+    acknowledge,
+    toLocalStatus,
+    isRevokedState,
+    obfuscatedAccountIdFor,
+} from "@/lib/googlePlay"
 import { isStoreSource, ownsOrganization } from "@/lib/billing"
+import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile } from "@/lib/storePlans"
 import { markGrandfatherForRestore } from "@/lib/grandfather"
 
 export const runtime = "nodejs"
@@ -29,7 +36,7 @@ export async function POST(request: Request) {
         // 결제 시작 때 심어둔 계정 표식이 현재 로그인 계정과 다르면 남의 영수증이다.
         // (구글은 이 값을 우리가 넣은 그대로 돌려준다 — 앱이 user.id를 넣는다)
         const stamped = purchase.obfuscatedExternalAccountId
-        if (stamped && stamped !== user.id.replace(/-/g, "").slice(0, 64)) {
+        if (stamped && stamped !== obfuscatedAccountIdFor(user.id)) {
             return NextResponse.json({ error: "다른 계정의 결제입니다." }, { status: 403 })
         }
 
@@ -37,7 +44,7 @@ export async function POST(request: Request) {
 
         const { data: existing } = await admin
             .from("subscriptions")
-            .select("id, trial_used, plan, source, billing_key")
+            .select("id, trial_used, plan, source, billing_key, store_seat_capacity")
             .eq("user_id", user.id)
             .maybeSingle()
 
@@ -75,6 +82,24 @@ export async function POST(request: Request) {
             await markGrandfatherForRestore(admin, user.id)
         }
 
+        // 좌석 정원은 요금제(base plan)가 정한다 — 문자열을 파싱하지 않고 store_products를 조인한다.
+        // ok가 아니면(미등록·DB 장애) 정원·금액에 **손대지 않는다**: 매핑 누락 하나로 정상 고객의
+        // 현장 계정이 잠기는 것이 최악이다. 대신 로그를 남겨 콘솔에 seed를 추가하면 다음 검증에 붙는다.
+        const planLookup = await resolveStorePlan(
+            admin,
+            "google_play",
+            purchase.productId,
+            purchase.basePlanId
+        )
+        if (planLookup.kind !== "ok") {
+            console.error("STORE_PLAN_UNMAPPED", {
+                userId: user.id,
+                productId: purchase.productId,
+                basePlanId: purchase.basePlanId,
+                kind: planLookup.kind,
+            })
+        }
+
         const patch: Record<string, unknown> = {
             user_id: user.id,
             plan: "monthly_pro",
@@ -83,11 +108,15 @@ export async function POST(request: Request) {
             store_product_id: purchase.productId,
             store_purchase_token: purchaseToken,
             current_period_end: purchase.expiryTime,
-            amount: 4900, // 앱 가격(구글 수수료 15% 포함) — 웹 3,900원과 별도
+            // 금액은 매핑된 요금제 가격. 매핑이 없으면 기존 값을 유지하되, 신규 행은 기댈 값이
+            // 없으므로 legacy 단일 요금제 가격(4,900 — 구글 수수료 포함, 웹 3,900과 별도)으로 연다.
+            ...(planLookup.kind === "ok" ? {} : existing ? {} : { amount: 4900 }),
             currency: "KRW",
             canceled_at: status === "canceled" ? new Date().toISOString() : null,
             failed_attempts: 0,
             updated_at: new Date().toISOString(),
+            // store_base_plan_id / store_seat_capacity / amount / pending 초기화 (ok일 때만)
+            ...storePlanPatch(planLookup, purchase.basePlanId),
         }
         // 체험으로 개통됐다면 이 계정은 체험을 소진한 것으로 기록(웹에서 또 받지 못하게)
         if (purchase.isTrial) {
@@ -126,9 +155,23 @@ export async function POST(request: Request) {
             }
         }
 
-        // 권한을 부여한 뒤에 확인 — 확인만 하고 반영에 실패하면 돈은 받고 못 쓰는 상태가 된다
+        // 권한을 부여한 뒤에 확인 — 확인만 하고 반영에 실패하면 돈은 받고 못 쓰는 상태가 된다.
+        // 요금제 교체(스테퍼 +)도 새 purchaseToken을 발급하므로 여기서 새 토큰으로 다시 확인해야
+        // 한다 — 3일 내 미확인은 교체 구매에도 똑같이 자동 환불이다.
         if (!purchase.acknowledged && purchase.productId) {
             await acknowledge(purchase.productId, purchaseToken)
+        }
+
+        // 정원이 확정됐으면 실제 좌석을 그 안으로 맞춘다(정원 복구 시 접혔던 현장 자동 복원).
+        // 비치명 — 실패해도 결제 반영은 이미 끝났고 RTDN·다음 검증이 다시 잡는다.
+        // ⚠️ monthly 강등을 정원 1로 접기 위해 effectiveCapacityForReconcile을 거친다(RTDN과 동일 규율)
+        const prevCapacity = (existing?.store_seat_capacity as number | null | undefined) ?? null
+        const seatCapacity =
+            planLookup.kind === "ok" ? effectiveCapacityForReconcile(planLookup, prevCapacity) : prevCapacity
+        try {
+            await reconcileCapacitySeats(admin, user.id, seatCapacity, !isRevokedState(purchase.subscriptionState))
+        } catch (e) {
+            console.error("verify: capacity seat reconcile failed", e)
         }
 
         return NextResponse.json({
@@ -136,6 +179,10 @@ export async function POST(request: Request) {
             status,
             expiresAt: purchase.expiryTime,
             trial: purchase.isTrial,
+            // 앱이 "요청한 정원이 실제로 반영됐는지"를 대조한다 — 매핑 누락이면 요청값과 달라지고,
+            // 앱은 조용히 성공 처리하는 대신 '요금제 반영이 지연되고 있어요'를 띄운다.
+            basePlanId: purchase.basePlanId,
+            seatCapacity,
         })
     } catch (error) {
         console.error("google verify error:", error)

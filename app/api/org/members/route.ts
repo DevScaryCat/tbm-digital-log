@@ -6,7 +6,12 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext, listOrgMembers, detachOrgMember } from "@/lib/org";
-import { chargeProratedAccount, resolveSeatCharge } from "@/lib/billing";
+import {
+  chargeProratedAccount,
+  resolveSeatCharge,
+  getStoreSeatCapacity,
+  CAPACITY_FULL_MESSAGE,
+} from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -32,14 +37,14 @@ async function requireOwner(
   // 순서가 반대면 legacy(구 베이직 1,900·영구무료) 계정이 '현장 계정 만들기'를 누르는
   // 것만으로 organizations 행이 남고, resolveBillableAmount가 legacy 분기 앞에서
   // org 분기를 타 버려 재동의 없이 요금이 3,900으로 올라간다.
-  let sub: { id: string; user_id: string; status: string; billing_key: string | null; current_period_end: string | null; source: string | null } | null = null;
+  let sub: { id: string; user_id: string; status: string; billing_key: string | null; current_period_end: string | null; source: string | null; store_seat_capacity: number | null } | null = null;
   if (opts.requireValidSub) {
     // source 포함: 구글 인앱 소유주(source=google_play)는 좌석 일할청구가 구글 주기 키(gseat)를
     // 선점해야 cron 월청구와 이중청구가 안 된다 — chargeProratedAccount가 이 값으로 분기한다.
     // (subscriptionAllows·isBillablePlan은 source 무관이라 구글 구독자도 그대로 통과한다)
     const { data } = await admin
       .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key, source")
+      .select("id, user_id, status, plan, current_period_end, billing_key, source, store_seat_capacity")
       .eq("user_id", user.id)
       .maybeSingle();
     // isProPlan이 아니라 isBillablePlan — 2026-08-10부터 grandfather(영구 무료)는 기능상 유료와
@@ -59,9 +64,10 @@ async function requireOwner(
     // 만들어 놓고 402로 되돌리는 롤백 경로를 타고, 롤백이 부분 실패하면 청구되지 않는
     // 유령 좌석이 남는다. 실제 청구와 **같은 함수**를 dry-run으로 부른다(조회 전용).
     // 현재 화면은 bulk 라우트로만 발급하지만 이 엔드포인트도 살아 있는 인증 경로다.
+    // 이 라우트는 한 번에 1개만 만든다 — count 1이 실제 개수와 같다(bulk와 달리 어긋나지 않는다).
     const gate = await resolveSeatCharge(admin, data as any, { count: 1, seatsClaimed: false });
     if (!gate.ok) {
-      return { error: NextResponse.json({ error: gate.error ?? "결제에 실패했습니다." }, { status: 402 }) };
+      return { error: NextResponse.json({ error: gate.error ?? "결제에 실패했습니다.", reason: gate.reason }, { status: 402 }) };
     }
     sub = data as any;
   }
@@ -147,14 +153,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: userErr?.message || "계정 생성 실패" }, { status: 400 });
     }
 
-    // 좌석 점유 (advisory lock으로 레이스 방지)
+    // 좌석 점유 (advisory lock으로 레이스 방지) — 스토어 정원제면 정원도 여기서 최종 판정한다
+    const seatCapacity = await getStoreSeatCapacity(admin, r.sub!);
     const { data: claim, error: claimErr } = await admin.rpc("claim_org_seat", {
       p_org: org.id,
       p_member: created.user.id,
+      p_capacity: seatCapacity,
     });
     if (claimErr || claim !== "ok") {
       await admin.auth.admin.deleteUser(created.user.id); // 실패 시 방금 만든 계정 롤백
-      const msg = claim === "other_org" ? "이미 다른 회사에 소속된 계정입니다." : "현장 배정에 실패했습니다.";
+      const msg =
+        claim === "other_org"
+          ? "이미 다른 회사에 소속된 계정입니다."
+          : claim === "over_capacity"
+            ? CAPACITY_FULL_MESSAGE
+            : "현장 배정에 실패했습니다.";
       return NextResponse.json({ error: msg }, { status: 409 });
     }
 

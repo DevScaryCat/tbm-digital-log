@@ -37,7 +37,7 @@ const PAY_STATUS_LABEL: Record<string, string> = {
 
 // 스토어(인앱) 구독 판별을 위해 source까지 읽는다 — 공용 fetchSubscription은 source를
 // 조회하지 않으므로 이 화면만 직접 select한다 (앱 lib/subscription.ts와 같은 컬럼 셋).
-type AccountSub = SubscriptionRow & { source?: string | null }
+type AccountSub = SubscriptionRow & { source?: string | null; store_seat_capacity?: number | null }
 
 // 모바일 스토어 구독 단가(본인 몫) — 구글/애플 인앱 상품 가격. 웹 단가(3,900)와 다르다.
 // 서버 resolveBillableAmount의 스토어 소유주 셈법: 본인 4,900은 스토어가, 좌석 N×3,900은 등록 카드가 청구.
@@ -72,7 +72,7 @@ export default function AccountPage() {
         setAccountCount(ctx?.kind === "owner" ? 1 + (ctx.memberIds?.length ?? 0) : 1)
         const { data: subRow } = await supabase
             .from("subscriptions")
-            .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used, amount, source")
+            .select("status, plan, pending_plan, card_info, current_period_end, trial_end, trial_used, amount, source, store_seat_capacity")
             .maybeSingle()
         setSub((subRow as AccountSub) || null)
         const { data } = await supabase
@@ -125,6 +125,12 @@ export default function AccountPage() {
     const appStoreManaged = sub?.source === "app_store"
     const storeManaged = playManaged || appStoreManaged
     const storeName = playManaged ? "Google Play" : "App Store"
+    // 스토어 정원제(seats-NN): 현장 계정 값까지 스토어 요금제에 포함돼 있다 —
+    // 등록 카드로는 **0원**이 청구된다(lib/billing.ts resolveBillableAmount·좌석 크론 제외).
+    // 이 값이 있으면 아래 '본인 4,900 + 좌석 N×3,900' 분해는 통째로 거짓이 된다(2026-08-10 검수).
+    const storeCapacity = storeManaged ? (sub?.store_seat_capacity ?? null) : null
+    // 요금제 가격은 store_products가 진실이고 verify·RTDN이 amount에 반영한다(하드코딩 금지)
+    const storeAmount = sub?.amount ?? STORE_PRICE
     const active = isAllowed(sub)
     const pro = isProActive(sub)
     // 카드 없는 무료체험(휴대폰인증 가입): card_info 없음 + 상태 trialing.
@@ -243,7 +249,23 @@ export default function AccountPage() {
                             ) : (
                                 <div className="space-y-2 text-[14px]">
                                     {/* 요금 구성 — 계정이 곧 청구 항목이라는 걸 표로 보여준다. 설명 문단보다 행 두 줄이 낫다 */}
-                                    {storeManaged ? (
+                                    {storeCapacity != null ? (
+                                        // 스토어 정원제(seats-NN): 현장 계정 값까지 스토어 요금제에 들어 있다.
+                                        // 카드로는 0원이 나가므로 3,900원 분해를 보여주면 청구되지 않을 금액의 통보가 된다.
+                                        <>
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">월 사용료 ({storeName} 구독 · 현장 계정 {storeCapacity}개 포함)</span>
+                                                <span className="text-cur-ink font-medium">{storeAmount.toLocaleString()}원</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-cur-muted">현장 계정 {Math.max(0, accountCount - 1)}개</span>
+                                                <span className="text-cur-ink font-medium">구독에 포함 · 0원</span>
+                                            </div>
+                                            <p className="text-[12px] text-cur-muted-soft leading-relaxed pt-1">
+                                                정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 조절할 수 있어요.
+                                            </p>
+                                        </>
+                                    ) : storeManaged ? (
                                         // 스토어 구독: 본인 몫은 스토어 가격(4,900). 웹 단가(3,900) 표시는 거짓이 된다.
                                         // 좌석이 있으면 서버 셈법(본인 4,900 스토어 + 좌석 N×3,900 카드)대로 분해해 보여준다.
                                         accountCount > 1 ? (
@@ -306,8 +328,11 @@ export default function AccountPage() {
                                         (구버전 해지 데이터에 card_info가 남아 있어도 여기서 걸러짐) */}
                                     {methodLabel && sub?.status !== "canceled" && (
                                         <div className="flex justify-between">
-                                            {/* 스토어 구독의 등록 카드는 본인 몫이 아니라 좌석(현장 계정) 몫 청구용 */}
-                                            <span className="text-cur-muted">{storeManaged ? "현장 계정 청구용 카드" : "결제수단"}</span>
+                                            {/* 스토어 구독의 등록 카드는 본인 몫이 아니라 좌석(현장 계정) 몫 청구용.
+                                                단 정원제면 그 좌석 몫도 스토어가 받아 이 카드로는 아무것도 청구되지 않는다. */}
+                                            <span className="text-cur-muted">
+                                                {storeCapacity != null ? "등록된 결제수단 (현재 청구 없음)" : storeManaged ? "현장 계정 청구용 카드" : "결제수단"}
+                                            </span>
                                             <span className="text-cur-ink font-medium">{methodLabel}</span>
                                         </div>
                                     )}
@@ -446,7 +471,12 @@ export default function AccountPage() {
                                     좌석 0개·billing_key null인 채로 영원히 갇혔다(닭-달걀). 이 블록은 이미
                                     !isGrandfather && storeManaged && active로 감싸여 있고, 소속 현장 계정(org member)은
                                     load()에서 홈으로 돌려보내므로 — 여기 닿는 사람은 전부 좌석 청구의 결제 주체다. */}
-                                {changingMethod ? (
+                                {/* 정원제(seats-NN) 감독자에게는 이 카드가 **필요 없다** — 좌석 값까지 스토어가
+                                    받으므로 이 카드로 청구되는 금액이 0원이다. 카드가 없는데도 "현장 계정을
+                                    만들려면 먼저 등록해야 해요 (계정당 월 3,900원)"를 띄우면 필요 없는 결제수단
+                                    등록을 시키는 거짓 안내가 된다(2026-08-10 검수). 이미 등록된 카드는 계속
+                                    보여준다 — 요금제를 되돌리면 다시 쓰이는 수단이라 숨기면 관리할 길이 없다. */}
+                                {storeCapacity != null && !methodLabel ? null : changingMethod ? (
                                     <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
                                         <p className="text-[15px] font-bold text-cur-ink">현장 계정 청구용 카드</p>
                                         {methodLabel && (
@@ -456,7 +486,9 @@ export default function AccountPage() {
                                             </div>
                                         )}
                                         <p className="text-[12px] text-cur-muted leading-relaxed">
-                                            이 카드는 현장 계정 몫(계정당 월 3,900원)에만 청구돼요. 내 구독(월 {STORE_PRICE.toLocaleString()}원)은 {storeName}에서 결제돼요.
+                                            {storeCapacity != null
+                                                ? `지금 요금제는 현장 계정 ${storeCapacity}개를 포함해 ${storeName}에서 월 ${storeAmount.toLocaleString()}원으로 청구돼요. 이 카드로 나가는 금액은 없어요.`
+                                                : `이 카드는 현장 계정 몫(계정당 월 3,900원)에만 청구돼요. 내 구독(월 ${STORE_PRICE.toLocaleString()}원)은 ${storeName}에서 결제돼요.`}
                                         </p>
                                         <SubscribeButtons
                                             mode="update"
@@ -483,9 +515,11 @@ export default function AccountPage() {
                                             icon={<CreditCard className="w-[18px] h-[18px]" />}
                                             label={methodLabel ? "현장 계정 청구용 카드" : "현장 계정 청구용 카드 등록"}
                                             sublabel={
-                                                methodLabel
-                                                    ? "현장 계정 몫(계정당 월 3,900원)에만 청구돼요"
-                                                    : "현장 계정을 만들려면 먼저 등록해야 해요 (계정당 월 3,900원)"
+                                                storeCapacity != null
+                                                    ? "지금 요금제(정원제)에서는 이 카드로 청구되지 않아요"
+                                                    : methodLabel
+                                                      ? "현장 계정 몫(계정당 월 3,900원)에만 청구돼요"
+                                                      : "현장 계정을 만들려면 먼저 등록해야 해요 (계정당 월 3,900원)"
                                             }
                                             value={methodLabel ?? undefined}
                                             onClick={() => setChangingMethod(true)}

@@ -60,6 +60,9 @@ export interface SubscriptionRow {
   /** 청구 주체: 'portone'(웹 카드 정기결제) | 'google_play'·'app_store'(앱 인앱결제).
    *  스토어면 본인 몫(4,900)은 스토어가 받으므로 우리 카드 청구는 좌석 몫만이어야 한다. */
   source?: string | null;
+  /** 스토어 요금제가 보장하는 총 계정 수(감독자 본인 포함). NOT NULL이면 좌석 청구는 스토어 단독 —
+   *  이 카드로는 좌석 몫을 청구하지 않는다(이중청구 방지). NULL이면 기존 카드 경로 그대로. */
+  store_seat_capacity?: number | null;
 }
 
 /**
@@ -156,6 +159,16 @@ export async function resolveBillableAmount(
       .eq("status", "active");
     const seatCount = count ?? 0;
     const accountCount = 1 + seatCount; // 감독자 본인도 한 계정(=현장 하나)으로 센다 (표시용 seat_count 기준)
+    // 스토어 정원제(seats-NN): 좌석 값까지 스토어가 이미 받았다 → 우리 카드 청구액은 0.
+    // 이 분기가 없으면 카드가 남아 있는 정원제 감독자에게 스토어+카드 이중청구가 된다.
+    // (크론 쿼리에서도 제외하지만, 금액 계산 자체를 0으로 못박아 그 필터에 의존하지 않게 한다)
+    if (googleOwner && sub.store_seat_capacity != null) {
+      return {
+        amount: 0,
+        orderName: "안톡 현장 계정 (앱 구독 정원제 — 스토어 청구)",
+        org: { id: (orgRow as any).id, accountCount },
+      };
+    }
     if (googleOwner) {
       return {
         amount: seatCount * SEAT_PRICE, // 좌석 0이면 0 — 청구할 것이 없다
@@ -210,10 +223,126 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * - "method"       등록된 결제수단이 없다 → 구독 및 결제(카드 등록).
  * - "period"       주기가 지났는데 정기 결제가 아직 안 붙었다(past_due) → 구독 및 결제.
  *
- * plan/subscription은 **자격** 문제라 초대·편입 라우트(app/api/org/invites)도 같은 판정으로
- * 막는다. method/period는 **즉시 청구 실행** 조건이라 즉시 청구가 없는 초대·편입은 지나간다.
+ * - "capacity"     스토어 요금제로 산 **정원**이 가득 찼다. 결제수단 문제가 아니다 →
+ *                  화면은 결제수단이 아니라 **정원 스테퍼(+)**로 보내야 한다.
+ *
+ * plan/subscription/**capacity**는 **자격** 문제라 초대·편입 라우트(app/api/org/invites,
+ * app/api/org/attach, app/api/signup 초대 링크)도 같은 판정으로 막는다 — 안 그러면 초대 링크와
+ * 편입이 정원을 무제한 우회한다. method/period는 **즉시 청구 실행** 조건이라 즉시 청구가 없는
+ * 초대·편입은 지나간다.
  */
-export type SeatBlockReason = "plan" | "subscription" | "method" | "period";
+export type SeatBlockReason = "plan" | "subscription" | "method" | "period" | "capacity";
+
+/**
+ * 정원이 가득 찼을 때 사용자에게 보여줄 문구 — 세 라우트가 같은 말을 하게 한다.
+ *
+ * **플랫폼을 말하지 않는다**(2026-08-10 검수). 종전 문구는 "앱에서 정원을 늘린 뒤"였는데,
+ * 안드로이드로 결제한 감독자가 아이폰·아이패드로 로그인해 이 402를 만나면(다른 기기에서
+ * 좌석이 채워진 레이스) iOS에 **존재하지 않는 화면**을 가리킨다. 정원을 어디서 늘리는지는
+ * 화면이 플랫폼을 보고 붙인다 — 웹(app/org/members/page.tsx)은 "앱(안드로이드)의 현장 계정
+ * 정원", 앱(org-members.tsx)은 Platform.OS로 갈라 쓴다.
+ */
+export const CAPACITY_FULL_MESSAGE =
+  "현장 계정 정원이 가득 찼어요. 정원을 늘린 뒤 다시 시도해주세요.";
+
+/**
+ * 스토어 결제가 확인되지 않은 정원제 감독자에게 보여줄 문구 (grace = past_due).
+ * 서버의 두 판정(resolveSeatCharge 정원 분기 · /api/org/context canIssueSeats)이 **같은 문장**을
+ * 쓰게 해서, 앱이 "만들 수 있다"고 말한 뒤 서버가 402로 되돌려보내는 일이 없게 한다.
+ */
+export const STORE_GRACE_MESSAGE =
+  "스토어 결제가 확인되지 않았어요. 결제가 정상 처리된 뒤 다시 시도해주세요.";
+
+/**
+ * 정원제(스토어 seats-NN) 감독자의 **좌석 발급**을 막아야 하는 결제 상태인가.
+ *
+ * 판정을 여기 한 곳에서 만든다(2026-08-10 검수). 종전에는 resolveSeatCharge의 정원 분기만
+ * past_due를 막고 /api/org/context의 canIssueSeats에는 status 검사가 없어, grace 중인 감독자에게
+ * 앱이 "현장 계정 N개 더 만들 수 있어요"를 띄운 뒤 누르면 서버가 402를 주는 **서버가 스스로
+ * 두 말을 하는** 상태였다. 규칙을 손으로 베끼지 않고 이 함수를 양쪽이 부른다.
+ *
+ * 조절(canAdjustSeats)은 grace에서도 열어둔다 — 스토어 요금제를 다시 사는 행위라 막을 이유가 없다.
+ */
+export function capacityIssueBlocked(status?: string | null): boolean {
+  return status === "past_due";
+}
+
+/**
+ * 이 구독의 확정 정원(감독자 본인 포함 총 계정 수). 정원제가 아니면 null.
+ *
+ * **출처(source)가 스토어일 때만 정원이 존재한다.** store_seat_capacity 값 하나만 보면 안 되는
+ * 이유(2026-08-10 검수): 스토어 구독이 만료된 계정이 웹 카드로 재구독하면 source는 portone으로
+ * 돌아가는데 store_* 컬럼은 남을 수 있다(재구독 upsert가 지우게 고쳤지만, 그 이전에 저장된 행과
+ * 수작업 데이터가 남는다). 그러면 카드 감독자의 좌석 발급이 전부 무과금이 되면서 동시에 죽은
+ * 정원이 상한으로 남아 정당한 발급이 막힌다. resolveBillableAmount가 정원 분기에 googleOwner를
+ * 요구하는 것과 **같은 기준**을 여기 한 곳에 모아 두 함수가 어긋나지 않게 한다.
+ *
+ * 호출부가 source·store_seat_capacity를 셀렉트하지 않았으면(구 셀렉트) 직접 조회한다.
+ * 셀렉트 누락으로 정원 검사가 **조용히 빠지면** 초대·편입으로 산 것보다 많은 계정을 만들 수 있다.
+ */
+export async function getStoreSeatCapacity(
+  admin: SupabaseClient,
+  sub: { id?: string; user_id?: string; source?: string | null; store_seat_capacity?: number | null }
+): Promise<number | null> {
+  // 출처를 아는데 스토어가 아니면 정원 자체가 없다 — 컬럼에 값이 남아 있어도 무시한다
+  if (sub.source !== undefined && !isStoreSource(sub.source)) return null;
+  if (sub.source !== undefined && sub.store_seat_capacity !== undefined) {
+    return sub.store_seat_capacity ?? null;
+  }
+  // 식별자가 없으면 조회 자체가 불가능하다 — 빈 문자열을 uuid 컬럼에 넣으면 에러가 나고,
+  // 그 에러를 null로 삼키면 "정원 없음"과 구분되지 않는다. 애초에 부르지 않는다.
+  if (!sub.id && !sub.user_id) return null;
+  let q = admin.from("subscriptions").select("source, store_seat_capacity");
+  q = sub.id ? q.eq("id", sub.id) : q.eq("user_id", sub.user_id as string);
+  const { data } = await q.maybeSingle();
+  const row = data as { source?: string | null; store_seat_capacity?: number | null } | null;
+  if (!row || !isStoreSource(row.source)) return null;
+  const v = row.store_seat_capacity;
+  return v == null ? null : Number(v);
+}
+
+/**
+ * 정원 검사 — **자격** 판정이라 즉시 청구가 없는 초대·편입도 이걸 부른다.
+ *
+ * resolveSeatCharge의 capacity 분기와 규칙을 공유한다(손으로 베끼지 않는다).
+ * 정원제가 아니면(capacity=null) 항상 통과 — 웹 카드 경로는 상한이 없다.
+ *
+ * @param seatsClaimed 좌석 점유가 이미 끝났으면(실청구 시점) 추가분이 활성 좌석에 포함돼 있다.
+ */
+export async function checkSeatCapacity(
+  admin: SupabaseClient,
+  args: {
+    userId: string;
+    capacity: number | null;
+    count?: number;
+    seatsClaimed?: boolean;
+  }
+): Promise<{ ok: boolean; used: number; error?: string }> {
+  const { userId, capacity } = args;
+  const count = args.count ?? 1;
+  if (capacity == null) return { ok: true, used: 0 };
+
+  const { data: orgRow } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  let active = 0;
+  if (orgRow) {
+    const { count: c } = await admin
+      .from("org_members")
+      .select("member_user_id", { count: "exact", head: true })
+      .eq("org_id", (orgRow as any).id)
+      .eq("status", "active");
+    active = c ?? 0;
+  }
+  // 본인(1) + 활성 좌석 + (아직 안 만들었으면) 이번 요청분
+  const used = 1 + active + (args.seatsClaimed ? 0 : count);
+  if (used > capacity) {
+    return { ok: false, used, error: CAPACITY_FULL_MESSAGE };
+  }
+  return { ok: true, used };
+}
 
 /** 현장 계정 추가 1건의 청구 계획 — 실제 청구와 화면 미리보기가 **같은 식**을 쓰게 하는 반환값 */
 export interface SeatChargePlan {
@@ -253,6 +382,7 @@ export async function resolveSeatCharge(
     billing_key: string | null;
     current_period_end: string | null;
     source?: string | null;
+    store_seat_capacity?: number | null;
   },
   opts: { count?: number; seatsClaimed?: boolean } = {}
 ): Promise<SeatChargePlan> {
@@ -271,6 +401,36 @@ export async function resolveSeatCharge(
       .eq("id", sub.id)
       .maybeSingle();
     source = ((srcRow as any)?.source as string | null) ?? null;
+  }
+
+  // ── 스토어 정원제(seats-NN) — 카드 청구 경로를 통째로 대체한다 ──────────────
+  // 순서가 중요하다: 아래 trialing·billing_key·period 검사보다 **먼저** 판정해야 한다.
+  // 정원제 감독자는 카드가 아예 없을 수 있고(스토어가 전액을 받는다), 카드가 없다고 막으면
+  // 돈을 내고 산 정원을 한 자리도 못 쓴다.
+  //
+  // 단 **스토어 출처일 때만**이다(2026-08-10 검수). 방금 확정한 source를 그대로 넘겨
+  // resolveBillableAmount(googleOwner 요구)와 판정 기준을 일치시킨다 — 어긋나면 웹 카드
+  // 감독자가 무과금 발급 + 죽은 정원 상한이라는 최악의 조합을 맞는다.
+  const capacity = await getStoreSeatCapacity(admin, { ...sub, source });
+  if (capacity != null) {
+    // 구글 grace(IN_GRACE_PERIOD → past_due) 중에는 정원을 **더** 쓰게 하지 않는다.
+    // 카드 경로에서 같은 상태를 'period'로 막던 자리이고, 스토어가 돈을 못 받고 있는 동안
+    // 계정이 늘어나는 것을 허용할 이유가 없다. 이미 쓰던 좌석은 건드리지 않는다(발급만 차단).
+    // 판정은 capacityIssueBlocked 한 곳에서만 만든다 — /api/org/context의 canIssueSeats가
+    // 같은 함수를 부르므로 앱 안내와 서버 응답이 갈라질 수 없다.
+    if (capacityIssueBlocked(sub.status)) {
+      return { ok: false, ...zero, reason: "period", error: STORE_GRACE_MESSAGE };
+    }
+    const cap = await checkSeatCapacity(admin, {
+      userId: sub.user_id,
+      capacity,
+      count,
+      seatsClaimed: opts.seatsClaimed,
+    });
+    if (!cap.ok) {
+      return { ok: false, ...zero, reason: "capacity", error: cap.error };
+    }
+    return { ok: true, ...zero }; // 정원 안 = 무과금. PG를 부르지 않는다.
   }
 
   // 무료체험 중에는 일할 청구를 하지 않는다.
@@ -370,6 +530,7 @@ export async function chargeProratedAccount(
     billing_key: string | null;
     current_period_end: string | null;
     source?: string | null;
+    store_seat_capacity?: number | null;
   },
   opts: { count?: number; customerEmail?: string } = {}
 ): Promise<{ ok: boolean; charged: number; error?: string }> {

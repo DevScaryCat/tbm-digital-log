@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
-import { resolveSeatCharge, type SeatBlockReason } from "@/lib/billing";
+import { resolveSeatCharge, getStoreSeatCapacity, type SeatBlockReason } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     // "금액은 보이는데 만들면 402"가 된다.
     const { data: sub, error: subErr } = await admin
       .from("subscriptions")
-      .select("id, user_id, status, plan, current_period_end, billing_key, source")
+      .select("id, user_id, status, plan, current_period_end, billing_key, source, store_seat_capacity, store_pending_seat_capacity")
       .eq("user_id", user.id)
       .maybeSingle();
     // 조회 실패를 '구독 없음'으로 삼키면 안 된다 — 아래 deny("subscription")이 200으로 나가면
@@ -68,14 +68,30 @@ export async function GET(request: Request) {
 
     // 미리보기 시점에는 아직 좌석을 점유하지 않았다 → seatsClaimed: false
     const charge = await resolveSeatCharge(admin, sub as any, { count, seatsClaimed: false });
+    const seatCapacity = await getStoreSeatCapacity(admin, sub as any);
+    // 예약된 감액(다음 결제일부터 줄어드는 정원). 정원제일 때만 의미가 있다 —
+    // 웹 화면이 이걸 모르면, 앱에서 5→4 감액을 예약한 감독자가 웹에서 5번째 계정을 만들고
+    // 갱신일에 RTDN이 정원 4를 반영하면서 그 계정이 조용히 잠긴다(reconcileCapacitySeats가
+    // 최근 합류 순으로 접는다). 게이트에는 쓰지 않는다 — 이미 산 정원을 못 쓰게 하는 쪽이라
+    // 안내로 충분하다(2026-08-10 검수).
+    const pendingRaw = (sub as { store_pending_seat_capacity?: number | null } | null)
+      ?.store_pending_seat_capacity;
+    const pendingSeatCapacity =
+      seatCapacity != null && pendingRaw != null ? Number(pendingRaw) : null;
     return NextResponse.json({
       chargeable: charge.ok,
       plan,
+      // reason='capacity'는 결제수단 문제가 아니다 — 화면은 /account가 아니라 앱의 정원 스테퍼로 안내한다
       reason: charge.ok ? undefined : charge.reason,
       error: charge.ok ? undefined : charge.error,
       amount: charge.amount,
       prorated: charge.prorated,
       periodBase: charge.periodBase,
+      // 스토어 정원제면 이번 발급이 0원인 이유를 화면이 설명할 수 있게 한다(NULL이면 기존 카드 경로).
+      // 컬럼 값을 그대로 내리지 않고 getStoreSeatCapacity를 쓴다 — 정원의 존재 조건(스토어 출처)을
+      // 화면·청구가 **같은 함수**로 판정해야 "0원이라더니 3,900원이 승인됐다"가 생기지 않는다.
+      seatCapacity,
+      pendingSeatCapacity,
     });
   } catch (e) {
     console.error("seat preview error:", e);

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
 import { PLANS, subscriptionAllows, isBillablePlan } from "@/lib/portone";
+import { isStoreSource } from "@/lib/billing";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { consentMetaPatch, recordConsent } from "@/lib/consent";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
     // 초대 경로는 개인 구독 upsert·휴대폰 무료체험(trial_redemptions)을 만들지 않고(§3 3-skip),
     // 좌석 점유 + org_seat 미러 구독으로 대체한다.
     let invite: { id: string; org_id: string } | null = null;
+    // 감독자가 스토어 정원제(seats-NN)면 좌석 점유 시 정원을 강제한다. NULL이면 상한 없음(웹 카드).
+    let inviteOwnerCapacity: number | null = null;
     let inviteOwnerFormat: string | null = null; // 회사 공통 문서 형식 — 감독자 값을 복사
     let inviteOwnerProfile: Record<string, unknown> = {}; // 회사 공통 근로자 구분·업종·공종 — 감독자 값이 가입자 입력보다 우선
     if (inviteToken) {
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
       const ownerId = (inv as any).organizations?.owner_user_id as string;
       const { data: ownerSub } = await supabaseAdmin
         .from("subscriptions")
-        .select("status, plan, current_period_end, billing_key")
+        .select("status, plan, current_period_end, billing_key, source, store_seat_capacity")
         .eq("user_id", ownerId)
         .maybeSingle();
       // subscriptionAllows로 판정 — 수제 status 나열은 trialing(무료체험 감독자)을 빠뜨려
@@ -72,6 +75,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "이메일 형식이 올바르지 않습니다." }, { status: 400 });
       }
       invite = { id: inv.id, org_id: inv.org_id };
+      // 정원 판정은 좌석 점유(claim_org_seat) 안에서 한다 — 여기서 미리 세면 두 명이 동시에
+      // 가입할 때 둘 다 통과한다. 링크 발급 시점과 가입 시점의 정원이 다를 수 있어서도 그렇다.
+      // 정원은 **스토어 출처일 때만** 존재한다 — 스토어를 떠난 계정에 남은 죽은 정원을 상한으로
+      // 쓰면 웹 카드 감독자의 초대 가입이 막힌다(lib/billing.ts getStoreSeatCapacity와 같은 기준).
+      inviteOwnerCapacity = isStoreSource((ownerSub as { source?: string | null }).source)
+        ? (((ownerSub as { store_seat_capacity?: number | null }).store_seat_capacity ?? null) as number | null)
+        : null;
       try {
         const { data: ownerUser } = await supabaseAdmin.auth.admin.getUserById(ownerId);
         const om = (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>;
@@ -205,6 +215,7 @@ export async function POST(request: Request) {
       const { data: claim, error: claimErr } = await supabaseAdmin.rpc("claim_org_seat", {
         p_org: invite.org_id,
         p_member: user.user.id,
+        p_capacity: inviteOwnerCapacity,
       });
       if (claimErr || claim !== "ok") {
         // 좌석 실패 → 방금 만든 계정 롤백 (다회용 링크라 초대 자체는 살려둔다)
@@ -212,7 +223,9 @@ export async function POST(request: Request) {
         const msg =
           claim === "no_seat"
             ? "조직에 남은 좌석이 없습니다. 안전관리자에게 좌석 추가를 요청하세요."
-            : "좌석 배정에 실패했습니다. 잠시 후 다시 시도해주세요.";
+            : claim === "over_capacity"
+              ? "회사의 현장 계정 정원이 가득 찼습니다. 회사 감독자에게 문의하세요."
+              : "좌석 배정에 실패했습니다. 잠시 후 다시 시도해주세요.";
         return NextResponse.json({ error: msg }, { status: 409 });
       }
 

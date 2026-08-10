@@ -15,6 +15,7 @@ import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
 import { STORE_SOURCES } from "@/lib/billing"
 import { storeSyncPatch, type StoreSyncRow } from "@/lib/storeSync"
+import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile } from "@/lib/storePlans"
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 import {
     getSubscription as getAppleSubscription,
@@ -44,6 +45,11 @@ interface StoreRow extends StoreSyncRow {
     user_id: string
     source: string | null
     store_purchase_token: string | null
+    // 요금제(정원) 동기화 비교용 — 값이 그대로면 UPDATE를 내지 않는다(멱등 유지)
+    store_base_plan_id: string | null
+    store_seat_capacity: number | null
+    store_pending_seat_capacity: number | null
+    amount: number | null
 }
 
 async function run(request: Request) {
@@ -64,7 +70,7 @@ async function run(request: Request) {
         const { data: rows, error } = await admin
             .from("subscriptions")
             .select(
-                "id, user_id, source, status, current_period_end, store_purchase_token, store_product_id, canceled_at"
+                "id, user_id, source, status, current_period_end, store_purchase_token, store_product_id, canceled_at, store_base_plan_id, store_seat_capacity, store_pending_seat_capacity, amount"
             )
             .in("source", STORE_SOURCES as unknown as string[])
             .not("store_purchase_token", "is", null)
@@ -82,7 +88,7 @@ async function run(request: Request) {
             return NextResponse.json({ error: "조회 실패" }, { status: 500 })
         }
 
-        const summary = { checked: 0, renewed: 0, revoked: 0, unchanged: 0, failed: 0 }
+        const summary = { checked: 0, renewed: 0, revoked: 0, unchanged: 0, failed: 0, planSynced: 0 }
         const errors: string[] = []
 
         for (const row of (rows ?? []) as StoreRow[]) {
@@ -95,6 +101,7 @@ async function run(request: Request) {
                 let revoked: boolean
                 let storeEnd: string | null
                 let productId: string | null
+                let basePlanId: string | null = null
 
                 if (row.source === "app_store") {
                     const p = await getAppleSubscription(token)
@@ -108,6 +115,8 @@ async function run(request: Request) {
                     revoked = googleIsRevoked(p.subscriptionState)
                     storeEnd = p.expiryTime
                     productId = p.productId
+                    // 요금제(base plan)까지 읽는다 — 정원의 근거는 상품이 아니라 이 값이다.
+                    basePlanId = p.basePlanId
                 }
 
                 const { changed, patch } = storeSyncPatch(
@@ -115,12 +124,58 @@ async function run(request: Request) {
                     { status, revoked, storeEnd, productId },
                     now
                 )
-                if (changed) {
+
+                // ── 요금제(정원) 동기화 ────────────────────────────────────────
+                // 지연 다운그레이드(−)의 반영 경로가 RTDN 하나뿐이면, 알림 유실 시 감독자가
+                // **낮은 요금으로 높은 정원**을 무기한 유지한다. 이 크론이 바로 그 유실의
+                // 백스톱인데 정원만 구멍이 나 있었다(2026-08-10 검수).
+                // 규칙은 손으로 베끼지 않는다 — verify·RTDN과 **같은 함수**를 쓴다.
+                let planPatch: Record<string, unknown> = {}
+                let capacity = row.store_seat_capacity ?? null
+                // 좌석을 접을 때 쓸 실효 정원 — 컬럼에 쓰는 값(capacity)과 다를 수 있다.
+                // monthly 강등은 컬럼엔 NULL을 쓰되 좌석은 정원 1로 접어야 무과금이 안 생긴다.
+                let reconcileCapacity: number | null = capacity
+                if (row.source === "google_play" && basePlanId) {
+                    const lookup = await resolveStorePlan(admin, "google_play", productId, basePlanId)
+                    if (lookup.kind === "ok") {
+                        planPatch = storePlanPatch(lookup, basePlanId)
+                        capacity = lookup.seatCapacity
+                        reconcileCapacity = effectiveCapacityForReconcile(lookup, row.store_seat_capacity ?? null)
+                    } else {
+                        // ok가 아니면 현상 유지 — 매핑 누락 하나로 정상 고객의 현장이 잠기면 안 된다
+                        console.error("STORE_PLAN_UNMAPPED", {
+                            userId: row.user_id,
+                            productId,
+                            basePlanId,
+                            kind: lookup.kind,
+                        })
+                    }
+                }
+                // 값이 그대로면 UPDATE를 내지 않는다(이 크론의 멱등 규율)
+                const planChanged =
+                    Object.keys(planPatch).length > 0 &&
+                    ((capacity ?? null) !== (row.store_seat_capacity ?? null) ||
+                        (basePlanId ?? null) !== (row.store_base_plan_id ?? null) ||
+                        row.store_pending_seat_capacity != null ||
+                        Number(planPatch.amount) !== Number(row.amount ?? NaN))
+
+                if (changed || planChanged) {
                     const { error: upErr } = await admin
                         .from("subscriptions")
-                        .update(patch)
+                        .update(planChanged ? { ...patch, ...planPatch } : patch)
                         .eq("id", row.id)
                     if (upErr) throw new Error(`저장 실패: ${upErr.message}`)
+                    if (planChanged) summary.planSynced++
+                }
+
+                // 정원이 실제로 바뀌었으면 좌석을 그 안으로 맞춘다(초과분 접기·복원).
+                // 비치명 — 실패해도 다음 스윕이나 RTDN·verify가 다시 잡는다.
+                if (planChanged && reconcileCapacity != null) {
+                    try {
+                        await reconcileCapacitySeats(admin, row.user_id, reconcileCapacity, !revoked)
+                    } catch (e) {
+                        console.error("reconcile-store-subs: capacity seat reconcile failed", row.id, e)
+                    }
                 }
 
                 // 회수 확정 → 결제 전 grandfather였다면 영구 무료로 되돌린다.
@@ -130,7 +185,8 @@ async function run(request: Request) {
                 if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
 
                 if (!changed) {
-                    summary.unchanged++
+                    // 요금제만 바뀐 건은 planSynced로 이미 셌다 — unchanged로 또 세지 않는다
+                    if (!planChanged) summary.unchanged++
                     continue
                 }
 

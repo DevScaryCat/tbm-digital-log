@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { cancelUserSubscription } from "@/lib/cancelSubscription";
-import { isStoreSource } from "@/lib/billing";
+import { isStoreSource, checkSeatCapacity, CAPACITY_FULL_MESSAGE } from "@/lib/billing";
 import { markGrandfatherForRestore } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const inviterOwnerId = String((invite as any).organizations?.owner_user_id ?? "");
     const { data: ownerSub } = await admin
       .from("subscriptions")
-      .select("status, plan, current_period_end, billing_key, source")
+      .select("status, plan, current_period_end, billing_key, source, store_seat_capacity")
       .eq("user_id", inviterOwnerId)
       .maybeSingle();
     // isBillablePlan: 초대한 감독자가 grandfather(영구 무료·카드 등록 불가)면 편입을 막는다 —
@@ -66,9 +66,25 @@ export async function POST(request: Request) {
     if (!ownerSub || !isBillablePlan(ownerSub.plan) || !subscriptionAllows(ownerSub)) {
       return NextResponse.json({ error: "초대한 회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." }, { status: 409 });
     }
-    // 인앱결제(구글·애플) 소유주가 좌석 청구용 카드 없이 편입으로 좌석을 늘리는 무과금 경로 차단
-    // (invites POST와 동일 게이트 — 편입 수락 시점에도 소유주 카드가 있어야 한다)
-    if (isStoreSource((ownerSub as { source?: string | null }).source) && !ownerSub.billing_key) {
+    // 스토어 정원제(seats-NN)면 카드가 없어도 된다 — 좌석 값까지 스토어가 이미 받았다.
+    // 대신 **정원**이 자격 조건이다(invites POST와 동일 규칙). 이 검사를 빼면 편입이
+    // 정원을 무제한 우회하는 통로가 된다. 최종 방어선은 아래 claim_org_seat의 over_capacity.
+    // 정원은 **스토어 출처일 때만** 존재한다 — 스토어를 떠나 웹 카드로 돌아온 계정에 남은
+    // 죽은 정원을 상한으로 쓰면 정당한 편입이 막힌다(lib/billing.ts getStoreSeatCapacity와 같은 기준).
+    const ownerCapacity = isStoreSource((ownerSub as { source?: string | null }).source)
+      ? (((ownerSub as { store_seat_capacity?: number | null }).store_seat_capacity ?? null) as number | null)
+      : null;
+    if (ownerCapacity != null) {
+      const cap = await checkSeatCapacity(admin, { userId: inviterOwnerId, capacity: ownerCapacity, count: 1 });
+      if (!cap.ok) {
+        return NextResponse.json(
+          { error: "초대한 회사의 현장 계정 정원이 가득 찼어요. 회사 감독자에게 문의하세요." },
+          { status: 409 }
+        );
+      }
+    } else if (isStoreSource((ownerSub as { source?: string | null }).source) && !ownerSub.billing_key) {
+      // 인앱결제(구글·애플) 소유주가 좌석 청구용 카드 없이 편입으로 좌석을 늘리는 무과금 경로 차단
+      // (invites POST와 동일 게이트 — 편입 수락 시점에도 소유주 카드가 있어야 한다)
       return NextResponse.json(
         { error: "초대한 회사에 등록된 결제수단이 없습니다. 회사 감독자에게 문의하세요." },
         { status: 409 }
@@ -107,14 +123,17 @@ export async function POST(request: Request) {
     const { data: claim, error: claimErr } = await admin.rpc("claim_org_seat", {
       p_org: invite.org_id,
       p_member: user.id,
+      p_capacity: ownerCapacity,
     });
     if (claimErr || claim !== "ok") {
       const msg =
         claim === "no_seat"
           ? "조직에 남은 좌석이 없습니다. 안전관리자에게 좌석 추가를 요청하세요."
-          : claim === "other_org"
-            ? "이미 다른 조직에 소속된 계정입니다."
-            : "좌석 배정에 실패했습니다.";
+          : claim === "over_capacity"
+            ? CAPACITY_FULL_MESSAGE
+            : claim === "other_org"
+              ? "이미 다른 조직에 소속된 계정입니다."
+              : "좌석 배정에 실패했습니다.";
       return NextResponse.json({ error: msg }, { status: 409 });
     }
 
