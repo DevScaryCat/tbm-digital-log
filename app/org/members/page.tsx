@@ -579,19 +579,23 @@ export default function OrgMembersPage() {
                             </div>
                             {/* 청구 미리보기 — 언제, 얼마가 나가는지 발급 확인 자리에서 숫자로 */}
                             <div className="rounded-[12px] bg-cur-elevated p-4 space-y-1.5">
+                                {/* 스토어 구독자는 두 레일(스토어 4,900 + 카드 좌석)로 나가므로, 카드 몫만 보여주면
+                                    "내 돈이 얼마 나가는지"를 알 수 없다(Chris 2026-08-10) — 합계를 먼저, 분해를 아래에. */}
                                 <div className="flex items-baseline justify-between gap-3">
                                     <span className="text-[13px] text-cur-body">
                                         {storeOwner
-                                            ? `현장 계정 ${activeCount + count}개 × 3,900원`
+                                            ? `내 구독 4,900원(앱 스토어) + 현장 계정 ${activeCount + count}개 × 3,900원(카드)`
                                             : `내 계정 1 + 현장 ${activeCount + count} = 계정 ${1 + activeCount + count}개 × 3,900원`}
                                     </span>
-                                    <span className="text-[17px] font-bold text-cur-ink shrink-0">월 {monthlyAfter.toLocaleString()}원</span>
+                                    <span className="text-[17px] font-bold text-cur-ink shrink-0">
+                                        월 {(storeOwner ? 4900 + monthlyAfter : monthlyAfter).toLocaleString()}원
+                                    </span>
                                 </div>
                                 <p className="text-[12px] text-cur-muted leading-relaxed">
                                     {isTrialing
-                                        ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
-                                        : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
-                                    {storeOwner && " 내 계정 몫은 앱 스토어 구독으로 별도 결제돼요."}
+                                        ? `무료체험 중엔 청구되지 않아요. 체험이 끝나는 ${nextChargeDate ?? "종료일"}부터 ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`
+                                        : `현장을 추가하면 이번 달 남은 기간 요금이 먼저 결제되고, ${nextChargeDate ? `${nextChargeDate}부터` : "다음 결제일부터"} ${storeOwner ? "카드에서" : ""} 월 ${monthlyAfter.toLocaleString()}원이 결제됩니다.`}
+                                    {storeOwner && " 내 구독 4,900원은 앱 스토어가 따로 청구해요."}
                                 </p>
                             </div>
                             {formErr && (
