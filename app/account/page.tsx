@@ -149,7 +149,11 @@ export default function AccountPage() {
         sub?.plan === "grandfather"
             ? "영구 무료"
             : sub?.plan === "org_seat"
-              ? "소속 현장 (회사에서 결제)"
+              ? // 해제(detach)·회사 구독 만료로 접힌 미러(canceled)에 "(회사에서 결제)"를 그대로 두면
+                // 회사가 더는 내지 않는 돈을 내는 중이라고 말하는 거짓 표기가 된다 — 종료로 분기
+                sub.status === "canceled"
+                ? "소속 현장 (회사 결제 종료)"
+                : "소속 현장 (회사에서 결제)"
               : seatBilled
                 ? accountCount > 1
                     ? `계정 ${accountCount}개 × 3,900원 = 월 ${(accountCount * SEAT_PRICE).toLocaleString()}원`

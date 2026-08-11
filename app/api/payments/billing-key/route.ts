@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     if (!billingKey) {
       return NextResponse.json({ error: "billingKey가 없습니다." }, { status: 400 });
     }
-    // 신규/재구독 시 선택한 플랜 (모르는 값이면 베이직으로 폴백)
+    // 신규/재구독 시 선택한 플랜 (모르는 값이면 getPlan이 monthly_pro로 폴백 — lib/portone.ts)
     const selectedPlan = getPlan(plan);
     // org/org_seat를 body로 밀어넣는 우회 차단 — 회사 플랜 결제는 /api/org/checkout 전용
     if (!selectedPlan.selectable) {
