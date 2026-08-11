@@ -22,8 +22,16 @@ export async function GET(request: Request) {
   return NextResponse.json({
     // 인증까지 끝나 실제로 보고서를 받을 수 있는 주소
     email: resolveMyReportEmail(user as never),
-    // 입력은 했지만 아직 링크를 안 누른 주소 — 화면이 '인증 대기'를 말할 수 있게
-    pending: meta.real_email && !meta.real_email_verified_at ? String(meta.real_email) : null,
+    // 입력은 했지만 아직 **복구가 가능하지 않은** 주소 — 화면이 '인증 대기'를 말할 수 있게.
+    //
+    // ⚠️ 기준은 real_email_verified_at이 아니라 recoveryReady다(2026-08-11 Chris 실기기 버그).
+    //    온보딩(/api/onboarding)은 링크 인증 없이도 verified_at을 찍는다 — 바로 위 주석이 말하는
+    //    그 사실이다. 그래서 종전 조건(`!verified_at`)으로는 온보딩에서 이메일을 넣은 계정이
+    //    **verified도 pending도 아닌** 상태가 됐고, 앱 배너가 "복구 이메일을 등록해 두면…"이라는
+    //    **등록조차 안 한 사람용 문구**를 띄웠다. 실제로는 주소가 저장돼 있고 인증만 안 끝난 것이라
+    //    맞는 문구는 "인증이 아직 안 끝났어요"다. 두 값이 갈라지는 유일한 경우가 정확히
+    //    이 온보딩 경로라, 판정을 recoveryReady 하나로 모은다.
+    pending: current && !recoveryReady ? current : null,
     recoveryReady,
   });
 }
