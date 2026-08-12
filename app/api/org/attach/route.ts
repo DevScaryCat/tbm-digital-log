@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
 import { cancelUserSubscription } from "@/lib/cancelSubscription";
 import { isStoreSource, checkSeatCapacity, CAPACITY_FULL_MESSAGE } from "@/lib/billing";
+import { isStoreSelfPaid } from "@/lib/orgSeats";
+import { orgSeatMirrorRow } from "@/lib/org";
 import { markGrandfatherForRestore } from "@/lib/grandfather";
 
 export const runtime = "nodejs";
@@ -66,6 +68,31 @@ export async function POST(request: Request) {
     if (!ownerSub || !isBillablePlan(ownerSub.plan) || !subscriptionAllows(ownerSub)) {
       return NextResponse.json({ error: "초대한 회사의 구독이 유효하지 않습니다. 회사 감독자에게 문의하세요." }, { status: 409 });
     }
+    // 스토어 구독(구글·애플) 보유자의 편입 — **차단하지 않는다**(2026-08-11 정책 통일).
+    //
+    // 종전에는 여기서 409로 막았다. 이유는 옳았다: 서버는 스토어 구독을 해지할 권한이 없으므로
+    // ③의 cancelUserSubscription이 무동작으로 지나가고 ④가 좌석 미러로 덮어써, 스토어가 본인에게
+    // 4,900원 · 감독자 카드가 같은 좌석에 3,900원인 무기한 이중청구가 됐다.
+    // ⚠️ 그 전제가 이번 변경으로 **사실이 아니게 됐다**: 좌석 회계(public.org_seat_states)가
+    //    자가 스토어 결제자를 감독자 청구·정원·미러 **전부에서** 빼므로, 편입해도 회사는 그 좌석
+    //    요금을 받지 않고 미러도 씌우지 않는다. 이중청구가 성립할 자리가 없다.
+    //    (이 주석을 고치지 않고 409만 지우면, 다음 편집자가 옛 주석을 믿고 되돌린다.)
+    //
+    // 그래서 '해지하고 오세요'라는 막다른 길을 없애고, 편입과 복원이 **같은 결과**를 내게 한다.
+    // 판정은 여기서 다시 적지 않고 같은 SQL 함수(is_store_self_paid)를 부른다.
+    // 점유 전에 확정한다 — ③④의 분기 근거이고, 실패해도 좌석을 건드리기 전이어야 한다.
+    let selfStorePaid = false;
+    try {
+      selfStorePaid = await isStoreSelfPaid(admin, user.id);
+    } catch (e) {
+      // 판정을 못 하면 좌석을 건드리지 않는다 — 모르는 채 미러를 씌우면 그게 이중청구다
+      console.error("attach: 자가 결제 판정 실패", e);
+      return NextResponse.json(
+        { error: "구독 상태를 확인하지 못했어요. 잠시 후 다시 시도해주세요." },
+        { status: 503 }
+      );
+    }
+
     // 스토어 정원제(seats-NN)면 카드가 없어도 된다 — 좌석 값까지 스토어가 이미 받았다.
     // 대신 **정원**이 자격 조건이다(invites POST와 동일 규칙). 이 검사를 빼면 편입이
     // 정원을 무제한 우회하는 통로가 된다. 최종 방어선은 아래 claim_org_seat의 over_capacity.
@@ -75,7 +102,15 @@ export async function POST(request: Request) {
       ? (((ownerSub as { store_seat_capacity?: number | null }).store_seat_capacity ?? null) as number | null)
       : null;
     if (ownerCapacity != null) {
-      const cap = await checkSeatCapacity(admin, { userId: inviterOwnerId, capacity: ownerCapacity, count: 1 });
+      // ⚠️ 사전검사가 claim_org_seat과 **같은 수**를 세야 한다. 자가 스토어 결제자는 정원을 먹지
+      // 않으므로(RPC의 v_self가 0) 여기서도 이번 요청분을 0으로 센다 — 안 그러면 정원이 꽉 찬
+      // 회사에 자가 결제자가 편입하려 할 때 RPC는 통과시키는데 이 줄이 409를 내는, 서버가 스스로
+      // 두 말을 하는 상태가 된다.
+      const cap = await checkSeatCapacity(admin, {
+        userId: inviterOwnerId,
+        capacity: ownerCapacity,
+        count: selfStorePaid ? 0 : 1,
+      });
       if (!cap.ok) {
         return NextResponse.json(
           { error: "초대한 회사의 현장 계정 정원이 가득 찼어요. 회사 감독자에게 문의하세요." },
@@ -87,34 +122,6 @@ export async function POST(request: Request) {
       // (invites POST와 동일 게이트 — 편입 수락 시점에도 소유주 카드가 있어야 한다)
       return NextResponse.json(
         { error: "초대한 회사에 등록된 결제수단이 없습니다. 회사 감독자에게 문의하세요." },
-        { status: 409 }
-      );
-    }
-
-    // 스토어 구독(구글·애플) 보유자는 편입 불가 — **좌석 점유 전에** 막아야 한다.
-    // 서버는 스토어 구독을 해지할 수 없다(권한이 스토어에 있음). 그대로 통과시키면 ③의
-    // cancelUserSubscription이 storeManaged로 무동작 반환하고, 그 실패를 로그만 찍고 지나가
-    // ④가 좌석 미러로 덮어써 버린다 → 스토어가 본인에게 4,900원, 감독자 카드가 같은 좌석에
-    // 3,900원. 한 자리에 무기한 이중청구다(2026-08-10 적대적 검수 발견).
-    // ⚠️ 이 검사를 ②(claim_org_seat) 뒤로 내리면 409로 막을 때 점유한 좌석이 반환되지 않아
-    //    유령 좌석이 남는다 — 반드시 점유 전이다.
-    const { data: myStoreSub } = await admin
-      .from("subscriptions")
-      .select("status, source")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (
-      myStoreSub &&
-      isStoreSource(myStoreSub.source) &&
-      ["active", "trialing", "past_due"].includes(myStoreSub.status)
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            myStoreSub.source === "app_store"
-              ? "앱스토어 구독 중인 계정은 바로 편입할 수 없어요. 설정 > Apple 계정 > 구독에서 해지한 뒤 다시 시도해주세요."
-              : "Google Play 구독 중인 계정은 바로 편입할 수 없어요. Play 스토어 > 정기 결제에서 해지한 뒤 다시 시도해주세요.",
-        },
         { status: 409 }
       );
     }
@@ -143,7 +150,11 @@ export async function POST(request: Request) {
       .select("id, plan, status, billing_key, source")
       .eq("user_id", user.id)
       .maybeSingle();
-    if (sub?.plan === "grandfather") {
+    if (selfStorePaid) {
+      // 본인 스토어 구독은 그대로 둔다 — 서버가 해지할 권한도 없고, 해지할 이유도 없다.
+      // 회사는 이 좌석을 청구하지 않는다(좌석 회계에서 self_store로 빠진다).
+      console.warn("SELF_PAID_SEAT_ATTACH", { orgId: invite.org_id, memberUserId: user.id });
+    } else if (sub?.plan === "grandfather") {
       // 표식은 서버 전용 자리(app_metadata)에 남긴다 — user_metadata는 클라이언트가 직접 쓸 수 있어
       // 영구 무료 자가 발급 통로가 된다(lib/grandfather.ts와 같은 규율). 헬퍼가 두 자리를 함께 관리한다.
       await markGrandfatherForRestore(admin, user.id);
@@ -177,31 +188,22 @@ export async function POST(request: Request) {
       }
     } catch { /* 비치명 — 감독자가 다음에 저장하면 동기화된다 */ }
 
-    // ④ 미러 구독 — 실패하면 초대를 소진하지 않고 500 (재수락 시 ②③이 멱등이라 자가 복구)
+    // ④ 미러 구독 — 실패하면 초대를 소진하지 않고 500 (재수락 시 ②③이 멱등이라 자가 복구).
+    // 자가 스토어 결제자에게는 씌우지 않는다: 덮으면 그 사람의 스토어 구독 행이 사라져 RTDN이
+    // 갈 곳을 잃고, 스토어는 계속 청구한다. 행 모양은 lib/org.ts의 미러 복원과 **같은 것**을 쓴다
+    // (스토어 잔재 청산 포함 — 안 지우면 RTDN이 미러의 status·기간을 덮어 좌석이 잠긴다).
     const now = new Date().toISOString();
-    const { error: mirrorErr } = await admin.from("subscriptions").upsert(
-      {
-        user_id: user.id,
-        plan: "org_seat",
-        pending_plan: null,
-        status: "active",
-        billing_key: null,
-        card_info: null,
-        amount: 0,
-        currency: "KRW",
-        current_period_end: null,
-        failed_attempts: 0,
-        canceled_at: null,
-        updated_at: now,
-      },
-      { onConflict: "user_id" }
-    );
-    if (mirrorErr) {
-      console.error("attach mirror sub upsert error:", mirrorErr);
-      return NextResponse.json(
-        { error: "편입 처리 중 오류가 발생했습니다. 잠시 후 다시 수락해주세요." },
-        { status: 500 }
-      );
+    if (!selfStorePaid) {
+      const { error: mirrorErr } = await admin
+        .from("subscriptions")
+        .upsert(orgSeatMirrorRow(user.id, now), { onConflict: "user_id" });
+      if (mirrorErr) {
+        console.error("attach mirror sub upsert error:", mirrorErr);
+        return NextResponse.json(
+          { error: "편입 처리 중 오류가 발생했습니다. 잠시 후 다시 수락해주세요." },
+          { status: 500 }
+        );
+      }
     }
 
     // ⑤ 초대 소진
@@ -210,6 +212,12 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       orgName: String((invite as any).organizations?.name ?? ""),
+      selfStorePaid,
+      // 화면·앱이 이 문구를 그대로 띄운다 — 편입했는데 스토어 청구가 계속되는 이유를
+      // 사용자가 알 수 있어야 한다(그리고 그만두는 방법도).
+      notice: selfStorePaid
+        ? "본인 스토어 구독이 그대로 유지돼요. 회사는 이 계정 요금을 청구하지 않아요. 스토어에서 구독을 해지하면 회사 좌석으로 자동 전환됩니다."
+        : undefined,
     });
   } catch (e) {
     console.error("org attach error:", e);

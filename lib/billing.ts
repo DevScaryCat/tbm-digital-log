@@ -10,6 +10,7 @@ import {
   SEAT_PRICE,
 } from "@/lib/portone";
 import { cancelOrgSeatMirrors, restoreOrgSeatMirrors } from "@/lib/org";
+import { resolveOrgSeatAccounting, resolveOrgSeatAccountingByOwner } from "@/lib/orgSeats";
 
 export const MAX_FAILED_ATTEMPTS = 3;
 
@@ -136,6 +137,11 @@ export interface BillableOrg {
  *
  * plan 문자열로 금액을 판정하던 구 구현은, 플랜 값이 바뀌는 순간 좌석 재계산이 통째로
  * 빠지면서 감독자가 자식 수와 무관하게 1계정 요금만 내게 되는 구멍이 있었다.
+ *
+ * ⚠️ 좌석 수는 org_members active **개수**가 아니라 좌석 회계(lib/orgSeats.ts)의 billableSeats다.
+ * 본인 스토어 구독으로 사는 멤버·영구 무료 멤버는 좌석을 제공받지 않으므로 청구에서도 빠진다 —
+ * 제공하지 않는 좌석에 요금을 받으면 그게 정확히 이중청구다. 정원 판정(claim_org_seat)과
+ * 미러 복원이 **같은 뷰**를 보므로 세 숫자가 갈라질 수 없다.
  */
 export async function resolveBillableAmount(
   admin: SupabaseClient,
@@ -145,19 +151,10 @@ export async function resolveBillableAmount(
   // 등록 카드(PortOne 빌링키)로는 좌석(활성 소속 현장) 몫만 청구한다 — 본인까지 세면 이중청구.
   const googleOwner = isStoreSource(sub.source);
 
-  const { data: orgRow } = await admin
-    .from("organizations")
-    .select("id")
-    .eq("owner_user_id", sub.user_id)
-    .maybeSingle();
+  const acc = await resolveOrgSeatAccountingByOwner(admin, sub.user_id);
 
-  if (orgRow) {
-    const { count } = await admin
-      .from("org_members")
-      .select("member_user_id", { count: "exact", head: true })
-      .eq("org_id", (orgRow as any).id)
-      .eq("status", "active");
-    const seatCount = count ?? 0;
+  if (acc) {
+    const seatCount = acc.billableSeats;
     const accountCount = 1 + seatCount; // 감독자 본인도 한 계정(=현장 하나)으로 센다 (표시용 seat_count 기준)
     // 스토어 정원제(seats-NN): 좌석 값까지 스토어가 이미 받았다 → 우리 카드 청구액은 0.
     // 이 분기가 없으면 카드가 남아 있는 정원제 감독자에게 스토어+카드 이중청구가 된다.
@@ -166,20 +163,20 @@ export async function resolveBillableAmount(
       return {
         amount: 0,
         orderName: "안톡 현장 계정 (앱 구독 정원제 — 스토어 청구)",
-        org: { id: (orgRow as any).id, accountCount },
+        org: { id: acc.orgId, accountCount },
       };
     }
     if (googleOwner) {
       return {
         amount: seatCount * SEAT_PRICE, // 좌석 0이면 0 — 청구할 것이 없다
         orderName: `안톡 현장 계정 ${seatCount}개 (감독자 앱 구독 별도)`,
-        org: { id: (orgRow as any).id, accountCount },
+        org: { id: acc.orgId, accountCount },
       };
     }
     return {
       amount: accountCount * SEAT_PRICE,
       orderName: `안톡 월간구독 (계정 ${accountCount}개)`,
-      org: { id: (orgRow as any).id, accountCount },
+      org: { id: acc.orgId, accountCount },
     };
   }
 
@@ -322,21 +319,12 @@ export async function checkSeatCapacity(
   const count = args.count ?? 1;
   if (capacity == null) return { ok: true, used: 0 };
 
-  const { data: orgRow } = await admin
-    .from("organizations")
-    .select("id")
-    .eq("owner_user_id", userId)
-    .maybeSingle();
-  let active = 0;
-  if (orgRow) {
-    const { count: c } = await admin
-      .from("org_members")
-      .select("member_user_id", { count: "exact", head: true })
-      .eq("org_id", (orgRow as any).id)
-      .eq("status", "active");
-    active = c ?? 0;
-  }
-  // 본인(1) + 활성 좌석 + (아직 안 만들었으면) 이번 요청분
+  // 정원 점유는 claim_org_seat(SQL)과 **같은 정의**로 센다 — 자가 스토어 결제자는 감독자가 산
+  // 정원을 먹지 않는다. 종전에는 여기와 RPC가 서로 다른 수를 세서 '미리보기는 OK인데 만들면
+  // CAPACITY_FULL'이 났다(2026-08-10 검수 지적 4).
+  const acc = await resolveOrgSeatAccountingByOwner(admin, userId);
+  const active = acc?.billableSeats ?? 0;
+  // 본인(1) + 청구 대상 좌석 + (아직 안 만들었으면) 이번 요청분
   const used = 1 + active + (args.seatsClaimed ? 0 : count);
   if (used > capacity) {
     return { ok: false, used, error: CAPACITY_FULL_MESSAGE };
@@ -493,21 +481,14 @@ export async function resolveSeatCharge(
     if (!taken || taken.status !== "paid") {
       paymentId = gseatId; // failed 잔재는 재사용(포트원 재시도 관례)
       if (sub.status === "active") {
-        const { data: orgRow } = await admin
-          .from("organizations")
-          .select("id")
-          .eq("owner_user_id", sub.user_id)
-          .maybeSingle();
-        if (orgRow) {
-          const { count: activeSeats } = await admin
-            .from("org_members")
-            .select("member_user_id", { count: "exact", head: true })
-            .eq("org_id", (orgRow as any).id)
-            .eq("status", "active");
-          // 실제 청구 시점에는 발급분(count)이 좌석 점유(claim)를 먼저 끝내 active에 이미 포함돼
+        // 소급 대상은 '청구 대상 좌석'이다 — org_members active 전체를 세면 본인 스토어 구독으로
+        // 사는 현장 몫까지 감독자에게 소급 청구된다(정기 청구에서는 빠지는데 여기서만 받는 어긋남).
+        const acc = await resolveOrgSeatAccountingByOwner(admin, sub.user_id);
+        if (acc) {
+          // 실제 청구 시점에는 발급분(count)이 좌석 점유(claim)를 먼저 끝내 회계에 이미 포함돼
           // 있으므로 빼고 센다. 미리보기(seatsClaimed=false)는 아직 안 만들었으니 그대로 센다.
           const already = opts.seatsClaimed ? count : 0;
-          periodBase = Math.max(0, (activeSeats ?? 0) - already) * SEAT_PRICE;
+          periodBase = Math.max(0, acc.billableSeats - already) * SEAT_PRICE;
         }
       }
     }
@@ -734,15 +715,10 @@ export async function chargeSubscription(
     // 회사 플랜이 3회 실패로 해지되면 하위 미러 구독을 즉시 강등 (결정 8: 유예 없음).
     // 멤버십(org_members)은 남겨 재결제 시 복구 가능하게 한다. cron 말미 reconciliation이 2차 안전망.
     if (nowCanceled && orgRow) {
-      const { data: members } = await admin
-        .from("org_members")
-        .select("member_user_id")
-        .eq("org_id", orgRow.id)
-        .eq("status", "active");
-      await cancelOrgSeatMirrors(
-        (members ?? []).map((m: any) => m.member_user_id as string),
-        admin
-      );
+      // 접는 대상도 좌석 회계와 같은 단위다 — 자가 스토어 결제자는 애초에 미러가 없고,
+      // 그 사람의 구독 행을 이 경로가 건드리면 본인 결제까지 끊어버린다.
+      const acc = await resolveOrgSeatAccounting(admin, orgRow.id);
+      await cancelOrgSeatMirrors(acc.seatIds, admin);
     }
   }
 
@@ -816,15 +792,8 @@ export async function chargeGoogleOwnerSeats(
         // 키가 비면 이 구독은 cron 대상(billing_key not null)에서 빠진다 — 여기서 미러를
         // 접지 않으면 남의 키로 만든 좌석이 무기한 무과금으로 산다(검수 발견). 멤버십은
         // 남겨두므로, 정상 카드 재등록(카운터 리셋) 후 첫 청구 성공 시 자동 복원된다.
-        const { data: mm } = await admin
-          .from("org_members")
-          .select("member_user_id")
-          .eq("org_id", org.id)
-          .eq("status", "active");
-        await cancelOrgSeatMirrors(
-          ((mm ?? []) as any[]).map((m) => m.member_user_id as string),
-          admin
-        );
+        const acc = await resolveOrgSeatAccounting(admin, org.id);
+        await cancelOrgSeatMirrors(acc.seatIds, admin);
         return { ok: false, paymentId, status: "failed", detail: "ownership mismatch — key cleared" };
       }
       await admin.from("subscriptions").update({ billing_key_verified: true }).eq("id", sub.id);
@@ -882,14 +851,6 @@ export async function chargeGoogleOwnerSeats(
     return { ok: false, paymentId, status: "failed", detail: payErr };
   }
 
-  // 좌석 강등/복원 대상 = 활성 소속 현장 (소유주 본인 제외)
-  const { data: members } = await admin
-    .from("org_members")
-    .select("member_user_id")
-    .eq("org_id", org.id)
-    .eq("status", "active");
-  const memberIds = ((members ?? []) as any[]).map((m) => m.member_user_id as string);
-
   if (paid) {
     // 구글 소유 필드(status/current_period_end/amount)는 불변 — 좌석 관련 필드만 만진다
     await admin
@@ -900,17 +861,11 @@ export async function chargeGoogleOwnerSeats(
       .from("organizations")
       .update({ seat_count: org.accountCount, pending_seat_count: null })
       .eq("id", org.id);
-    // 이전 실패(3회 강등)로 접힌 미러가 있으면 되살린다 — 청구액과 사용 가능 계정 수 일치
-    if (memberIds.length > 0) {
-      const { data: folded } = await admin
-        .from("subscriptions")
-        .select("user_id")
-        .in("user_id", memberIds)
-        .eq("plan", "org_seat")
-        .neq("status", "active");
-      const foldedIds = ((folded ?? []) as any[]).map((f) => f.user_id as string);
-      if (foldedIds.length > 0) await restoreOrgSeatMirrors(foldedIds, admin);
-    }
+    // 이전 실패(3회 강등)로 접힌 미러가 있으면 되살린다 — 청구액과 사용 가능 계정 수 일치.
+    // 후보 선정은 restoreOrgSeatMirrors 안에서 뷰가 한다(`plan='org_seat'` 필터가 아니라
+    // mirror_alive=false). 그래서 자가 결제 기간 동안 plan이 monthly_pro로 남았던 행과
+    // 구독 행이 아예 없는 계정도 여기서 함께 복원된다.
+    await restoreOrgSeatMirrors(org.id, admin);
   } else {
     const attempts = (sub.failed_attempts ?? 0) + 1;
     // 소유주 status는 절대 건드리지 않는다 — 좌석 카드 실패가 구글 구독(본인 몫)을 끊으면 안 된다
@@ -918,9 +873,12 @@ export async function chargeGoogleOwnerSeats(
       .from("subscriptions")
       .update({ failed_attempts: attempts, updated_at: now.toISOString() })
       .eq("id", sub.id);
-    if (attempts >= MAX_FAILED_ATTEMPTS && memberIds.length > 0) {
-      // 강등은 좌석 미러(org_seat)에만. 멤버십은 남겨 카드 재등록 시 복구 가능하게 한다
-      await cancelOrgSeatMirrors(memberIds, admin);
+    if (attempts >= MAX_FAILED_ATTEMPTS) {
+      // 강등은 좌석 미러(org_seat)에만. 멤버십은 남겨 카드 재등록 시 복구 가능하게 한다.
+      // 대상은 **청구 대상 좌석**뿐이다 — 자가 스토어 결제자는 감독자 카드 실패와 무관하게
+      // 자기 구독으로 계속 산다(정확히 이 시나리오의 원래 의도).
+      const seatIds = (await resolveOrgSeatAccounting(admin, org.id)).seatIds;
+      if (seatIds.length > 0) await cancelOrgSeatMirrors(seatIds, admin);
     }
   }
 

@@ -54,6 +54,28 @@ export async function POST(request: Request) {
         // 좌석 몫(N×3,900)은 보존된 카드로 좌석 크론이 계속 청구한다. ownsOrg는 아래 카드 보존 판정용.
         const ownsOrg = await ownsOrganization(admin, user.id)
 
+        // 소속 현장 계정이 앱에서 스스로 결제한 경우 — **차단하지 않는다**(2026-08-11).
+        // 409를 주면 acknowledge를 못 해 구글이 3일 뒤 자동 환불한다: 판정이 한 번만 어긋나도
+        // 사용자의 결제가 날아간다. 대신 좌석 회계(public.org_seat_states)가 이 사람을 self_store로
+        // 잡아 감독자 청구·정원·미러에서 빼므로 이중청구는 성립하지 않는다(손실은 본인이 3,900 대신
+        // 4,900을 내는 것뿐이고, 무과금 누수는 없다). 실질 방어선은 앱이 소속 계정에 결제 UI를
+        // 감추는 것이고, 여기서는 관측만 남긴다 — 수가 늘면 앱 쪽을 고쳐야 한다는 신호다.
+        {
+            const { data: seatRow } = await admin
+                .from("org_members")
+                .select("org_id")
+                .eq("member_user_id", user.id)
+                .eq("status", "active")
+                .maybeSingle()
+            if (seatRow) {
+                console.warn("SELF_PAID_SEAT_PURCHASE", {
+                    platform: "app_store",
+                    userId: user.id,
+                    orgId: (seatRow as { org_id: string }).org_id,
+                })
+            }
+        }
+
         // 같은 영수증이 다른 계정에 이미 붙어 있으면 거절 — 영수증 하나로 여러 계정을 여는 경로 차단.
         // (DB에도 부분 유일 인덱스가 있지만, 여기서 막아야 사용자에게 이유를 설명할 수 있다)
         const { data: owner } = await admin

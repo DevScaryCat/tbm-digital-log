@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { fetchOrgContext } from "@/lib/useOrgContext"
 import { startOfMonth, addMonths, format } from "date-fns"
 
 export interface SubscriptionRow {
@@ -172,6 +173,13 @@ export async function fetchSubscriptionCached(ttlMs = 60_000): Promise<Subscript
  * 대신 expired=true를 돌려주니, 화면 안의 "새로 만들기"류 CTA는 /pricing으로 돌릴 것.
  * 구독 게이트만 완화하는 것이다 — 비로그인 처리는 기존과 동일하게 각 페이지 로직에 맡긴다.
  * 구독 행 자체가 없는 계정은 만료가 아니라 미가입이므로 여전히 /start-trial로 보낸다.
+ *
+ * ⚠️ **유예 중인 소속 계정은 /pricing으로 보내지 않는다**(Chris 규정 2: 회사가 낼 수도 있는
+ * 동안 개인에게 카드를 들이밀지 않는다). 홈의 작성 카드만 유예 안내로 바꿔놓고 이 훅은
+ * 그대로 두면, 헤더 메뉴에서 '출력/발송 설정'을 누르는 것만으로 개인 결제 화면에 떨어졌다
+ * (/analytics·/report-settings·/tbm-minutes·/safety-log 전부 같은 목적지였다 — 2026-08-13 검수).
+ * 좌석만 잠긴 멤버(seatLocked)도 마찬가지다: 그는 애초에 결제 주체가 아니라 /pricing에서
+ * 할 수 있는 일이 없다. 둘 다 홈으로 보내 OrgLapseNotice가 사실을 말하게 한다.
  */
 export function useRequireSubscription(opts?: { allowExpired?: boolean }) {
     const allowExpired = opts?.allowExpired === true
@@ -220,6 +228,17 @@ export function useRequireSubscription(opts?: { allowExpired?: boolean }) {
                 if (allowExpired && isExpired(data as SubscriptionRow)) {
                     setExpired(true)
                     setChecking(false)
+                    return
+                }
+                // 개인 결제 문을 열기 전에 "이 사람이 결제 주체인가"를 먼저 본다.
+                // 판정은 서버가 이미 내렸다(GET /api/org/context) — 여기서 다시 계산하지 않는다.
+                const octx = await fetchOrgContext().catch(() => null)
+                if (!active) return
+                // ⚠️ phase를 보지 않는다(2026-08-11 정정). 종전에는 'grace'일 때만 되돌려서
+                //    유예 7일이 지난 멤버는 이 훅을 통과해 /pricing에 떨어졌다 — 그 문은 폐지됐다.
+                //    소속 멤버는 유예 전/중/후 어느 시점에도 결제 주체가 아니다.
+                if (octx?.orgLapse || octx?.seatLocked) {
+                    router.replace("/")
                     return
                 }
                 // 구독 행 자체가 없는 계정(카카오 OAuth·구 무인증 가입)은 요금제가 아니라

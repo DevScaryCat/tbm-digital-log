@@ -3,7 +3,8 @@
 // 현장명·현장담당자·새 비밀번호는 현장담당자 본인이 첫 로그인 온보딩에서 입력한다(must_set_password).
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
-import { getOrgContext } from "@/lib/org";
+import { getOrgContext, orgSeatMirrorRow } from "@/lib/org";
+import { resolveOrgSeatAccountingByOwner } from "@/lib/orgSeats";
 import {
   chargeProratedAccount,
   resolveSeatCharge,
@@ -185,30 +186,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: charge.error ?? "결제에 실패했습니다." }, { status: 402 });
       }
 
-      // 미러 구독 (org_seat 0원) — 4겹 게이트 통과용
+      // 미러 구독 (org_seat 0원) — 4겹 게이트 통과용.
+      // 행 모양은 복원 경로(lib/org.ts orgSeatMirrorRow)와 **같은 것**을 쓴다 — 두 곳에 손으로
+      // 적으면 한쪽만 바뀌어 어긋난다(스토어 잔재 청산이 정확히 그렇게 빠졌던 자리다).
       const now = new Date().toISOString();
       for (const c of created) {
-        const { error: subErr } = await admin.from("subscriptions").upsert(
-          {
-            user_id: c.userId,
-            plan: "org_seat",
-            status: "active",
-            billing_key: null,
-            card_info: null,
-            amount: 0,
-            currency: "KRW",
-            current_period_end: null,
-            trial_used: true,
-            failed_attempts: 0,
-            updated_at: now,
-          },
-          { onConflict: "user_id" }
-        );
+        const { error: subErr } = await admin
+          .from("subscriptions")
+          .upsert(orgSeatMirrorRow(c.userId, now), { onConflict: "user_id" });
         if (subErr) console.error("bulk mirror sub upsert error:", c.loginId, subErr);
       }
 
-      // 표시용 계정 수 동기화
-      const accountCount = (ctx.memberIds ?? []).length + created.length + 1;
+      // 표시용 계정 수 동기화 — 청구 단위(1 + 청구 대상 좌석)와 같은 수를 쓴다.
+      // ctx.memberIds로 세면 자가 스토어 결제자까지 포함돼 청구서와 다른 숫자가 화면에 남는다.
+      const acc = await resolveOrgSeatAccountingByOwner(admin, user.id);
+      const accountCount = 1 + (acc?.billableSeats ?? created.length);
       await admin
         .from("organizations")
         .update({ seat_count: accountCount, pending_seat_count: null })

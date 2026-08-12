@@ -7,10 +7,11 @@ import { TBMHeader } from "@/components/TBMHeader"
 import { SubscribeButtons } from "@/components/SubscribeButtons"
 import { BillingRedirectHandler } from "@/components/BillingRedirectHandler"
 import { isAllowed, isProActive, isWhitelist, SubscriptionRow } from "@/lib/useSubscription"
-import { fetchOrgContext } from "@/lib/useOrgContext"
+import { clearOrgContextCache, fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
+import { OrgLapseNotice } from "@/components/OrgLapseNotice"
 import { Button } from "@/components/ui/button"
 import { SettingsCard, SettingsRow } from "@/components/ui/list-row"
-import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ExternalLink } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, Receipt, Sparkles, CreditCard, ExternalLink, Building2, LogOut } from "lucide-react"
 import { showConfirm } from "@/lib/uiDialog"
 
 interface Payment {
@@ -53,7 +54,8 @@ export default function AccountPage() {
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
     // 과금 계정 수(감독자 본인 1 + 활성 현장) — 여기가 '회사 전체 결제'라는 걸 명시하기 위한 값
     const [accountCount, setAccountCount] = useState<number>(1)
-
+    const [orgCtx, setOrgCtx] = useState<ClientOrgContext | null>(null)
+    const [leaving, setLeaving] = useState(false)
 
     const load = async () => {
         const {
@@ -63,12 +65,15 @@ export default function AccountPage() {
             router.replace("/login")
             return
         }
-        // 소속 현장 계정은 결제 주체가 아니다 — 헤더 잠금을 뚫고 들어와도(역할 로딩 틈) 홈으로
+        // 소속 현장 계정은 결제 주체가 아니다 — 헤더 잠금을 뚫고 들어와도(역할 로딩 틈) 홈으로.
+        // **단 자가 결제자(self_store)는 예외다**: 자기가 돈을 내는 구독인데 관리할 화면이
+        // 하나도 없으면 해지·연결끊기·결제요청 어느 것도 할 수 없는 막다른 길이 된다.
         const ctx = await fetchOrgContext()
-        if (ctx?.kind === "member") {
+        if (ctx?.kind === "member" && ctx.seatState !== "self_store") {
             router.replace("/")
             return
         }
+        setOrgCtx(ctx)
         setAccountCount(ctx?.kind === "owner" ? 1 + (ctx.memberIds?.length ?? 0) : 1)
         const { data: subRow } = await supabase
             .from("subscriptions")
@@ -118,7 +123,70 @@ export default function AccountPage() {
         }
     }
 
+    // 자가 결제 중인 소속 계정만 스스로 나갈 수 있다. 화면 조건은 표시용일 뿐 —
+    // **자격은 서버가 is_store_self_paid로 다시 판정한다**(클라 값 위조로 회사 좌석 멤버가
+    // 스스로 나가 완전 차단 상태를 자가 생성하는 것을 막는 자리다).
+    const selfPaidMember = orgCtx?.kind === "member" && orgCtx.seatState === "self_store"
+
+    const handleLeaveOrg = async () => {
+        const name = orgCtx?.org?.name ?? "회사"
+        const ok = await showConfirm(
+            "· 앞으로 이 현장의 기록이 회사 보고서에 포함되지 않아요.\n· 지금까지 만든 기록은 그대로 남고, 계속 쓸 수 있어요.\n· 다시 연결하려면 감독자에게 초대를 받아야 해요.",
+            { title: `${name} 연결을 끊을까요?`, confirmText: "연결 끊기", danger: true }
+        )
+        if (!ok) return
+        setLeaving(true)
+        setMsg(null)
+        try {
+            const { data: sessionData } = await supabase.auth.getSession()
+            const res = await fetch("/api/org/leave", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` },
+            })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                setMsg({ type: "err", text: json.error || "연결을 끊지 못했어요." })
+                return
+            }
+            // 역할 캐시(세션당 1회)를 안 버리면 화면이 옛 역할로 남는다
+            clearOrgContextCache()
+            setMsg({ type: "ok", text: "회사 연결을 끊었어요." })
+            await load()
+        } finally {
+            setLeaving(false)
+        }
+    }
+
+    const handleRequestCompanyPay = async () => {
+        setMsg(null)
+        const { data: sessionData } = await supabase.auth.getSession()
+        const res = await fetch("/api/org/ping-owner", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${sessionData?.session?.access_token}` },
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+            setMsg({ type: "err", text: json.error || "요청을 전달하지 못했어요." })
+            return
+        }
+        setMsg({
+            type: "ok",
+            text: json.alreadySentToday
+                ? "오늘 이미 감독자에게 전달됐어요."
+                : "감독자에게 결제 요청을 전달했어요.",
+        })
+    }
+
     const isGrandfather = isWhitelist(sub)
+    // 회사 결제가 끊긴 소속 계정에게는 개인 결제 UI를 내지 않는다.
+    //
+    // ⚠️ 종전에는 `phase === "grace"`였다 — 유예 7일이 지나면 이 잠금이 저절로 풀려 개인 결제
+    //    UI가 되살아났다(그때는 개인 결제 전환이 설계였다). 2026-08-11 그 설계가 번복돼 문은
+    //    영구히 닫혔으므로 phase를 보지 않는다. 이름도 graceLock → lapseLock으로 바꾼다:
+    //    '유예 중에만 잠긴다'는 뜻이 남아 있으면 다음 사람이 같은 조건으로 되돌린다.
+    //    (앱 src/app/account.tsx의 payCtaBlocked와 같은 규칙 — 두 화면이 어긋나면 안 된다.)
+    const orgLapse = orgCtx?.orgLapse ?? null
+    const lapseLock = !!orgLapse
     // 스토어(인앱) 구독 — 본인 몫(월 4,900)은 스토어가 청구·갱신한다. 해지·결제수단 변경도
     // 결제한 스토어에서만 가능(앱 account.tsx의 storeManaged 분기와 동일 판정·워딩).
     const playManaged = sub?.source === "google_play"
@@ -204,6 +272,52 @@ export default function AccountPage() {
                                 }`}
                             >
                                 {msg.text}
+                            </div>
+                        )}
+
+                        {/* 회사 결제가 끊긴 소속 계정 — 유예 중이면 이 안내가 결제 UI를 **대신한다**.
+                            유예가 끝나면(phase='ended') 안내는 내리고 아래 결제 UI가 전면에 나온다. */}
+                        {lapseLock && orgLapse && <OrgLapseNotice lapse={orgLapse} />}
+
+                        {/* 자가 결제 중인 소속 계정 — 조직 연결은 유지된 채 회사 청구에서만 빠져 있다.
+                            여기가 '회사 부담으로 되돌아가는 길'과 '스스로 나가는 길'의 유일한 입구다. */}
+                        {selfPaidMember && (
+                            <div className="bg-cur-card rounded-2xl p-6 border border-cur-hairline space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="w-5 h-5 text-cur-primary" />
+                                    <h2 className="text-[16px] font-bold text-cur-ink">
+                                        {orgCtx?.org?.name ?? "회사"}에 연결돼 있어요
+                                    </h2>
+                                </div>
+                                <p className="text-[14px] text-cur-body leading-relaxed">
+                                    지금은 회원님이 직접 구독해서 쓰고 있어요.
+                                </p>
+                                <p className="text-[13px] text-cur-muted leading-relaxed">
+                                    회사 청구에서는 빠져 있어요. 감독자가 다시 회사 부담으로 돌리면 이 구독을 해지하고
+                                    이어서 쓸 수 있어요.
+                                </p>
+                                <div className="space-y-2 pt-1">
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleRequestCompanyPay}
+                                        className="w-full h-11 rounded-[8px] border-cur-hairline bg-cur-card text-cur-body font-semibold text-[14px] hover:bg-cur-elevated"
+                                    >
+                                        회사에 결제 요청하기
+                                    </Button>
+                                    <button
+                                        onClick={handleLeaveOrg}
+                                        disabled={leaving}
+                                        className="w-full h-10 text-[13px] text-cur-muted hover:text-cur-error transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                                    >
+                                        {leaving ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <>
+                                                <LogOut className="w-4 h-4" /> 회사 연결 끊기
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -359,7 +473,7 @@ export default function AccountPage() {
                             {/* 재구독·체험종료 유도는 별도 카드가 아니라 상태 카드의 한 구획 —
                                 "해지됨"과 "다시 구독"은 같은 이야기라 한 묶음으로 읽혀야 한다(Chris).
                                 구분은 카드 사이 여백 대신 얇은 보더 하나로. */}
-                            {!isGrandfather && cardlessTrialExpired && (
+                            {!isGrandfather && !lapseLock && cardlessTrialExpired && (
                                 <div className="mt-5 pt-5 border-t border-cur-hairline space-y-4">
                                     <p className="text-[14px] text-cur-body leading-relaxed">
                                         결제수단을 등록하면 즉시 결제 후 이어서 쓸 수 있어요.
@@ -371,8 +485,12 @@ export default function AccountPage() {
                                     />
                                 </div>
                             )}
-                            {!isGrandfather && !cardlessTrial && !(active && sub?.status !== "canceled") && (
+                            {!isGrandfather && !lapseLock && !cardlessTrial && !(active && sub?.status !== "canceled") && (
                                 <div className="mt-5 pt-5 border-t border-cur-hairline space-y-4">
+                                    {/* "…직접 구독하면 이어서 이용할 수 있어요"(유예 후 소속 계정) 갈래가
+                                        여기 있었다 — 2026-08-11 제거. lapseLock이 phase를 보지 않게 된
+                                        지금 orgLapse는 이 블록에서 항상 null이라 도달할 수 없는 코드였고
+                                        (tsc가 never로 잡았다), 애초에 그 문장이 열던 문이 폐지 대상이었다. */}
                                     <p className="text-[14px] text-cur-muted text-center">
                                         {sub?.status === "canceled"
                                             ? "다시 구독하면 모든 기능을 계속 이용할 수 있습니다."

@@ -211,10 +211,20 @@ export async function POST(request: Request) {
     });
     if (countErr) {
       console.error("RA count insert error:", countErr);
-      const limitHit = String((countErr as any)?.code) === "P0001";
+      const code = String((countErr as any)?.code);
+      const limitHit = code === "P0001";
+      // P0002 = 대상 현장의 구독이 무효(회사 유예로 좌석이 접힘 등). 한도 초과와 **다른 사실**이라
+      // 다른 말을 해야 한다 — 감독자가 "한도를 다 썼다"고 읽으면 다음 달을 기다린다.
+      const subBlocked = code === "P0002";
       return NextResponse.json(
-        { error: limitHit ? `이번 달 AI 분석 보고서 생성 한도(현장당 월 ${RA_MONTHLY_LIMIT}회)를 초과했습니다.` : "분석 결과 기록에 실패했습니다. 잠시 후 다시 시도해주세요." },
-        { status: limitHit ? 429 : 500 }
+        {
+          error: limitHit
+            ? `이번 달 AI 분석 보고서 생성 한도(현장당 월 ${RA_MONTHLY_LIMIT}회)를 초과했습니다.`
+            : subBlocked
+              ? "이 현장 계정의 이용 권한이 연결되지 않아 분석을 기록할 수 없습니다. 결제수단·요금제를 확인해 주세요."
+              : "분석 결과 기록에 실패했습니다. 잠시 후 다시 시도해주세요.",
+        },
+        { status: limitHit || subBlocked ? 429 : 500 }
       );
     }
 

@@ -8,7 +8,7 @@ import { fetchAllRows } from "@/lib/fetchAllRows"
 import { useRequireSubscription } from "@/lib/useSubscription"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HardHat, Loader2, Users, ChevronRight, PlayCircle, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
+import { HardHat, Loader2, Users, ChevronRight, X, Plus, MailPlus, Mic, Mail } from "lucide-react"
 import { fetchRecipients } from "@/lib/reportRecipients"
 import { canRecoverAccount, isKakaoUser } from "@/lib/myEmail"
 import { TBMHeader } from "@/components/TBMHeader"
@@ -20,6 +20,8 @@ import { AttachInviteModal } from "@/components/AttachInviteModal"
 import { HomeActivity } from "@/components/HomeActivity"
 import { OnboardingModal } from "@/components/OnboardingModal"
 import { Antoki } from "@/components/Antoki"
+import { OrgLapseNotice } from "@/components/OrgLapseNotice"
+import { OwnerNoticeStrip } from "@/components/OwnerNoticeStrip"
 
 // 홈 화면 캐시 — 뒤로가기·탭 복귀 때마다 세션·통계·역할을 다시 기다리며 스피너를
 // 띄우지 않기 위한 stale-while-revalidate. 화면은 캐시로 즉시 그리고, 데이터는
@@ -260,7 +262,12 @@ function DocMonthly() {
 
 export default function MainPage() {
   const router = useRouter()
-  const { checking } = useRequireSubscription()
+  // 홈은 달력·기록의 진입점이다 — 만료자를 여기서 /pricing으로 축출하면 소속 계정이 웹에서
+  // 자기 법정 서류에 닿을 방법이 /dashboard 직접 URL밖에 없다. 게다가 목적지 /pricing은
+  // **유예 중에 열어선 안 되는 개인 결제 화면**이다(Chris 규정 2 정면 위반).
+  // allowExpired는 새 개념이 아니다 — /dashboard·/education-progress·/suggestions가 이미 쓴다.
+  // 대신 expired=true면 아래에서 작성 카드 2종만 안내로 치환한다(열람·출력은 그대로 연다).
+  const { checking, expired } = useRequireSubscription({ allowExpired: true })
   const cached = homeCache // 렌더 시점 스냅샷
   const [isLoading, setIsLoading] = useState(!cached)
   const [user, setUser] = useState<any>(cached?.user ?? null)
@@ -659,35 +666,121 @@ export default function MainPage() {
   const showRecoveryHint = !!user && !recoveryHintHidden && !canRecoverAccount(user, recoveryReady)
   const mergedEmailHint = showRecoveryHint && !!recipientGap?.noEmail
 
-  // 작성 카드 2종 — 평소 홈(하단)과 빈 상태(최상단) 두 자리에서 같은 마크업을 쓴다
-  const writeCards = (
-    <div className="grid grid-cols-2 gap-3">
-      <div
-        onClick={() => router.push('/tbm-minutes')}
-        className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
-      >
-        <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-          <Users className="w-6 h-6" />
-        </div>
-        <div className="space-y-1 flex-1">
-          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 TBM 작성</h3>
-          <p className="text-cur-muted text-[12px] leading-snug">녹음하면 AI가 회의록으로 정리해요</p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
-      </div>
+  /**
+   * 아직 아무것도 만들지 않은 사람 — 작성 카드 2종을 하이라이트할 조건(Chris 2026-08-11).
+   * 앱 src/app/index.tsx의 firstRun과 **같은 규칙이어야 한다**(두 화면이 어긋나면 안 된다).
+   *
+   * 기록 0건이 판정의 전부지만 **작성이 막힌 사람은 제외한다**: 만료(expired) 상태에서는
+   * 아래 writeCards가 애초에 안내 카드로 치환되므로 하이라이트할 대상 자체가 없고, 켜두면
+   * "여기서 시작하세요"라고 부른 뒤 결제 안내를 보여주는 꼴이 된다.
+   * statsLoading 중에는 켜지 않는다 — 0건인지 모르는 채 켰다가 통계가 도착해 꺼지면 번쩍인다.
+   */
+  const firstRun = !statsLoading && !expired && tbmCount + tbmMinutesCount === 0
 
-      <div
-        onClick={() => router.push('/safety-log')}
-        className="border border-cur-hairline bg-cur-card hover:border-cur-primary/40 transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3"
-      >
-        <div className="bg-cur-elevated w-12 h-12 rounded-[8px] flex items-center justify-center text-cur-ink group-hover:bg-cur-primary/15 group-hover:text-cur-primary transition-colors">
-          <HardHat className="w-6 h-6" />
+  // 작성 카드 2종 — 평소 홈(하단)과 빈 상태(최상단) 두 자리에서 같은 마크업을 쓴다
+  const writeCardsNormal = (
+    <div className="space-y-3">
+      {/* 첫 사용자 안내 — 배너를 하나 더 쌓는 대신 눌러야 할 카드 바로 위에 한 줄만 둔다.
+          닫기 버튼이 없는 이유: 첫 기록을 만들면 저절로 사라지고, 안 만든 사람에게는 계속
+          필요한 안내다(홈 상단의 튜토리얼 배너를 걷어낸 자리를 이것이 대신한다). */}
+      {firstRun && (
+        <div className="flex items-center gap-2 px-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-cur-primary shrink-0" />
+          <span className="text-[13px] font-semibold text-cur-primary">여기서 시작하세요</span>
+          <span className="text-[12px] text-cur-muted">— 첫 기록을 만들면 이 안내는 사라져요</span>
         </div>
-        <div className="space-y-1 flex-1">
-          <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 교육일지 작성</h3>
-          <p className="text-cur-muted text-[12px] leading-snug">같은 방식으로 교육일지도 자동 작성돼요</p>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <div
+          onClick={() => router.push('/tbm-minutes')}
+          className={`transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3 border ${
+            firstRun
+              ? "border-cur-primary bg-cur-primary/[0.06] hover:bg-cur-primary/10"
+              : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+          }`}
+        >
+          <div
+            className={`w-12 h-12 rounded-[8px] flex items-center justify-center transition-colors group-hover:bg-cur-primary/15 group-hover:text-cur-primary ${
+              firstRun ? "bg-cur-primary/15 text-cur-primary" : "bg-cur-elevated text-cur-ink"
+            }`}
+          >
+            <Users className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 flex-1">
+            <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 TBM 작성</h3>
+            <p className="text-cur-muted text-[12px] leading-snug">녹음하면 AI가 회의록으로 정리해요</p>
+          </div>
+          <ChevronRight
+            className={`w-4 h-4 transition-colors self-end group-hover:text-cur-primary ${firstRun ? "text-cur-primary" : "text-cur-muted"}`}
+          />
         </div>
-        <ChevronRight className="w-4 h-4 text-cur-muted group-hover:text-cur-primary transition-colors self-end" />
+
+        <div
+          onClick={() => router.push('/safety-log')}
+          className={`transition-all cursor-pointer rounded-[12px] group p-5 flex flex-col gap-3 border ${
+            firstRun
+              ? "border-cur-primary bg-cur-primary/[0.06] hover:bg-cur-primary/10"
+              : "border-cur-hairline bg-cur-card hover:border-cur-primary/40"
+          }`}
+        >
+          <div
+            className={`w-12 h-12 rounded-[8px] flex items-center justify-center transition-colors group-hover:bg-cur-primary/15 group-hover:text-cur-primary ${
+              firstRun ? "bg-cur-primary/15 text-cur-primary" : "bg-cur-elevated text-cur-ink"
+            }`}
+          >
+            <HardHat className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 flex-1">
+            <h3 className="text-[15px] font-semibold text-cur-ink leading-snug">내 교육일지 작성</h3>
+            <p className="text-cur-muted text-[12px] leading-snug">같은 방식으로 교육일지도 자동 작성돼요</p>
+          </div>
+          <ChevronRight
+            className={`w-4 h-4 transition-colors self-end group-hover:text-cur-primary ${firstRun ? "text-cur-primary" : "text-cur-muted"}`}
+          />
+        </div>
+      </div>
+    </div>
+  )
+
+  // 만료(작성 잠김) 상태의 대체 카드. 열람·출력은 계속 열려 있으므로 홈에서 쫓아내지 않고
+  // **작성 입구만** 안내로 바꾼다.
+  //   · 소속 계정(회사 결제가 끊김) → 유예 안내. 유예 중에는 개인 결제를 권하지 않는다.
+  //   · 그 외(개인 만료) → 기존대로 결제 유도.
+  // orgCtx가 아직 null이면 둘 중 무엇인지 모른다 — 그 사이에 "구독이 만료됐어요"를 띄우면
+  // 구독한 적 없는 소속 계정에게 거짓말을 하게 되므로, 판정될 때까지 자리만 비워둔다.
+  const writeCards = !expired ? (
+    writeCardsNormal
+  ) : orgCtx === null ? (
+    <div className="rounded-[12px] border border-cur-hairline bg-cur-card p-6 flex justify-center">
+      <Loader2 className="w-5 h-5 animate-spin text-cur-muted" />
+    </div>
+  ) : orgCtx.orgLapse ? (
+    <OrgLapseNotice lapse={orgCtx.orgLapse} />
+  ) : orgCtx.seatLocked ? (
+    // 회사 구독은 유효한데 **내 좌석만** 안 열린 경우. 여기가 없으면 아래 "구독이 만료돼
+    // 작성이 잠겼어요 → 구독 시작하기"가 뜨는데, 이 사람은 결제 주체가 아니라 /pricing에서
+    // 할 수 있는 일이 없다(카드 등록이 403이다) — 막다른 길이었다.
+    <OrgLapseNotice seatLocked />
+  ) : (
+    <div className="rounded-[12px] border border-cur-hairline bg-cur-card p-5 space-y-3">
+      <h2 className="text-[16px] font-bold text-cur-ink">구독이 만료돼 작성이 잠겼어요</h2>
+      <p className="text-[13.5px] text-cur-body leading-relaxed">
+        지금까지 만든 기록은 그대로 <b className="font-semibold text-cur-ink">보고 출력</b>할 수 있어요.
+      </p>
+      <div className="space-y-2">
+        <Button
+          onClick={() => router.push('/pricing')}
+          className="w-full h-12 rounded-[8px] bg-cur-primary text-cur-on-primary hover:bg-cur-primary-active font-bold text-[15px]"
+        >
+          구독 시작하기
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => router.push('/dashboard')}
+          className="w-full h-11 rounded-[8px] border-cur-hairline bg-cur-card text-cur-body font-semibold text-[14px] hover:bg-cur-elevated"
+        >
+          기록 보기
+        </Button>
       </div>
     </div>
   )
@@ -987,6 +1080,9 @@ export default function MainPage() {
 
         {/* ── 단일 홈 — 탭 없이 한 스크롤: (감독자) 관제 → 내 기록 → 작성 ── */}
         <div className="p-4 sm:p-6 space-y-5">
+          {/* 감독자에게만: 현장이 보낸 결제 요청 + 알림 받을 이메일 공백.
+              둘 다 상태에서 파생할 수 없는 사실이라 알림 원장을 읽는 유일한 자리다. */}
+          {orgCtx?.kind === "owner" && <OwnerNoticeStrip />}
           {/* 복구용 이메일 미등록 — 아이디 계정은 이 주소가 없으면 비밀번호를 잃는 순간 계정이 통째로 잠긴다.
               등록 창구는 '내 정보 수정' 한 곳뿐이라 여기서는 안내와 이동만 한다(입력창을 또 만들지 않는다).
               한 번 닫으면 30일간 다시 뜨지 않는다. 수신처 공백 배너와 겹치면 아래 병합 배너 하나만 띄운다. */}
@@ -1035,31 +1131,10 @@ export default function MainPage() {
               방금 저장된 usage_type에서 홈 유도(hintAddSite)도 곧바로 파생된다 */}
           {needsOnboarding && <OnboardingModal onDone={(u) => { if (u) commitUser(u) }} />}
 
-          {/* 튜토리얼 미이수 배너 — 완료·건너뛰기·X 모두 tutorial_seen_at 기록으로 사라진다 */}
-          {user && !user.user_metadata?.tutorial_seen_at && (
-            <div className="flex items-center gap-3 p-3.5 rounded-[12px] bg-cur-primary/5 border border-cur-primary/20">
-              <PlayCircle className="w-5 h-5 shrink-0 text-cur-primary" />
-              <button
-                type="button"
-                onClick={() => router.push('/tutorial')}
-                className="flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
-              >
-                <span className="block text-[14px] font-semibold text-cur-ink">가이드 안내 — 1분이면 충분해요</span>
-                <span className="block text-[12px] text-cur-body mt-0.5">버튼 누르는 순서를 그대로 보여드려요</span>
-              </button>
-              <button
-                type="button"
-                aria-label="사용법 안내 닫기"
-                onClick={async () => {
-                  const { data } = await supabase.auth.updateUser({ data: { tutorial_seen_at: new Date().toISOString() } })
-                  if (data?.user) commitUser(data.user)
-                }}
-                className="shrink-0 p-1.5 rounded-[8px] text-cur-muted hover:text-cur-ink hover:bg-cur-elevated transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+          {/* 튜토리얼 미이수 배너가 있던 자리 — 2026-08-11 제거(Chris, 앱과 동일 결정).
+              가이드는 헤더 이름 메뉴 → '가이드'(/tutorial)로 옮겼다. 첫 화면에 배너를 쌓는
+              대신, 첫 사용자를 실제로 움직이는 일은 작성 카드 2종의 하이라이트(firstRun)가
+              맡는다 — 안내와 눌러야 할 것이 같은 자리에 있다. */}
 
           {/* 보고서 수신처 공백 — 승인된 사람이 0명이면 주간·월간 보고서가 아무 데도 안 간다.
               등록만 하고 승인 전인 경우와 아예 없는 경우는 할 일이 달라서 문구를 나눈다. */}

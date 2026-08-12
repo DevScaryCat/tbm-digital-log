@@ -63,7 +63,15 @@ export async function POST(request: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const response = await fetch("https://api.deepgram.com/v1/listen?model=nova-2&language=ko&smart_format=true", {
+    // ⚠️ mip_opt_out=true 는 지우지 말 것 (2026-08-12).
+    //    Deepgram에는 Model Improvement Partnership이라는 학습 데이터 프로그램이 있고,
+    //    이 파라미터를 붙이지 않으면 요청한 음성이 향후 모델 학습에 쓰일 수 있다. 옵트아웃하면
+    //    "요청 처리에 필요한 기간 동안만" 보관된다(Deepgram 문서).
+    //    우리가 다루는 것은 **현장 근로자들의 목소리**다. 그 사람들은 안톡에 가입한 적도,
+    //    동의한 적도 없다(TBM 참석자는 QR로 서명만 한다). 감독자의 약관 동의로는 남의 음성을
+    //    제3자 학습에 제공할 근거가 되지 못한다. 개인정보처리방침 제5조에 "변환 직후 폐기"라고
+    //    적어 둔 문장이 참이 되려면 이 한 줄이 반드시 있어야 한다.
+    const response = await fetch("https://api.deepgram.com/v1/listen?model=nova-2&language=ko&smart_format=true&mip_opt_out=true", {
       method: "POST",
       headers: {
         "Authorization": `Token ${apiKey}`,

@@ -8,6 +8,12 @@ import {
   SubscriptionRow,
 } from "@/lib/billing";
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather";
+import { cancelOrgSeatMirrors } from "@/lib/org";
+import { resolveOrgSeatAccounting } from "@/lib/orgSeats";
+import { OWNER_SEAT_SUB_COLUMNS, restoreOrgSeats, type OwnerSeatSub } from "@/lib/seatRestore";
+import { daysSinceLapse, orgLapseTiming, orgLapsedAt } from "@/lib/orgGrace";
+import { buildNoticeMail, kstDay, notify, retryFailedEmails, type OrgNoticeKind } from "@/lib/orgNotices";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 export const runtime = "nodejs";
 // 청구 건이 몰리는 날 기본 타임아웃에 걸려 뒤쪽 구독이 누락되지 않도록 명시(월간 보고서 cron과 동일).
@@ -58,18 +64,54 @@ async function run(request: Request) {
       processed: 0,
       paid: 0,
       failed: 0,
+      /** 청구를 시도조차 하지 않은 회차(빌링키 전파 지연 등) — 실패 지표를 오염시키지 않는다 */
+      chargeSkipped: 0,
       mirrorsDemoted: 0,
       googleSeatPaid: 0,
       googleSeatFailed: 0,
       grandfatherRestored: 0,
       /** 정원제인데 실계정이 정원을 넘은 행 수 — 0이 아니면 즉시 원인을 봐야 한다 */
       capacityOver: 0,
+      /** 미러 복원 스윕이 실제로 되살린 좌석 수 */
+      mirrorsRestored: 0,
+      /** 본인 스토어 구독으로 사는 좌석 수 — 청구·정원에서 빠진 사람들. 0이 아니면 관측 대상 */
+      selfPaidSeats: 0,
+      /** 정원이 모자라 이번 회차에 복원을 보류한 좌석 수 — 0이 아니면 감독자 조치가 필요하다 */
+      restoreDeferredOverCapacity: 0,
+      /** 유예·좌석잠김 알림으로 새로 만든 인앱 알림 수 */
+      lapseNoticesCreated: 0,
+      lapseEmailsSent: 0,
+      lapseEmailsFailed: 0,
+      /** 실패한 메일을 이번 회차에 재시도해 성공시킨 수 */
+      lapseEmailsRetried: 0,
+      /** 조회 예외로 이번 회차를 건너뛴 건수 (다음 실행이 다시 시도) */
+      errors: 0,
     };
+    // 이번 회차에 카드 결제가 실패한 감독자 — 아래 조직 스윕에서 org를 이미 읽으므로
+    // 여기서 조직을 다시 조회하지 않고 그때 알림을 만든다(라운드트립을 늘리지 않는다).
+    const failedOwnerPayments = new Map<string, string>();
     for (const sub of (due || []) as SubscriptionRow[]) {
       results.processed++;
-      const r = await chargeSubscription(admin, sub);
-      if (r.ok) results.paid++;
-      else results.failed++;
+      try {
+        const r = await chargeSubscription(admin, sub);
+        // ⚠️ ok=false를 전부 '결제 실패'로 세면 안 된다. lib/billing.ts는 빌링키 전파 지연
+        // (감독자가 방금 카드를 등록한 **정상 경로**)에서 status='skipped'를 돌려주는데,
+        // 청구를 시도조차 하지 않은 그 회차에 "결제가 실패했어요 · 현장 계정이 잠깁니다" 메일이
+        // 카드 등록 직후라는 가장 나쁜 타이밍에 도착했다(2026-08-13 검수).
+        if (r.ok) results.paid++;
+        else if (r.status === "failed") {
+          results.failed++;
+          failedOwnerPayments.set(sub.user_id, r.paymentId);
+        } else {
+          results.chargeSkipped++;
+        }
+      } catch (e) {
+        // 좌석 회계 조회 실패 등은 **금액을 결정하기 전에** 던진다 — 부분 상태가 남지 않는다.
+        // 실패 카운터(failed_attempts)를 올리지 않고 다음 실행에 맡긴다: DB가 한 번 흔들린 것이
+        // 3회 실패 해지로 굳으면 안 된다.
+        results.errors++;
+        console.error("cron charge threw — skipping this run", { subId: sub.id, error: e });
+      }
     }
 
     // ── 인앱 구독(구글·애플) 소유주의 좌석 몫 청구 ─────────────────────
@@ -106,10 +148,15 @@ async function run(request: Request) {
         for (const sub of (googleDue || []) as SubscriptionRow[]) {
           // 좌석 청구 실패가 소유주의 구글 구독 상태를 건드리지 않는 것은
           // chargeGoogleOwnerSeats가 보장한다(강등은 좌석 미러에만).
-          const r = await chargeGoogleOwnerSeats(admin, sub);
-          if (r.status === "paid") results.googleSeatPaid++;
-          else if (r.status === "failed") results.googleSeatFailed++;
-          // skipped(이미 결제·좌석 없음·키 검증 대기)는 집계하지 않는다 — 매일 대부분이 스킵이다
+          try {
+            const r = await chargeGoogleOwnerSeats(admin, sub);
+            if (r.status === "paid") results.googleSeatPaid++;
+            else if (r.status === "failed") results.googleSeatFailed++;
+            // skipped(이미 결제·좌석 없음·키 검증 대기)는 집계하지 않는다 — 매일 대부분이 스킵이다
+          } catch (e) {
+            results.errors++;
+            console.error("cron google-seat charge threw — skipping this run", { subId: sub.id, error: e });
+          }
         }
       }
     }
@@ -140,94 +187,237 @@ async function run(request: Request) {
         const orgByOwner = new Map<string, string>();
         for (const o of ((orgs as any[]) || [])) orgByOwner.set(o.owner_user_id as string, o.id as string);
 
-        const orgIds = [...orgByOwner.values()];
-        const { data: mems } = orgIds.length
-          ? await admin
-              .from("org_members")
-              .select("org_id, member_user_id")
-              .in("org_id", orgIds)
-              .eq("status", "active")
-          : { data: [] as any[] };
-        const memberRows = ((mems as any[]) || []);
-
-        const alive = new Set<string>();
-        if (memberRows.length > 0) {
-          const { data: mirrors } = await admin
-            .from("subscriptions")
-            .select("user_id")
-            .in("user_id", memberRows.map((m) => m.member_user_id as string))
-            .eq("plan", "org_seat")
-            .eq("status", "active");
-          for (const m of ((mirrors as any[]) || [])) alive.add(m.user_id as string);
-        }
-
-        const usedByOrg = new Map<string, number>();
-        for (const m of memberRows) {
-          if (!alive.has(m.member_user_id as string)) continue; // 접힌 멤버 = 이미 이용 중단
-          const k = m.org_id as string;
-          usedByOrg.set(k, (usedByOrg.get(k) ?? 0) + 1);
-        }
-
         for (const s of caps) {
           const orgId = orgByOwner.get(s.user_id as string);
           if (!orgId) continue;
-          const used = 1 + (usedByOrg.get(orgId) ?? 0); // 감독자 본인 + 살아 있는 좌석
-          if (used > Number(s.store_seat_capacity)) {
-            results.capacityOver++;
-            console.error("STORE_CAPACITY_OVER", {
-              subId: s.id,
-              userId: s.user_id,
-              basePlanId: s.store_base_plan_id,
-              capacity: s.store_seat_capacity,
-              used,
-            });
+          try {
+            // 수작업 집계(3회 조회 + Set 조합)를 좌석 회계 한 번으로 접었다.
+            // '쓰고 있는 계정' = 감독자 본인 + **미러가 살아 있는 청구 대상 좌석**(aliveSeats).
+            // 자격 상한(1 + billableSeats)과 유일하게 다른 자리이며, 그 차이는 뷰의
+            // mirror_alive 한 컬럼으로만 갈린다 — 규칙을 여기서 다시 적지 않는다.
+            const acc = await resolveOrgSeatAccounting(admin, orgId);
+            const used = 1 + acc.aliveSeats;
+            if (used > Number(s.store_seat_capacity)) {
+              results.capacityOver++;
+              console.error("STORE_CAPACITY_OVER", {
+                subId: s.id,
+                userId: s.user_id,
+                basePlanId: s.store_base_plan_id,
+                capacity: s.store_seat_capacity,
+                used,
+              });
+            }
+          } catch (e) {
+            results.errors++;
+            console.error("cron capacity report threw", { orgId, error: e });
           }
         }
       }
     }
 
-    // ── 강등 reconciliation 스윕 (§2, 검증 F6) ─────────────────────────
-    // 상위(org) 구독이 어떤 경로로 canceled 되었든(3회 실패·수동 해지·재구독 실패),
-    // 하위 미러(org_seat)가 유효 상태로 남아 있으면 영구 무료 Pro가 된다 → 매일 멱등 정리.
+    // ── 미러 복원 스윕 (자가 결제자의 **되돌아올 길**) ─────────────────────
+    // 이 스윕이 없으면 "한 번 좌석에서 빠진 사람은 영영 못 돌아온다"가 된다.
+    // 종전의 복원 경로는 전부 `.eq(plan,'org_seat')`로 접힌 행만 골라, 자가 결제 기간 동안
+    // plan이 monthly_pro로 남은 계정과 구독 행이 아예 없는 계정을 후보에서 통째로 빼먹었다.
+    // 여기서는 후보를 뷰(seat_state='seat' && mirror_alive=false)가 고른다 — 두 경우 다 잡힌다.
+    //
+    // 자가 결제자의 스토어 구독이 만료·해지·환불되면 RTDN(즉시) 또는 reconcile-store-subs
+    // 크론(≤24h)이 status='canceled'를 박고, 그 순간 뷰가 self_store → seat 로 넘긴다.
+    // 그 다음 이 스윕(≤24h)이 좌석을 되돌린다. 사용자가 할 일은 없다.
     {
-      // plan 문자열이 아니라 '실제로 회사를 소유한 계정'에서 출발한다.
-      // 단일 요금제 이후 감독자의 plan은 monthly_pro라, plan='org' 필터는 영구 no-op이 되어
-      // 결제가 끊긴 감독자의 소속 현장이 무료로 계속 살아있는 구멍이 됐다.
-      const { data: orgOwners } = await admin.from("organizations").select("owner_user_id");
-      const ownerIds = ((orgOwners as any[]) || []).map((o) => o.owner_user_id as string);
-      const { data: canceledOrgs } = ownerIds.length
-        ? await admin
-            .from("subscriptions")
-            .select("user_id, current_period_end")
-            .in("user_id", ownerIds)
-            .eq("status", "canceled")
-        : { data: [] as any[] };
-      for (const o of (canceledOrgs as any[]) || []) {
-        // 해지 후 잔여 이용기간이 남아 있으면(무환불 해지) 그 기간까지는 하위도 유지
-        if (o.current_period_end && new Date(o.current_period_end) > new Date()) continue;
-        const { data: org } = await admin
-          .from("organizations")
-          .select("id")
-          .eq("owner_user_id", o.user_id)
-          .maybeSingle();
-        if (!org) continue;
-        const { data: members } = await admin
-          .from("org_members")
-          .select("member_user_id")
-          .eq("org_id", org.id)
-          .eq("status", "active");
-        const ids = ((members as any[]) || []).map((m) => m.member_user_id as string);
-        if (ids.length === 0) continue;
-        const { data: demoted } = await admin
-          .from("subscriptions")
-          .update({ status: "canceled", current_period_end: nowIso, updated_at: nowIso })
-          .in("user_id", ids)
-          .eq("plan", "org_seat")
-          .neq("status", "canceled")
-          .select("user_id");
-        results.mirrorsDemoted += (demoted ?? []).length;
+      // 조직 목록은 **전량** 훑는다. 종전 .limit(500)은 정렬도 없어 '어떤 500개'가 뽑히는지
+      // 정의되지 않았고, 그 밖의 조직은 좌석 복원도 D0/D3/D6 알림도 영원히 못 받았다
+      // (조용히 잘려서 results 어디에도 드러나지 않았다). 접기는 전량인데 되살리기만 500이라
+      // 비대칭이기도 했다. PostgREST 1000행 절단 대응은 이 저장소의 기존 패턴을 쓴다.
+      const orgList = await fetchAllRows<{ id: string; name: string; owner_user_id: string }>((from, to) =>
+        admin.from("organizations").select("id, name, owner_user_id").order("id", { ascending: true }).range(from, to)
+      );
+      // 소유주 구독을 한 번에 읽는다(조직마다 왕복을 붙이지 않는다).
+      // canceled_at·failed_attempts는 유예 앵커와 '좌석 청구 소진' 판정에 쓴다 — 빠지면
+      // orgLapsedAt이 카드 3회 실패 경로에서 엉뚱한 날짜를 앵커로 잡는다.
+      // 컬럼 목록은 lib/seatRestore.ts가 정의한다(두 곳에 손으로 적지 않는다).
+      const ownerIds = orgList.map((o) => o.owner_user_id);
+      const ownerSubs = ownerIds.length
+        ? await fetchAllRows<OwnerSeatSub>((from, to) =>
+            admin.from("subscriptions").select(OWNER_SEAT_SUB_COLUMNS).in("user_id", ownerIds).order("user_id", { ascending: true }).range(from, to)
+          )
+        : [];
+      const subByOwner = new Map<string, OwnerSeatSub>();
+      for (const s of ownerSubs) if (s.user_id) subByOwner.set(s.user_id, s);
+
+      // 알림 한 건. 실패해도 청구·복원 스윕을 멈추지 않는다(알림은 부수 효과다).
+      const emit = async (
+        org: { id: string; name: string; owner_user_id: string },
+        kind: OrgNoticeKind,
+        dedupeKey: string,
+        opts: { lapsedAt?: string | null; memberCount?: number; graceEndsLabel?: string | null; withMail?: boolean } = {}
+      ) => {
+        try {
+          const r = await notify({
+            admin,
+            orgId: org.id,
+            ownerUserId: org.owner_user_id,
+            kind,
+            dedupeKey,
+            lapsedAt: opts.lapsedAt ?? null,
+            mail:
+              opts.withMail === false
+                ? null
+                : buildNoticeMail(kind, {
+                    orgName: org.name,
+                    memberCount: opts.memberCount,
+                    graceEndsLabel: opts.graceEndsLabel ?? null,
+                  }),
+          });
+          if (r.created) results.lapseNoticesCreated++;
+          // 중복(정상)과 실패를 구분한다 — 종전에는 둘 다 created=false라 기록조차 안 된
+          // 알림이 조용히 묻혔다
+          if (r.error) results.errors++;
+          if (r.emailStatus === "sent") results.lapseEmailsSent++;
+          if (r.emailStatus === "failed") results.lapseEmailsFailed++;
+        } catch (e) {
+          console.error("cron notice emit threw", { orgId: org.id, kind, error: e });
+        }
+      };
+
+      // 조직마다 좌석 회계를 한 번만 읽고 아래 유예 알림 스윕이 재사용한다
+      // (종전에는 같은 org를 두 루프가 각각 조회했다 — iad1↔서울 왕복이 두 배였다).
+      const accByOrg = new Map<string, Awaited<ReturnType<typeof resolveOrgSeatAccounting>>>();
+
+      for (const org of orgList) {
+        const ownerSub = subByOwner.get(org.owner_user_id);
+
+        // 카드 결제가 이번 회차에 실패한 감독자에게 즉시 1통. 주기 결제 ID를 키에 넣어
+        // 같은 주기의 재시도가 매일 메일을 보내지 않게 한다.
+        const failedPaymentId = failedOwnerPayments.get(org.owner_user_id);
+        if (failedPaymentId) {
+          await emit(org, "charge_failed", `chargefail:${org.owner_user_id}:${failedPaymentId}`);
+        }
+
+        try {
+          // 복원 판정은 **lib/seatRestore.ts 한 곳**이 한다 — 좌석 카드 3회 소진과 정원 부족을
+          // 여기서 다시 적지 않는다. GET /api/org/context의 자가복구가 같은 함수를 부르므로,
+          // 크론이 건너뛴 좌석을 앱 실행 한 번이 되살리던 우회가 구조적으로 불가능해졌다.
+          const r = await restoreOrgSeats(admin, { id: org.id, ownerUserId: org.owner_user_id }, ownerSub);
+          if (r.accounting) {
+            accByOrg.set(org.id, r.accounting);
+            results.selfPaidSeats += r.accounting.selfPaidIds.length;
+            for (const uid of r.accounting.selfPaidIds) {
+              // STORE_CAPACITY_OVER와 같은 규율 — 수가 0이 아니면 즉시 관측된다
+              console.warn("SELF_PAID_SEAT", { orgId: org.id, memberUserId: uid });
+            }
+          }
+          results.mirrorsRestored += r.restored;
+
+          if (r.blocked === "seat_charge_exhausted") {
+            // 스토어 감독자의 **좌석 카드**가 3회 실패한 상태. 본인 스토어 구독은 멀쩡해
+            // 다른 화면은 전부 침묵하므로, 이 알림이 감독자가 사실을 아는 유일한 통로다.
+            console.error("SEAT_CHARGE_EXHAUSTED", { orgId: org.id, ownerUserId: org.owner_user_id });
+            await emit(org, "seat_locked", `seatlock:${org.id}:${kstDay()}`);
+          } else if (r.blocked === "over_capacity") {
+            results.restoreDeferredOverCapacity += r.deferred;
+            console.error("SEAT_RESTORE_DEFERRED_OVER_CAPACITY", {
+              orgId: org.id,
+              ownerUserId: org.owner_user_id,
+              capacity: r.capacity,
+              pending: r.deferred,
+            });
+            // 종전엔 console.error뿐이라 감독자도 멤버도 몰랐다. 멤버 쪽에는 seatLocked
+            // 진단 화면이, 감독자 쪽에는 이 알림이 짝으로 간다.
+            await emit(org, "seat_locked", `seatlock:${org.id}:${kstDay()}`, { memberCount: r.deferred });
+          } else if (r.blocked === "owner_lapsed") {
+            // ⚠️ 무과금 구간 봉합(2026-08-13 검수). 종전 강등 스윕은 status='canceled'인
+            // 감독자만 훑어서, subscriptionAllows의 STALE 백스톱(status는 active인데 만료가
+            // 14일 넘게 과거)에 걸린 조직은 **영영** 걸리지 않았다 — fail-open이었다.
+            // 되살리기와 접기가 이제 같은 판정(subscriptionAllows) 하나를 공유한다.
+            const acc = r.accounting ?? (await resolveOrgSeatAccounting(admin, org.id));
+            accByOrg.set(org.id, acc);
+            const alive = acc.rows.filter((x) => x.seatState === "seat" && x.mirrorAlive).map((x) => x.userId);
+            if (alive.length > 0) {
+              await cancelOrgSeatMirrors(alive, admin);
+              results.mirrorsDemoted += alive.length;
+              console.warn("ORG_LAPSE_SEATS_FOLDED", { orgId: org.id, seats: alive.length });
+            }
+          }
+        } catch (e) {
+          results.errors++;
+          console.error("cron mirror restore sweep threw", { orgId: org.id, error: e });
+        }
+      }
+
+      // ── 유예 알림 스윕 (D0 · D3 · D6) ──────────────────────────────────
+      // 새 크론을 만들지 않는다 — vercel.json을 건드리지 않고, 위에서 이미 읽어둔
+      // orgList / subByOwner를 그대로 재사용한다.
+      //
+      // 유예는 무료 사용 기간이 아니라 감독자가 결제를 되살릴 **결정 기간**이다. 그 사이
+      // 현장 계정에게는 개인 결제를 들이밀지 않으므로, 감독자가 사실을 아는 것이 유일한 출구다.
+      for (const org of orgList) {
+        const ownerSub = subByOwner.get(org.owner_user_id);
+        const lapsedAt = orgLapsedAt(ownerSub);
+        if (!lapsedAt) continue;
+        try {
+          // 알릴 대상 = **실제로 잠기는 현장**뿐이다. 종전엔 acc.rows.length(활성 멤버 전체)로
+          // 세서, 멤버가 전원 self_store(본인 결제)·grandfather(영구무료)인 조직에도
+          // "현장 계정 N곳의 새 기록 작성과 AI 분석이 잠겼어요"가 나갔다 — 그 사람들은 잠기지 않는다.
+          const acc = accByOrg.get(org.id) ?? (await resolveOrgSeatAccounting(admin, org.id));
+          if (acc.seatIds.length === 0) continue;
+
+          const days = daysSinceLapse(lapsedAt);
+          const timing = orgLapseTiming(lapsedAt);
+          const graceEndsLabel = timing.graceEndsAt
+            ? new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric" })
+                .format(new Date(timing.graceEndsAt))
+            : null;
+
+          // 크론이 하루 이상 멈췄다 재개하면 임계 셋이 한 번에 도달한다. 단계는 전부 만들되
+          // (기록은 남아야 한다) **이메일은 가장 늦은 단계 하나만** 보낸다 — 같은 사건으로
+          // 세 통이 동시에 날아가면 그 자체가 사고로 읽힌다.
+          const ALL_STAGES: { kind: OrgNoticeKind; at: number }[] = [
+            { kind: "lapse_d0", at: 0 },
+            { kind: "lapse_d3", at: 3 },
+            { kind: "lapse_d6", at: 6 },
+          ];
+          const stages = ALL_STAGES.filter((s) => days >= s.at);
+          const latest = stages.length > 0 ? stages[stages.length - 1]!.kind : null;
+
+          for (const stage of stages) {
+            await emit(org, stage.kind, `lapse:${org.id}:${lapsedAt}:${stage.kind.slice(-2)}`, {
+              lapsedAt,
+              memberCount: acc.seatIds.length,
+              graceEndsLabel,
+              withMail: stage.kind === latest,
+            });
+          }
+        } catch (e) {
+          results.errors++;
+          console.error("cron lapse notice sweep threw", { orgId: org.id, error: e });
+        }
+      }
+
+      // 발송 실패한 메일 재시도(같은 행·같은 dedupe_key → 중복 발송 구조적 불가).
+      // 본문은 저장하지 않으므로 kind + 회사명으로 다시 만든다.
+      try {
+        const orgById = new Map(orgList.map((o) => [o.id, o]));
+        const r = await retryFailedEmails(admin, (row) => {
+          const org = orgById.get(row.org_id);
+          if (!org) return null;
+          return buildNoticeMail(row.kind, { orgName: org.name });
+        });
+        results.lapseEmailsRetried += r.sent;
+        results.lapseEmailsFailed += r.failed;
+      } catch (e) {
+        console.error("cron notice email retry threw", e);
       }
     }
+
+    // ── 강등 reconciliation 스윕은 위 조직 루프로 흡수됐다 (2026-08-13) ────────
+    // 종전에는 여기서 status='canceled'인 감독자만 훑었다. 그 판정은 subscriptionAllows보다
+    // 좁아서, STALE 백스톱(status는 active인데 만료가 14일 넘게 과거)에 걸린 조직은 접기
+    // 그물에 **영영** 걸리지 않았다 — 되살리기는 subscriptionAllows로 막으면서 접기는
+    // status로만 하던 비대칭이 곧 fail-open이었다.
+    // 이제 같은 루프에서 restoreOrgSeats(…).blocked === 'owner_lapsed'가 접기까지 담당한다.
+    // 접는 단위도 org_members active 전체가 아니라 좌석 회계(seat 상태 + 미러 살아 있음)라,
+    // 자가 결제자·영구무료의 행을 건드릴 여지가 없다.
 
     // ── grandfather(영구 무료) 복원 스윕 ────────────────────────────────
     // 결제 전 grandfather였던 계정이 카드 구독을 해지하면, 잔여 유료 기간 동안은 그대로 두고

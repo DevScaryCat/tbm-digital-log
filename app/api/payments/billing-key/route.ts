@@ -9,6 +9,7 @@ import {
 } from "@/lib/portone";
 import { chargeSubscription } from "@/lib/billing";
 import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
+import { isSelfPaid } from "@/lib/orgSeats";
 import { paymentsEnabled } from "@/lib/utils";
 import { phoneAuthEnabled } from "@/lib/phoneAuth";
 
@@ -144,7 +145,11 @@ export async function POST(request: Request) {
     // 조직에서 분리되고 감독자는 계속 그 계정 요금을 낸다. plan 문자열이 아니라 실제
     // 소속(org_members)으로 판정한다(단일 요금제 이후 plan은 신뢰할 수 있는 키가 아니다).
     const ctx = await getOrgContext(user.id, admin);
-    if (ctx.kind === "member") {
+    // 예외: **본인이 직접 결제 중인** 소속 계정(seat_state='self_store')은 자기 구독을 관리할
+    // 수 있어야 한다. 회사가 그 좌석을 청구하지도, 미러를 씌우지도 않으므로(public.is_self_paid가
+    // 청구·정원·미러 세 곳에서 함께 제외한다) 위 주석의 사고가 성립할 자리가 없다.
+    // 이걸 막으면 돈을 내는 사람이 카드조차 못 바꾸는 막다른 길이 된다.
+    if (ctx.kind === "member" && !(await isSelfPaid(admin, user.id))) {
       return NextResponse.json(
         { error: "소속 현장 계정입니다. 구독·결제는 회사 감독자가 관리합니다." },
         { status: 403 }
@@ -250,8 +255,12 @@ export async function POST(request: Request) {
         console.error("subscription upsert error:", error);
         return NextResponse.json({ error: "구독 저장 실패" }, { status: 500 });
       }
-      if (ctx.kind === "owner" && (ctx.memberIds ?? []).length > 0) {
-        await restoreOrgSeatMirrors(ctx.memberIds ?? [], admin);
+      // 미러 복원 대상은 좌석 회계(뷰)가 고른다 — 본인 스토어 구독으로 사는 현장은 여기서
+      // 걸러진다(덮으면 스토어 4,900 + 감독자 카드 3,900의 이중청구). 감독자 청구액도 같은
+      // 회계를 쓰므로 그 사람은 청구 좌석 수에서도 함께 빠진다.
+      if (ctx.kind === "owner" && ctx.org) {
+        const r = await restoreOrgSeatMirrors(ctx.org.id, admin);
+        if (r.failed > 0) console.error("billing-key: 미러 복원 일부 실패(다음 크론 스윕이 수습)", r);
       }
       return NextResponse.json({
         success: true,
@@ -315,8 +324,11 @@ export async function POST(request: Request) {
     // 재결제 성공 → 활성 소속 현장의 미러 구독 복원.
     // 청구는 이미 (본인 + 활성 소속 현장) 수로 계산됐으므로, 복원하지 않으면
     // 돈은 받고 그 현장들은 잠겨 있는 상태가 된다.
-    if (ctx.kind === "owner" && (ctx.memberIds ?? []).length > 0) {
-      await restoreOrgSeatMirrors(ctx.memberIds ?? [], admin);
+    // 대상 선정은 뷰가 한다(위 신규 구독 분기와 같은 이유). 일부가 실패해도 다음 날
+    // 크론의 미러 복원 스윕이 같은 후보를 다시 집어 수습한다 — 막다른 길이 아니다.
+    if (ctx.kind === "owner" && ctx.org) {
+      const r = await restoreOrgSeatMirrors(ctx.org.id, admin);
+      if (r.failed > 0) console.error("billing-key: 미러 복원 일부 실패(다음 크론 스윕이 수습)", r);
     }
 
     const { data: updated } = await admin

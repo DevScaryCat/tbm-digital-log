@@ -5,7 +5,8 @@
 // DELETE: detach (좌석 해제 — 미러 구독 즉시 강등, 계정·데이터는 보존)
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest, subscriptionAllows, isBillablePlan } from "@/lib/portone";
-import { getOrgContext, listOrgMembers, detachOrgMember } from "@/lib/org";
+import { getOrgContext, listOrgMembers, detachOrgMember, orgSeatMirrorRow } from "@/lib/org";
+import { resolveOrgSeatAccountingByOwner } from "@/lib/orgSeats";
 import {
   chargeProratedAccount,
   resolveSeatCharge,
@@ -183,28 +184,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: charge.error ?? "결제에 실패했습니다." }, { status: 402 });
     }
 
-    // 미러 구독 (org_seat, 0원) — 이 행이 있어야 4겹 게이트를 통과한다
+    // 미러 구독 (org_seat, 0원) — 이 행이 있어야 4겹 게이트를 통과한다.
+    // 행 모양은 복원 경로(lib/org.ts orgSeatMirrorRow)와 같은 것을 쓴다(trial_used=true 포함 —
+    // 초대 경로는 무료체험 대상이 아니다).
     const now = new Date().toISOString();
-    const { error: subErr } = await admin.from("subscriptions").upsert(
-      {
-        user_id: created.user.id,
-        plan: "org_seat",
-        status: "active",
-        billing_key: null,
-        card_info: null,
-        amount: 0,
-        currency: "KRW",
-        current_period_end: null,
-        trial_used: true, // 초대 경로는 무료체험 대상 아님 (이중 발급 차단)
-        failed_attempts: 0,
-        updated_at: now,
-      },
-      { onConflict: "user_id" }
-    );
+    const { error: subErr } = await admin
+      .from("subscriptions")
+      .upsert(orgSeatMirrorRow(created.user.id, now), { onConflict: "user_id" });
     if (subErr) console.error("member mirror sub upsert error:", subErr);
 
-    // 표시용 계정 수 동기화 — memberIds는 방금 추가한 현장 이전 스냅샷이라 +1, 감독자 본인까지 +1
-    const accountCount = (r.ctx.memberIds ?? []).length + 2;
+    // 표시용 계정 수 동기화 — 청구 단위(1 + 청구 대상 좌석)와 같은 수를 쓴다.
+    // memberIds로 세면 자가 스토어 결제자까지 포함돼 청구서와 다른 숫자가 화면에 남는다.
+    const acc = await resolveOrgSeatAccountingByOwner(admin, user.id);
+    const accountCount = 1 + (acc?.billableSeats ?? 1);
     await admin
       .from("organizations")
       .update({ seat_count: accountCount, pending_seat_count: null })

@@ -40,3 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local
+# Claude Code 작업 디렉터리(스크래치 worktree 13MB 포함) — 저장소에 올리지 않는다
+.claude/

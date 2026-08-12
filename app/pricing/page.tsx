@@ -62,8 +62,14 @@ export default function PricingPage() {
             const { data } = await supabase.auth.getUser()
             setHasUser(!!data?.user)
             // 소속 현장은 결제 주체가 아니다 — 감독자가 대신 낸다.
+            //
+            // ⚠️ orgLapse도 함께 본다. 회사 결제가 끊기면 서버는 그 사람의 kind를 **'solo'로
+            //    강등**하므로(lib/org.ts ③ 직전 분기) kind만 보는 종전 가드를 그대로 통과했다.
+            //    개인 결제 전환이 살아 있을 때는 그것이 의도된 통과였지만, 2026-08-11 그 문이
+            //    폐지된 뒤로는 이 화면이 소속 계정에게 열려 있을 이유가 없다 — 여기가 유예
+            //    멤버가 /pricing에 닿는 마지막 경로다(북마크·뒤로가기·구 링크).
             const orgCtx = await fetchOrgContext()
-            if (orgCtx?.kind === "member") {
+            if (orgCtx?.kind === "member" || orgCtx?.orgLapse) {
                 router.replace("/")
                 return
             }

@@ -5,12 +5,36 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
 
+/** 서버 lib/org.ts OrgLapseInfo와 1:1. **판정·계산은 전부 서버가 한다** — 여기서 날짜를 다시 세지 말 것. */
+export interface ClientOrgLapse {
+    orgId: string
+    orgName: string
+    ownerUserId: string
+    lapsedAt: string | null
+    graceEndsAt: string | null
+    /**
+     * 'grace' = 감독자가 결제를 되살릴 수 있는 기간 / 'ended' = 그 기간이 지났다.
+     * ⚠️ **둘의 차이는 문구뿐이다.** 개인 결제 전환은 어느 쪽에서도 없다(Chris 2026-08-11 2차 정정).
+     * 이 값으로 결제 CTA를 열지 말 것 — 유일한 출구는 '감독자에게 알리기'다(lib/orgGrace.ts 상단).
+     */
+    phase: "grace" | "ended"
+    daysLeft: number | null
+    lastPingAt: string | null
+    canPingNow: boolean
+}
+
 export interface ClientOrgContext {
     kind: "owner" | "member" | "solo"
     org?: { id: string; name: string; seatCount: number; pendingSeatCount: number | null }
     /** owner일 때: 활성 소속 현장 user id — 청구 계정 수(본인 1 + 이 수) 계산에 쓴다 */
     memberIds?: string[]
     orgLapsed?: boolean
+    /** orgLapsed=true일 때만. "유예 중 / 유예 후"는 두 번째 불리언이 아니라 phase가 가른다. */
+    orgLapse?: ClientOrgLapse
+    /** kind==='member'인데 본인 좌석만 죽어 있다 — 회사 구독은 유효하므로 '회사 결제 종료'는 거짓 */
+    seatLocked?: boolean
+    /** kind==='member'일 때의 좌석 회계 상태. self_store면 본인이 직접 결제 중이다. */
+    seatState?: "seat" | "self_store" | "grandfather" | null
     pendingAttach?: { inviteId: string; token: string; orgId: string; orgName: string } | null
 }
 

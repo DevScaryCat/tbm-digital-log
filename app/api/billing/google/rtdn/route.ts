@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
 import { getSubscription, toLocalStatus, isRevokedState, obfuscatedAccountIdFor, ANDROID_PACKAGE, type GooglePurchase } from "@/lib/googlePlay"
-import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile } from "@/lib/storePlans"
+import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile, foldSeatsIfOwnerLapsed } from "@/lib/storePlans"
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 
 export const runtime = "nodejs"
@@ -65,6 +65,13 @@ export async function POST(request: Request) {
             // 환불·차지백 = 이용권 즉시 종료 확정 → 결제 전 grandfather였다면 영구 무료로 되돌린다
             for (const r of (voidedRows ?? []) as { user_id: string }[]) {
                 await restoreGrandfatherIfEligible(admin, r.user_id)
+                // 감독자였다면 그 조직의 좌석 미러도 즉시 접는다 — 카드 3회 실패 경로와 같은 처리.
+                // 비치명: 실패해도 크론 스윕이 하루 안에 같은 일을 한다.
+                try {
+                    await foldSeatsIfOwnerLapsed(admin, r.user_id)
+                } catch (e) {
+                    console.error("RTDN voided: 좌석 미러 접기 실패", e)
+                }
             }
             return NextResponse.json({ ok: true, voided: true })
         }
@@ -186,6 +193,15 @@ export async function POST(request: Request) {
             await reconcileCapacitySeats(admin, row.user_id, seatCapacity, !revoked)
         } catch (e) {
             console.error("RTDN: capacity seat reconcile failed", e)
+        }
+
+        // ⚠️ reconcileCapacitySeats는 '정원 초과분'만 접는다 — 구독이 회수돼도 정원에 여유가
+        // 있으면 한 명도 안 접히고, 정원제가 아니면 아무것도 하지 않는다. 회수·만료로 감독자
+        // 구독이 무효가 되면 **그 조직의 활성 좌석 전부**를 접어야 한다(카드 3회 실패와 같은 처리).
+        try {
+            await foldSeatsIfOwnerLapsed(admin, row.user_id)
+        } catch (e) {
+            console.error("RTDN: 좌석 미러 접기 실패", e)
         }
 
         return NextResponse.json({ ok: true, status, revoked, seatCapacity })

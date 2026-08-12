@@ -20,6 +20,7 @@ import {
     type AppleTransactionInfo,
 } from "@/lib/appStore"
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
+import { foldSeatsIfOwnerLapsed } from "@/lib/storePlans"
 
 export const runtime = "nodejs"
 
@@ -100,6 +101,17 @@ export async function POST(request: Request) {
         // 회수 확정(환불·만료·청구재시도 실패)일 때만 영구 무료 복원 —
         // 해지 예약(자동갱신 해제, 만료일 미래)에 걸면 이미 낸 유료 기간을 뺏는다.
         if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
+
+        // 이 알림 경로는 좌석을 **아예 건드리지 않았다** — 애플 감독자의 구독이 회수·만료돼도
+        // 현장 계정의 미러가 살아남아, 하루 1회 크론 스윕까지 최대 24시간이 무과금이었다
+        // (2026-08-13 검수). 카드 3회 실패 경로와 같은 함수로 접는다.
+        // 판정은 revoked 플래그가 아니라 저장된 상태(subscriptionAllows)가 한다 —
+        // 해지 예약처럼 잔여 기간이 남았으면 아무 일도 일어나지 않는다. 비치명.
+        try {
+            await foldSeatsIfOwnerLapsed(admin, row.user_id)
+        } catch (e) {
+            console.error("apple notification: 좌석 미러 접기 실패", e)
+        }
 
         return NextResponse.json({
             ok: true,

@@ -1,5 +1,6 @@
 // lib/portone.ts — PortOne V2 서버 측 헬퍼
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { STALE_PERIOD_GRACE_MS } from "./orgGrace";
 
 const PORTONE_API_BASE = "https://api.portone.io";
 
@@ -138,13 +139,9 @@ export async function getUserFromRequest(request: Request) {
   return data.user;
 }
 
-/**
- * 상태 갱신이 멈춘 행을 걸러내는 유예 폭. 이 기간을 넘도록 만료가 방치된 행은
- * "권한이 있는 상태"가 아니라 "갱신이 고장난 상태"로 본다.
- * 2주로 잡은 이유: 정상 경로는 하루 단위로 갱신되므로 여유가 크고, 반대로 우리 크론·자격증명이
- * 망가져 fail-closed로 정상 결제자를 잠그기 전까지 알아채고 고칠 시간이 충분하다.
- */
-const STALE_PERIOD_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+// 상태 갱신이 멈춘 행을 걸러내는 유예 폭. 정의는 lib/orgGrace.ts 한 곳에 있다 —
+// 유예 앵커의 백스톱 경로(cpe + STALE)가 subscriptionAllows가 false로 넘어가는 순간과
+// **정확히 같아야** 하므로 상수 사본을 만들지 않는다.
 
 /** 구독 상태가 앱/유료기능 사용을 허용하는지 (서버 측 판정) */
 export function subscriptionAllows(

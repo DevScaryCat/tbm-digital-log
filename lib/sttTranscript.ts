@@ -13,8 +13,15 @@ export function appendSttFinal(prev: string, rawChunk: string): string {
     const base = prev.replace(/\s+$/, "")
     if (!base) return chunk + " "
 
-    // ① 세션 전체의 연장(iOS 최악 케이스: 매번 처음부터 전체 재전송) — 통째로 대체
-    if (chunk.startsWith(base)) return chunk + " "
+    // ① 세션 전체의 **연장**(iOS 최악 케이스: 매번 처음부터 전체 재전송) — 통째로 대체.
+    //
+    //    `chunk.length > base.length`가 반드시 필요하다(2026-08-11 추가). 이게 없으면
+    //    base와 chunk가 **같을 때도** 여기서 삼켜지는데, 그건 '연장'이 아니라 '동일 재전송'이라
+    //    ②의 관할이다. ②는 짧은 청크를 일부러 통과시켜 실제 반복 발화를 보존하는데, ①이 길이를
+    //    안 보면 그 보호막에 닿기 전에 먹어버린다 — 실제로 "안전 안전 안전"이 "안전" 하나로
+    //    깎였다(앱 이식 중 단위 테스트로 발견). TBM 회의록은 법정 서류라 **한 말을 줄이는 쪽이
+    //    늘리는 쪽보다 나쁘다.** iOS Safari의 누적 재전송은 매번 길이가 늘어나 이 조건에 걸린다.
+    if (chunk.length > base.length && chunk.startsWith(base)) return chunk + " "
 
     // ② 동일 내용 재전송 — 무시. 짧은 청크는 실제 반복 발화("안전, 안전")일 수 있어 제외
     if (chunk.length >= 10 && base.endsWith(chunk)) return prev

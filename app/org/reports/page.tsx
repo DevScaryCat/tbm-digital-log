@@ -23,7 +23,12 @@ export default function OrgReportsPage() {
 
     useEffect(() => {
         if (ctxLoading) return
+        // 유예 중(회사 결제가 끊긴 소속 계정)·좌석 잠김도 여기서 걸러 홈으로 보낸다.
+        // 유예 멤버는 kind가 'solo'로 강등돼 이 관문을 통과한 뒤 아래 isExpired에서 개인 결제
+        // 화면(/pricing)에 떨어졌다 — Chris 규정 2 위반이 화면 한 칸 옆에서 무너지던 자리.
         if (!ctx || ctx.kind === "member") { router.replace("/"); return }
+        // phase 무관 — 유예가 끝난 멤버도 결제 주체가 아니다(개인 결제 전환 폐지, 2026-08-11)
+        if (ctx.orgLapse || ctx.seatLocked) { router.replace("/"); return }
         ;(async () => {
             try {
                 const sub = await fetchSubscription()

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Settings } from "lucide-react"
+import { LogOut, User, Home, ChevronLeft, Users, CreditCard, Lock, Settings, BookOpen } from "lucide-react"
 import { Logo } from "@/components/Logo"
 import { fetchSubscription, planBadge, limitFor } from "@/lib/useSubscription"
 import { fetchOrgContext, type ClientOrgContext } from "@/lib/useOrgContext"
@@ -147,9 +147,19 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
             ? (orgCtx.memberIds ?? []).length === 0
             : orgCtx.kind === "solo" && !orgCtx.orgLapsed)
 
+    // 자가 결제 중인 소속 계정에게는 '구독 및 결제'를 잠그지 않는다 — 회사가 아니라 본인이 내는
+    // 구독이라 관리할 화면이 필요하다(해지·회사에 결제 요청·회사 연결 끊기가 전부 거기에 있다).
+    const selfPaidMember = orgCtx?.kind === "member" && orgCtx.seatState === "self_store"
+
+    // 유예 중인 소속 계정은 kind가 'solo'로 강등돼 회사관리·보고서 메뉴가 열려 있었고,
+    // 그 문으로 들어가면 개인 결제 화면(/pricing)에 떨어졌다(Chris 규정 2 위반).
+    // member에 이미 쓰는 잠금 UI를 그대로 재사용한다 — '구독 및 결제'(/account)는 잠그지
+    // 않는다: 유예 안내와 (유예 후) 개인 결제가 거기 있다.
+    const orgLapsed = !!orgCtx?.orgLapse
+
     const userProfileDropdown = (() => {
-        const item = (m: { href: string; label: string; icon: ReactNode; dot?: boolean }) =>
-            orgKind === "member" ? (
+        const item = (m: { href: string; label: string; icon: ReactNode; dot?: boolean; unlock?: boolean; lockOnLapse?: boolean }) =>
+            (orgKind === "member" && !m.unlock) || (orgLapsed && m.lockOnLapse) ? (
                 <DropdownMenuItem key={m.href} disabled className="text-[14px] text-cur-muted-soft font-medium px-3 py-2.5 opacity-60">
                     <Lock className="mr-2 h-4 w-4" /> {m.label}
                     <span className="ml-auto text-[11px]">감독자 관리</span>
@@ -198,20 +208,27 @@ export function TBMHeader({ title = "TBM 일지", onLogout, pageBadge, titleActi
                     <DropdownMenuItem onClick={() => router.push('/profile')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
                         <User className="mr-2 h-4 w-4 text-cur-muted" /> 내 정보 수정
                     </DropdownMenuItem>
+                    {/* 가이드 — 2026-08-11 홈 상단 배너에서 이사(Chris, 앱과 동일 결정).
+                        배너는 첫 화면을 잡아먹으면서 정작 다시 보고 싶을 때 찾을 곳이 없었다.
+                        item()을 쓰지 않는다: 소속 현장 계정에게도 열려야 하는 항목이다
+                        (회사 관리가 아니라 사용법이라 잠긴 모습으로 보여주면 안 된다). */}
+                    <DropdownMenuItem onClick={() => router.push('/tutorial')} className="cursor-pointer text-[14px] text-cur-body font-medium px-3 py-2.5 focus:bg-cur-elevated focus:text-cur-ink">
+                        <BookOpen className="mr-2 h-4 w-4 text-cur-muted" /> 가이드
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("회사 관리")}
-                    {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" />, dot: needsFirstSiteAccount })}
+                    {item({ href: "/org/members", label: "현장 계정 관리", icon: <Users className="mr-2 h-4 w-4 text-cur-muted" />, dot: needsFirstSiteAccount, lockOnLapse: true })}
                     {/* 영구 무료(grandfather)에겐 결제라는 말 자체가 없다(Chris 2026-08-10) —
                         메뉴 라벨이 '결제'면 결제 없는 계정을 결제 화면으로 부르는 셈이다. 도착하는
                         /account도 같은 판정(isWhitelist)으로 안내문 한 장만 보여준다. */}
-                    {item({ href: "/account", label: plan === "grandfather" ? "이용 정보" : "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" /> })}
-                    {orgKind === "member" && (
+                    {item({ href: "/account", label: plan === "grandfather" ? "이용 정보" : "구독 및 결제", icon: <CreditCard className="mr-2 h-4 w-4 text-cur-muted" />, unlock: selfPaidMember })}
+                    {orgKind === "member" && !selfPaidMember && (
                         <p className="px-3 pb-1.5 pt-0.5 text-[11px] text-cur-muted-soft leading-snug">지금은 회사 감독자가 설정을 관리하고 있어요.</p>
                     )}
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     {groupLabel("보고서·분석")}
                     {/* AI 분석 보고서 진입은 출력·통계 페이지의 맥락 버튼으로 이동 — 메뉴에서는 제거 */}
-                    {item({ href: "/org/reports", label: "출력/발송 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" /> })}
+                    {item({ href: "/org/reports", label: "출력/발송 설정", icon: <Settings className="mr-2 h-4 w-4 text-cur-muted" />, lockOnLapse: true })}
                     <DropdownMenuSeparator className="bg-cur-hairline" />
                     <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-cur-error font-medium px-3 py-2.5 focus:bg-cur-error/10 focus:text-cur-error">
                         <LogOut className="mr-2 h-4 w-4" /> 로그아웃

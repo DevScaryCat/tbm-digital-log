@@ -95,7 +95,11 @@ export default function RiskAssessmentPage() {
             setMyEmail(resolveMyReportEmail(user))
             // 역할 분기: member는 AI 분석 없음(안전관리자 전용, §4-C) / owner는 현장 선택 모드
             const ctx = await fetchOrgContext()
-            if (ctx?.kind === "member") { router.replace("/"); return }
+            // ⚠️ orgLapse·seatLocked도 함께 본다. 회사 결제가 끊기면 서버가 kind를 'solo'로
+            //    강등하므로 kind만 보는 가드를 통과했고, 그 다음 줄의 isExpired가 그 사람을
+            //    /pricing으로 보냈다 — 결제 주체가 아닌 사람에게 결제 화면이었다. 홈으로
+            //    되돌려 OrgLapseNotice가 사실을 말하게 한다(useSubscription과 같은 규칙).
+            if (ctx?.kind === "member" || ctx?.orgLapse || ctx?.seatLocked) { router.replace("/"); return }
             const kind = ctx?.kind === "owner" ? "owner" : "solo"
             setOrgKind(kind)
             const s = await fetchSubscription()

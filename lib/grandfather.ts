@@ -137,8 +137,9 @@ export async function restoreGrandfatherIfEligible(
     // 경로에서 **그 틈에 재구독한 유료 행을 무료로 덮어버리는 사고**를 막는다.
     .eq("status", "canceled")
     // 좌석 미러는 detach 로직(lib/org.ts)이 자기 규칙으로 다룬다 — 여기서 건드리면 이중 소유가 된다.
-    // (attach의 미러 upsert가 store_purchase_token을 지우지 않으므로 스토어 알림이 org_seat 행에
-    //  도달할 수 있다 — 위 소속 검사와 함께 이중으로 막는다)
+    // (2026-08-11 정정: 미러 upsert는 이제 store_purchase_token·source를 청산한다 —
+    //  lib/org.ts orgSeatMirrorRow. 스토어 알림이 org_seat 행에 도달하던 경로는 막혔고,
+    //  이 필터는 위 소속 검사와 함께 남는 이중 안전망이다.)
     .neq("plan", "org_seat")
     .select("id");
   if (upErr) {

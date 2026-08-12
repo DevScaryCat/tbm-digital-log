@@ -279,6 +279,10 @@ export default function DashboardPage() {
     // 선택 구간을 위험성평가 페이지의 기존 규약(ra_range)으로 넘겨 재선택 없이 바로 분석
     const goAnalysisReport = () => {
         if (!from) return
+        // 소속 현장 계정(회사 결제가 끊김·좌석 잠김)은 **결제 주체가 아니다** — /pricing으로
+        // 보내면 자기가 할 수 없는 일을 하러 가게 된다. 홈의 OrgLapseNotice가 사실을 말하는
+        // 자리이므로 거기로 되돌린다(useSubscription의 라우팅 규칙과 같은 판정).
+        if (ctx?.orgLapse || ctx?.seatLocked) { router.push("/"); return }
         // 만료자는 분석(B 게이트 대상)으로 못 간다 — ra_range를 남기지 않고 결제 유도로
         if (expired) { router.push("/pricing"); return }
         const keys = rangeKeys()

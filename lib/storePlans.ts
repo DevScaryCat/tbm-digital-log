@@ -10,7 +10,9 @@
 // 미리보기/실청구가 공유하게 만든 것과 같은 규율이다.
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { subscriptionAllows } from "@/lib/portone"
 import { cancelOrgSeatMirrors, restoreOrgSeatMirrors } from "@/lib/org"
+import { resolveOrgSeatAccountingByOwner } from "@/lib/orgSeats"
 
 export type StorePlatform = "google_play" | "app_store"
 
@@ -99,6 +101,43 @@ export function effectiveCapacityForReconcile(
 }
 
 /**
+ * 스토어 감독자의 구독이 회수·만료됐으면 **그 조직의 활성 좌석 미러를 전부 접는다.**
+ *
+ * 고치는 무과금 구간(2026-08-13 검수): 카드 경로는 lib/billing.ts chargeSubscription이 3회
+ * 실패 시 그 자리에서 cancelOrgSeatMirrors를 부르는데, 스토어 경로에는 대응물이 없었다.
+ *   · RTDN·reconcile 크론은 reconcileCapacitySeats(allowActive=false)만 불렀고 그 함수는
+ *     **정원 초과분**만 접는다 — 정원에 여유가 있으면 한 명도 안 접히고, 정원제가 아니면
+ *     capacity==null로 즉시 return이다.
+ *   · 애플 알림은 좌석을 아예 건드리지 않았다.
+ * 미러가 살아 있는 동안 멤버 행은 plan='org_seat'/status='active'/기간 null이라 서버 게이트를
+ * 전부 통과한다. 실제 차단은 하루 1회 크론 스윕뿐이라 최대 ~24시간이 통째로 무과금이었고,
+ * 크론이 멈추면 무기한이었다(fail-open).
+ *
+ * 판정은 여기서 다시 적지 않는다 — 방금 우리가 쓴 행을 되읽어 subscriptionAllows에 묻는다.
+ * '회수(revoked)'의 정의가 구글·애플에서 다르고 앞으로 더 늘어날 수 있으므로, 각 호출부의
+ * revoked 플래그가 아니라 **저장된 상태**를 진실로 삼는다(해지 예약처럼 잔여 기간이 남은
+ * 경우에는 자동으로 아무 일도 일어나지 않는다).
+ */
+export async function foldSeatsIfOwnerLapsed(
+  admin: SupabaseClient,
+  ownerUserId: string
+): Promise<number> {
+  const { data: sub } = await admin
+    .from("subscriptions")
+    .select("status, current_period_end, billing_key")
+    .eq("user_id", ownerUserId)
+    .maybeSingle()
+  if (subscriptionAllows(sub as { status?: string; current_period_end?: string | null; billing_key?: string | null } | null)) {
+    return 0
+  }
+  const acc = await resolveOrgSeatAccountingByOwner(admin, ownerUserId)
+  if (!acc || acc.seatIds.length === 0) return 0
+  await cancelOrgSeatMirrors(acc.seatIds, admin)
+  console.warn("STORE_LAPSE_SEATS_FOLDED", { ownerUserId, orgId: acc.orgId, seats: acc.seatIds.length })
+  return acc.seatIds.length
+}
+
+/**
  * 정원이 확정된 뒤 실제 좌석 수를 정원에 맞춘다. (RTDN·verify 공용)
  *
  * - 정원보다 많으면: **최근 합류 순(joined_at DESC)**으로 초과분 미러만 접는다.
@@ -118,24 +157,17 @@ export async function reconcileCapacitySeats(
   const none = { folded: 0, restored: 0 }
   if (capacity == null) return none
 
-  const { data: orgRow } = await admin
-    .from("organizations")
-    .select("id")
-    .eq("owner_user_id", ownerUserId)
-    .maybeSingle()
-  if (!orgRow) return none
-
-  const { data: rows } = await admin
-    .from("org_members")
-    .select("member_user_id, joined_at")
-    .eq("org_id", (orgRow as { id: string }).id)
-    .eq("status", "active")
-    .order("joined_at", { ascending: true })
-  const members = ((rows ?? []) as { member_user_id: string }[]).map((m) => m.member_user_id)
+  // 정원을 먹는 좌석 = 좌석 회계의 billableSeats(자가 스토어 결제자·영구무료는 제외).
+  // claim_org_seat·checkSeatCapacity와 **같은 뷰**를 본다 — 여기만 org_members active로 세면
+  // 감독자가 산 정원을 남이 축내는 상태로 되돌아간다.
+  const acc = await resolveOrgSeatAccountingByOwner(admin, ownerUserId)
+  if (!acc) return none
+  // rows는 joined_at 오름차순 — 아래 '최근 합류 순으로 접는다'가 이 순서에 기댄다
+  const members = acc.rows.filter((r) => r.seatState === "seat").map((r) => r.userId)
 
   // 정원은 감독자 본인을 포함한 총 계정 수 — 소속 현장에 허용되는 수는 그보다 하나 적다.
   const allowed = Math.max(0, capacity - 1)
-  const keep = members.slice(0, allowed)
+  const keep = new Set(members.slice(0, allowed))
   const excess = members.slice(allowed)
 
   let folded = 0
@@ -146,18 +178,13 @@ export async function reconcileCapacitySeats(
   }
 
   let restored = 0
-  if (allowActive && keep.length > 0) {
-    const { data: fold } = await admin
-      .from("subscriptions")
-      .select("user_id")
-      .in("user_id", keep)
-      .eq("plan", "org_seat")
-      .neq("status", "active")
-    const ids = ((fold ?? []) as { user_id: string }[]).map((f) => f.user_id)
-    if (ids.length > 0) {
-      await restoreOrgSeatMirrors(ids, admin)
-      restored = ids.length
-    }
+  if (allowActive && keep.size > 0) {
+    // 후보 선정은 restoreOrgSeatMirrors 안의 뷰가 한다 — `plan='org_seat'` 필터가 아니라
+    // mirror_alive=false라, 자가 결제가 끝나 좌석으로 돌아온 계정(plan이 monthly_pro로 남은 행)도
+    // 여기서 함께 복원된다. restored는 후보 수가 아니라 **실제 복원 성공 수**다.
+    const r = await restoreOrgSeatMirrors(acc.orgId, admin, { only: [...keep] })
+    restored = r.restored
+    if (r.failed > 0) console.error("reconcileCapacitySeats: 미러 복원 일부 실패", { ownerUserId, ...r })
   }
 
   return { folded, restored }

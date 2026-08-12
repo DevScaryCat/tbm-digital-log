@@ -15,7 +15,7 @@ import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
 import { STORE_SOURCES } from "@/lib/billing"
 import { storeSyncPatch, type StoreSyncRow } from "@/lib/storeSync"
-import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile } from "@/lib/storePlans"
+import { resolveStorePlan, storePlanPatch, reconcileCapacitySeats, effectiveCapacityForReconcile, foldSeatsIfOwnerLapsed } from "@/lib/storePlans"
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather"
 import {
     getSubscription as getAppleSubscription,
@@ -183,6 +183,16 @@ async function run(request: Request) {
                 // (changed=false) 복원만 남은 경우가 있고, 한 번 실패해도 다음 스윕이 다시 잡는다.
                 // 복원되면 행이 portone/토큰 없음으로 바뀌어 이 쿼리 대상에서 영구히 빠진다.
                 if (revoked) await restoreGrandfatherIfEligible(admin, row.user_id)
+
+                // 회수·만료가 확정된 감독자의 좌석 미러는 **전부** 접는다.
+                // reconcileCapacitySeats는 정원 초과분만 접으므로 여유가 있으면 한 명도 안 접힌다
+                // (정원제가 아니면 아예 아무것도 안 한다) — 그 사이가 무과금 구간이었다.
+                // 판정은 저장된 상태가 한다(해지 예약처럼 잔여 기간이 남으면 무동작).
+                try {
+                    await foldSeatsIfOwnerLapsed(admin, row.user_id)
+                } catch (e) {
+                    console.error("reconcile-store-subs: 좌석 미러 접기 실패", row.id, e)
+                }
 
                 if (!changed) {
                     // 요금제만 바뀐 건은 planSynced로 이미 셌다 — unchanged로 또 세지 않는다

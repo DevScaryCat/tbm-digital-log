@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabaseClient"
-import { AlertCircle, BookOpen, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, Printer, QrCode, Save, Square, Users } from "lucide-react"
+import { AlertCircle, BookOpen, Calendar as CalendarIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Clock, FileText, Hand, HardHat, Loader2, Mic, PlayCircle, Printer, QrCode, Save, Square, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTutorialSample, type TutorialHazard, type TutorialSample } from "@/lib/tutorialSamples"
 import { MinutesView } from "@/components/MinutesView"
@@ -114,6 +114,9 @@ const TOUR_GUIDE: Record<TourStage, string> = {
 export default function TutorialPage() {
     const router = useRouter()
     const [view, setView] = useState<"intro" | "tour" | "record" | "result">("intro")
+    // 가이드 첫 화면의 탭 — '따라해보기'(기존 투어) / '영상으로 보기'(준비 중).
+    // 투어를 시작하면 view가 "tour"로 바뀌어 탭 자체가 화면에서 내려간다(진행 중에는 선택지가 아니다).
+    const [guideTab, setGuideTab] = useState<"walkthrough" | "video">("walkthrough")
     const [tourStage, setTourStage] = useState<TourStage>("home")
     const [typedLen, setTypedLen] = useState(0)
     const [sample, setSample] = useState<TutorialSample>(() => getTutorialSample(null))
@@ -306,34 +309,96 @@ export default function TutorialPage() {
             <div className="w-full max-w-md">
 
                 {view === "intro" && (
-                    <div className="bg-cur-card border border-cur-hairline rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-6 py-10 sm:px-8 space-y-8">
-                        <div className="text-center space-y-3">
-                            <h1 className="text-[26px] font-semibold text-cur-ink tracking-[-0.78px] leading-tight">말하면, 서류가 됩니다</h1>
-                            <p className="text-[15px] text-cur-body font-medium leading-relaxed">
-                                안톡이 회의록을 어떻게 만들어주는지<br />1분만 보여드릴게요.
-                            </p>
+                    <div className="space-y-3">
+                        {/* 가이드 탭 2종(Chris 2026-08-11, 앱 src/app/tutorial.tsx와 1:1) — 홈 배너를
+                            없애고 헤더 이름 메뉴 → '가이드'로 옮기면서 이 화면이 가이드의 집이 됐다.
+                            영상은 아직 없다: 없는 것을 있는 척하지 않고 '준비 중'이라고 쓴다.
+                            탭을 지금 만들어 두는 이유는, 영상이 나왔을 때 사용자가 찾아갈 자리가
+                            이미 정해져 있어야 하기 때문이다. */}
+                        <div role="tablist" aria-label="가이드 보기 방식" className="flex gap-1 p-1 rounded-[12px] border border-cur-hairline bg-cur-card">
+                            {([
+                                { key: "walkthrough", label: "따라해보기" },
+                                { key: "video", label: "영상으로 보기" },
+                            ] as const).map((t) => (
+                                <button
+                                    key={t.key}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={guideTab === t.key}
+                                    onClick={() => setGuideTab(t.key)}
+                                    className={`flex-1 h-10 rounded-[8px] text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary ${
+                                        guideTab === t.key
+                                            ? "bg-cur-primary text-cur-on-primary"
+                                            : "text-cur-body hover:bg-cur-elevated"
+                                    }`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* 30초 낭독 경로는 뺐다(Chris) — 가입 직후에 마이크 권한·낭독까지 시키는 건
-                            과했다. 투어 하나와 건너뛰기, 선택지는 둘이면 된다. */}
-                        <Button
-                            type="button"
-                            onClick={startTour}
-                            className="w-full h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] font-bold transition-transform active:scale-[0.98]"
-                        >
-                            <Hand className="w-5 h-5 mr-2" /> 따라가며 보기
-                        </Button>
+                        {guideTab === "walkthrough" ? (
+                            <div className="bg-cur-card border border-cur-hairline rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-6 py-10 sm:px-8 space-y-8">
+                                <div className="text-center space-y-3">
+                                    <h1 className="text-[26px] font-semibold text-cur-ink tracking-[-0.78px] leading-tight">말하면, 서류가 됩니다</h1>
+                                    <p className="text-[15px] text-cur-body font-medium leading-relaxed">
+                                        안톡이 회의록을 어떻게 만들어주는지<br />1분만 보여드릴게요.
+                                    </p>
+                                </div>
 
-                        <div className="text-center space-y-1.5">
-                            <button
-                                type="button"
-                                onClick={markSeenAndGo}
-                                className="text-[14px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
-                            >
-                                건너뛰고 시작하기
-                            </button>
-                            <p className="text-[12px] text-cur-muted-soft">나중에 홈에서 언제든 볼 수 있어요</p>
-                        </div>
+                                {/* 30초 낭독 경로는 뺐다(Chris) — 가입 직후에 마이크 권한·낭독까지 시키는 건
+                                    과했다. 투어 하나와 닫기, 선택지는 둘이면 된다. */}
+                                <Button
+                                    type="button"
+                                    onClick={startTour}
+                                    className="w-full h-14 text-[16px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary rounded-[10px] font-bold transition-transform active:scale-[0.98]"
+                                >
+                                    <Hand className="w-5 h-5 mr-2" /> 따라가며 보기
+                                </Button>
+
+                                <div className="text-center space-y-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={markSeenAndGo}
+                                        className="text-[14px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+                                    >
+                                        닫기
+                                    </button>
+                                    {/* 종전 문구는 "나중에 홈에서 언제든 볼 수 있어요"였다 — 홈 배너를
+                                        없앤 지금 홈에는 가이드로 가는 길이 없다. 실제 자리를 알려준다. */}
+                                    <p className="text-[12px] text-cur-muted-soft">오른쪽 위 이름 → 가이드에서 언제든 다시 볼 수 있어요</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-cur-card border border-cur-hairline rounded-[24px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-6 py-10 sm:px-8 space-y-6">
+                                <div className="text-center space-y-3">
+                                    <span className="mx-auto w-14 h-14 rounded-full bg-cur-elevated flex items-center justify-center">
+                                        <PlayCircle className="w-7 h-7 text-cur-muted-soft" />
+                                    </span>
+                                    <h1 className="text-[20px] font-semibold text-cur-ink leading-snug">영상 가이드는 준비 중이에요</h1>
+                                    <p className="text-[14px] text-cur-body leading-relaxed">
+                                        화면을 따라 찍은 영상을 곧 올릴게요.<br />그때까지는 &lsquo;따라해보기&rsquo;로 순서를 확인하실 수 있어요.
+                                    </p>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setGuideTab("walkthrough")}
+                                    className="w-full h-12 rounded-[10px] border-cur-hairline bg-cur-card text-cur-ink hover:bg-cur-elevated font-semibold text-[15px]"
+                                >
+                                    <Hand className="w-[18px] h-[18px] mr-2" /> 따라해보기로 보기
+                                </Button>
+                                <div className="text-center">
+                                    <button
+                                        type="button"
+                                        onClick={markSeenAndGo}
+                                        className="text-[14px] font-medium text-cur-muted hover:text-cur-ink underline underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cur-primary rounded-[4px]"
+                                    >
+                                        닫기
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

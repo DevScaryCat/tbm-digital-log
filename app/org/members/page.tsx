@@ -36,6 +36,12 @@ interface MemberRow {
     loginId?: string
     status: "active" | "detached"
     joinedAt: string
+    /** 서버(좌석 회계 뷰)가 판정한 좌석 상태 — 화면은 규칙을 다시 계산하지 않고 배지만 그린다.
+     *  self_store = 본인이 스토어에 직접 결제 중 → 회사 청구·정원에서 제외.
+     *  이 배지가 없으면 감독자는 "왜 이 현장은 안 살아났지"를 알 방법이 없다. */
+    seatState?: "seat" | "self_store" | "grandfather" | null
+    /** 미러 구독이 살아 있는가 — 청구 대상인데 잠겨 있는 현장을 드러낸다 */
+    mirrorAlive?: boolean
 }
 
 export default function OrgMembersPage() {
@@ -136,6 +142,9 @@ export default function OrgMembersPage() {
         if (ctxLoading) return
         // 아직 회사가 없는 단독 계정도 들어와야 한다 — 첫 현장을 만드는 화면이 여기다.
         if (!ctx || ctx.kind === "member") { router.replace("/"); return }
+        // 유예 중인 소속 계정은 kind가 'solo'로 강등돼 여기까지 들어와 **유료 좌석 발급 위저드**를
+        // 봤다 — 그가 결제할 수 없는 흐름이다(감독자의 회사에 이미 속해 있어 회사 생성도 막힌다).
+        if (ctx.orgLapse) { router.replace("/"); return }
         load()
     }, [ctx, ctxLoading, router, load])
 
@@ -226,6 +235,11 @@ export default function OrgMembersPage() {
     }, [addStep, count])
 
     const activeCount = members.filter((m) => m.status === "active").length
+    // 회사가 실제로 요금을 내는 현장 수 — 자가 스토어 결제자·영구무료는 빠진다.
+    // 금액 문구는 전부 이 수를 쓴다(서버 resolveBillableAmount의 billableSeats와 같은 단위).
+    // activeCount로 곱하면 화면이 서버보다 큰 금액을 통보하게 된다.
+    const billableCount = members.filter((m) => m.status === "active" && (m.seatState ?? "seat") === "seat").length
+    const selfPaidCount = members.filter((m) => m.status === "active" && m.seatState === "self_store").length
 
     // ── 청구 미리보기 재료 (/org/setup 삭제로 이식) — 서버 청구 규칙과 같은 식이어야 한다.
     // lib/billing.ts: resolveBillableAmount = (본인 1 + 활성 현장) × 3,900. 스토어(구글·애플)
@@ -235,7 +249,7 @@ export default function OrgMembersPage() {
     const isTrialing = sub?.status === "trialing"
     const storeOwner = subSource === "google_play" || subSource === "app_store"
     const nextChargeDate = sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString("ko-KR") : null
-    const monthlyAfter = ((storeOwner ? 0 : 1) + activeCount + count) * SEAT_PRICE
+    const monthlyAfter = ((storeOwner ? 0 : 1) + billableCount + count) * SEAT_PRICE
 
     // ── 스토어 정원제(seats-NN) 감독자 ───────────────────────────────────────
     // 이들은 정원 값까지 앱 스토어에 이미 냈다 — 카드로는 **0원**이 청구된다
@@ -247,11 +261,11 @@ export default function OrgMembersPage() {
     const capacityMode = seatCapacity != null
     const pendingCapacity = seatGate?.pendingSeatCapacity ?? null
     // 이번 발급 후의 총 계정 수(감독자 본인 포함) — 정원과 같은 단위다
-    const usedAfter = 1 + activeCount + count
+    const usedAfter = 1 + billableCount + count
     // 한 번에 만들 수 있는 최대 개수. 정원제면 **정원 여유분**이 상한이다(앱 org-members.tsx의
     // seatRoom과 같은 식). 종전에는 웹만 정원과 무관하게 20까지 올라가, 넘긴 수량을 다 입력한
     // 끝에서 서버 402로 되돌려보냈다(2026-08-10 검수). 20은 bulk 라우트의 MAX_BULK 상한.
-    const seatRoom = capacityMode ? Math.max(0, (seatCapacity as number) - 1 - activeCount) : 20
+    const seatRoom = capacityMode ? Math.max(0, (seatCapacity as number) - 1 - billableCount) : 20
     const maxCount = Math.max(1, Math.min(20, seatRoom))
 
     // 상한이 늦게 도착하는 경우(자격 조회가 ?new=1 딥링크보다 느릴 때) 이미 올려둔 수량을 내린다.
@@ -334,7 +348,7 @@ export default function OrgMembersPage() {
                 않으므로(lib/billing.ts CAPACITY_FULL_MESSAGE) 위치 안내는 여기서 붙인다. */}
             {capacityMode && seatReason === "capacity" && (
                 <p className="text-[12px] text-cur-muted leading-relaxed">
-                    지금 정원은 {seatCapacity}개(내 계정 포함)이고 {1 + activeCount}개를 쓰고 있어요. 정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 늘릴 수 있어요.
+                    지금 정원은 {seatCapacity}개(내 계정 포함)이고 {1 + billableCount}개를 쓰고 있어요. 정원은 앱(안드로이드)의 <b className="text-cur-ink">현장 계정 정원</b>에서 늘릴 수 있어요.
                 </p>
             )}
             {/* 정원제의 period = 스토어 결제 미확인(grace). 카드 문제가 아니라 스토어 문제라
@@ -543,6 +557,13 @@ export default function OrgMembersPage() {
                     <h2 className="text-[14px] font-bold text-cur-ink px-1">
                         연결된 현장{activeCount > 0 && <span className="text-cur-muted-soft font-medium ml-1.5">{activeCount}곳</span>}
                     </h2>
+                    {/* 청구 대상과 실제 연결 수가 다를 수 있다는 사실을 먼저 말한다 — 이게 없으면
+                        감독자는 청구서와 목록이 왜 어긋나는지 알 방법이 없다(2026-08-11). */}
+                    {selfPaidCount > 0 && (
+                        <p className="text-[12px] text-cur-muted px-1 leading-relaxed">
+                            청구 대상 <b className="text-cur-body font-semibold">{billableCount}곳</b> · 본인 결제 중 {selfPaidCount}곳은 회사 청구에서 제외돼요.
+                        </p>
+                    )}
                     {loading ? (
                         <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-cur-muted" /></div>
                     ) : (
@@ -562,6 +583,34 @@ export default function OrgMembersPage() {
                                             {m.managerName && `${m.managerName} · `}
                                             {m.status === "active" ? `연결 ${m.joinedAt?.slice(0, 10)}` : "해제됨"}
                                         </p>
+                                        {/* 좌석 상태 배지 — 판정은 서버(좌석 회계 뷰)가 한다.
+                                            self_store: 본인이 스토어에 직접 결제 중이라 회사 청구·정원에서 빠진다.
+                                            해지하면 다음 날 크론이 회사 좌석으로 되돌린다(자동). */}
+                                        {m.status === "active" && m.seatState === "self_store" && (
+                                            <p className="text-[11px] text-cur-primary bg-cur-primary/10 rounded px-1.5 py-0.5 mt-1 inline-block">
+                                                본인 결제 중 · 회사 청구 제외
+                                            </p>
+                                        )}
+                                        {m.status === "active" && m.seatState === "grandfather" && (
+                                            <p className="text-[11px] text-cur-muted bg-cur-elevated rounded px-1.5 py-0.5 mt-1 inline-block">
+                                                영구 무료 · 회사 청구 제외
+                                            </p>
+                                        )}
+                                        {/* 이용 잠김 — 배지만 있으면 감독자는 '기다리면 되는 것'으로 읽는다.
+                                            실제 원인은 둘 다 감독자가 조치할 수 있는 것이라(카드 결제 실패 /
+                                            요금제 정원 부족) 사유 한 줄을 함께 준다. 같은 사실이 이메일·인앱
+                                            알림(seat_locked)으로도 나가므로 두 곳의 말이 같아야 한다. */}
+                                        {m.status === "active" && (m.seatState ?? "seat") === "seat" && m.mirrorAlive === false && (
+                                            <>
+                                                <p className="text-[11px] text-cur-error bg-cur-error/5 rounded px-1.5 py-0.5 mt-1 inline-block">
+                                                    이용 잠김 · 확인 필요
+                                                </p>
+                                                <p className="text-[11px] text-cur-muted mt-1 leading-relaxed">
+                                                    현장 계정 청구용 카드가 결제되지 않았거나 요금제 정원이 모자라요.
+                                                    결제수단·요금제를 확인해 주세요.
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
                                     {m.status === "active" && (
                                         <>
@@ -692,7 +741,7 @@ export default function OrgMembersPage() {
                                 먼저 말하고, 실제 청구 여부는 확인 단계에서 서버 응답으로 확정한다. */}
                             <p className="text-[12px] text-cur-muted-soft text-center leading-relaxed">
                                 {capacityMode
-                                    ? `정원 ${seatCapacity}개 중 ${1 + activeCount}개 사용 중 · ${maxCount}개까지 더 만들 수 있어요`
+                                    ? `정원 ${seatCapacity}개 중 ${1 + billableCount}개 사용 중 · ${maxCount}개까지 더 만들 수 있어요`
                                     : `계정 1개당 월 3,900원 · ${sub?.status === "trialing" ? "무료체험 중엔 결제되지 않아요" : "추가는 남은 기간만큼 즉시 결제"}`}
                             </p>
                             {/* 감액 예약(앱 '-')을 웹이 모르면, 갱신일에 최근 만든 계정부터 조용히 잠긴다 */}
@@ -891,8 +940,8 @@ export default function OrgMembersPage() {
                                         <div className="flex items-baseline justify-between gap-3">
                                             <span className="text-[13px] text-cur-body">
                                                 {storeOwner
-                                                    ? `내 구독 4,900원(앱 스토어) + 현장 계정 ${activeCount + count}개 × 3,900원(카드)`
-                                                    : `내 계정 1 + 현장 ${activeCount + count} = 계정 ${1 + activeCount + count}개 × 3,900원`}
+                                                    ? `내 구독 4,900원(앱 스토어) + 현장 계정 ${billableCount + count}개 × 3,900원(카드)`
+                                                    : `내 계정 1 + 현장 ${billableCount + count} = 계정 ${1 + billableCount + count}개 × 3,900원`}
                                             </span>
                                             <span className="text-[17px] font-bold text-cur-ink shrink-0">
                                                 월 {(storeOwner ? 4900 + monthlyAfter : monthlyAfter).toLocaleString()}원
