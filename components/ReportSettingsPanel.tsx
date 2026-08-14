@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ExternalLink, Loader2, Sparkles, MailWarning } from "lucide-react"
+import { ExternalLink, Loader2, Sparkles, MailWarning, Send } from "lucide-react"
 import { countRecipients, type ConsentStatus, type Recipient, type RecipientCounts } from "@/lib/reportRecipients"
 import { resolveMyReportEmail } from "@/lib/myEmail"
 
@@ -32,6 +32,7 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
     }, [])
     const [newEmail, setNewEmail] = useState("")
     const [saving, setSaving] = useState(false)
+    const [sending, setSending] = useState(false)
     const [loaded, setLoaded] = useState(false)
     const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null)
 
@@ -99,6 +100,32 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
             : { type: "err", text: `재발송 실패: ${j.mailNote || "메일 오류"}` })
     }
     const removeRecipient = async (email: string) => { if (!pro) return; await post({ removeRecipient: email }) }
+
+    // 등록하고 나면 아무 일도 일어나지 않는 구간이 있었다 — 자동 발송이 매월 1일뿐이라,
+    // 13일에 등록한 사람은 19일을 기다려야 첫 통을 받는다. 실사용자가 그 구간에서
+    // "메일주소 등록해놨는데 메일이 안와요"로 물어왔다(2026-08-13). 시스템은 정상이었고,
+    // 화면이 그 사실을 말하지 않은 것이 결함이다.
+    // /api/reports/send는 진작 있었지만 웹·앱 어디서도 부르지 않는 죽은 엔드포인트였다.
+    // 지난달이 아니라 **이번 달**(which:"current")로 보낸다 — 갓 가입한 사람은 지난달
+    // 기록이 0건이라 "prev"면 no_data로 튕겨, 확인하려던 사람에게 실패만 보여준다.
+    const sendNow = async () => {
+        if (!pro || sending) return
+        setSending(true)
+        setMsg(null)
+        try {
+            const res = await fetch("/api/reports/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${await authToken()}` },
+                body: JSON.stringify({ which: "current" }),
+            })
+            const j = await res.json().catch(() => ({}))
+            setMsg(res.ok
+                ? { type: "ok", text: "보냈어요. 승인된 주소의 받은편지함을 확인해주세요 (스팸함도 함께 봐주세요)." }
+                : { type: "err", text: j.error || "발송에 실패했어요." })
+        } catch {
+            setMsg({ type: "err", text: "발송에 실패했어요. 잠시 후 다시 시도해주세요." })
+        } finally { setSending(false) }
+    }
 
     // 승인 0명 + 대기 1명 이상 = 화면상 "등록됐다"고 보이지만 실제로는 한 통도 안 나가는 상태.
     // 이 구간을 조용히 두면 사용자는 설정을 끝냈다고 믿는다.
@@ -180,6 +207,25 @@ export function ReportSettingsPanel({ pro = false, onRecipientsChange }: { pro?:
                         <Button onClick={addRecipient} disabled={saving || !newEmail.trim()} className="h-11 px-4 rounded-xl bg-cur-ink text-white font-bold hover:opacity-90 shrink-0">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "추가"}
                         </Button>
+                    </div>
+
+                    {/* 등록이 실제로 되었는지 그 자리에서 눈으로 확인시킨다 — 다음 1일까지 기다리지 않고. */}
+                    <div className="pt-1 space-y-2">
+                        <Button
+                            onClick={sendNow}
+                            disabled={saving || sending || counts.approved === 0}
+                            variant="outline"
+                            className="w-full h-11 rounded-xl border border-cur-hairline bg-cur-card text-cur-ink text-[14px] font-semibold hover:bg-cur-elevated disabled:opacity-40 shadow-none"
+                        >
+                            {sending
+                                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 보내는 중…</>
+                                : <><Send className="w-4 h-4 mr-2 text-cur-muted" /> 지금 한 번 보내보기</>}
+                        </Button>
+                        <p className="text-[12px] text-cur-muted-soft leading-relaxed">
+                            {counts.approved === 0
+                                ? "승인된 받는 사람이 있어야 보낼 수 있어요."
+                                : "자동 발송은 매월 1일이에요. 지금 누르면 이번 달 기록으로 만든 보고서가 승인된 주소로 바로 갑니다."}
+                        </p>
                     </div>
                 </div>
             )}
