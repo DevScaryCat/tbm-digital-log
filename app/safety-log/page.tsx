@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy, Sparkles } from "lucide-react"
+import { Mic, Camera, CheckCircle2, Plus, Trash2, PenTool, Loader2, Save, StopCircle, CalendarIcon, Clock, RefreshCw, FileText, Upload, ExternalLink, X, Pause, Play, Send, QrCode, Copy, Sparkles, Smartphone } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import { QRCodeCanvas } from "qrcode.react"
 import { showAlert } from "@/lib/uiDialog"
@@ -1042,6 +1042,16 @@ export default function TBMPage() {
                                         <p className="mt-5 text-[14px] text-cur-body text-center">
                                             누르고 평소처럼 교육하세요 — AI가 교육일지로 정리합니다
                                         </p>
+
+                                        {/* 녹음 중 문구와 같은 말을 시작 전으로 앞당긴다 — 화면을 끌지 말지는
+                                            누르기 전에 정해진다(tbm-minutes/page.tsx와 동일 규칙·동일 문구). */}
+                                        <div className="mt-4 w-full bg-cur-elevated rounded-[10px] p-3 flex items-start gap-2 text-left">
+                                            <Smartphone className="w-4 h-4 text-cur-info mt-0.5 shrink-0" />
+                                            <p className="text-[14px] text-cur-body leading-relaxed">
+                                                교육이 끝날 때까지 <b className="font-semibold text-cur-ink">화면을 켜 둔 채로</b> 두세요.
+                                                화면이 꺼지면 녹음도 함께 멈춥니다.
+                                            </p>
+                                        </div>
 
                                         {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
                                             <div className="flex flex-col items-center space-y-2 mt-8">
