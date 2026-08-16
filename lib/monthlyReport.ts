@@ -32,6 +32,8 @@ export interface HazardRow {
   measure: string;
   process: string;
   date: string;
+  /** 같은 (요인·등급·대책)이 몇 개 회의록에서 언급됐는가 — 표 병합 후의 횟수 표기용 */
+  count?: number;
 }
 
 /** 위험요인 분석 항목 (주요 위험요인 아래 표) — 등급 산정 없는 정보성 기록 */
@@ -102,6 +104,28 @@ import { accidentTypeTop, agentTop } from "./koshaTaxonomy";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+
+/** 표시용 위험요인 병합 — 같은 (요인·등급·대책)을 한 줄로 합치고 언급 횟수를 센다.
+ *  종전에는 회의록 수만큼 같은 줄이 반복돼 표가 중첩됐다(2026-08-16 Chris 확인 — "1개에서
+ *  합집합된 것도 합산되어 들어가는"). 통계(mentioned·high·mid·keywords)는 언급 횟수 기준
+ *  그대로 두고 **표만** 합친다 — "몇 번 언급됐는가"는 정보고, 같은 줄 반복은 소음이다. */
+function dedupeHazards(items: HazardRow[], limit: number): HazardRow[] {
+  const grouped = new Map<string, HazardRow>();
+  for (const it of items) {
+    const key = `${it.factor}|${it.level}|${it.measure}`;
+    const g = grouped.get(key);
+    if (g) {
+      g.count = (g.count ?? 1) + 1;
+      if (it.date && (!g.date || it.date > g.date)) g.date = it.date;
+    } else {
+      grouped.set(key, { ...it, count: 1 });
+    }
+  }
+  return [...grouped.values()]
+    .sort((a, b) => rankOf(b.level) - rankOf(a.level) || (b.count ?? 1) - (a.count ?? 1))
+    .slice(0, limit);
+}
+
 /** 위험 등급 → 상/중/하 (회의록 hazards.level은 이미 상/중/하) */
 function gradeOf(level: unknown): "상" | "중" | "하" {
   const s = String(level ?? "").trim();
@@ -153,7 +177,7 @@ async function buildMinutesContent(
 
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
-  const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 30);
+  const hazards = dedupeHazards(items, 30);
 
   const low = items.filter((it) => it.level === "하").length;
   // 같은 문구가 2회 이상 나온 것 = 반복 지적된 위험 (우선 관리 대상)
@@ -276,7 +300,7 @@ export async function buildMergedMinutesForRange(
   const keywords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }));
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
-  const hazards = items.slice().sort((a, b) => rankOf(b.level) - rankOf(a.level)).slice(0, 40);
+  const hazards = dedupeHazards(items, 40);
   const low = items.filter((it) => it.level === "하").length;
   const recurringCount = [...freq.values()].filter((c) => c > 1).length;
   const stats: ReportStats = { total: totalMinutes, high, mid, low, mentioned: items.length, recurring: recurringCount };
@@ -649,7 +673,7 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
               `<tr style="vertical-align:top;">
                 <td style="border-bottom:1px solid #eee;padding:8px 6px;text-align:center;color:#999;font-size:12px;">${i + 1}</td>
                 <td style="border-bottom:1px solid #eee;padding:8px 6px;">
-                  <div style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(h.factor)}</div>
+                  <div style="font-weight:600;color:#26251e;font-size:13px;">${escapeHtml(h.factor)}${(h.count ?? 1) > 1 ? ` <span style="font-weight:700;color:#c2410c;font-size:11px;">×${h.count}회 언급</span>` : ""}</div>
                   ${h.process ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(h.process)}${h.date ? ` · ${escapeHtml(h.date)}` : ""}</div>` : h.date ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHtml(h.date)}</div>` : ""}
                 </td>
                 <td style="border-bottom:1px solid #eee;padding:8px 6px;text-align:center;">${levelBadge(h.level)}</td>

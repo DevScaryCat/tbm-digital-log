@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
 import { extractMarks, recordWithdrawalMarks } from "@/lib/withdrawal";
+import { isStoreSource } from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -51,9 +52,26 @@ export async function POST(request: Request) {
 
     const { data: sub } = await admin
       .from("subscriptions")
-      .select("trial_used, source, status")
+      .select("trial_used, source, status, billing_key")
       .eq("user_id", userId)
       .maybeSingle();
+
+    // ── 자동갱신이 살아 있으면 구독 해지가 먼저다(2026-08-16 Chris) ──
+    // 탈퇴했는데 결제만 계속되는 최악을 서버에서도 막는다(클라이언트 게이트의 이중화).
+    // 카드 없는 체험(자동청구 없음)·해지된 구독은 바로 탈퇴할 수 있다.
+    const liveSub = !!sub && ["active", "trialing", "past_due"].includes(sub.status);
+    if (liveSub && isStoreSource(sub!.source)) {
+      return NextResponse.json(
+        { error: "스토어 정기 결제가 살아 있어요. Google Play(또는 App Store)에서 구독을 먼저 해지한 뒤 탈퇴해주세요 — 탈퇴해도 스토어 결제는 자동으로 끊기지 않습니다." },
+        { status: 409 },
+      );
+    }
+    if (liveSub && sub!.billing_key) {
+      return NextResponse.json(
+        { error: "구독이 진행 중이에요. 구독 및 결제에서 먼저 해지한 뒤 탈퇴해주세요." },
+        { status: 409 },
+      );
+    }
     // 구독 행이 있었다면 체험은 쓴 것으로 본다(가입 시 체험 발급이 기본 경로) —
     // trial_used 플래그가 낡은 계정도 재수령은 막는 쪽이 안전하다.
     await recordWithdrawalMarks(admin, marks, !!sub);
