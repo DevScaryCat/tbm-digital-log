@@ -6,6 +6,7 @@ import { isStoreSource } from "@/lib/billing";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { consentMetaPatch, recordConsent } from "@/lib/consent";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
+import { markHash, usedTrialBeforeWithdrawal } from "@/lib/withdrawal";
 
 export async function POST(request: Request) {
   try {
@@ -300,15 +301,25 @@ export async function POST(request: Request) {
 
       // 카드 없는 Pro 1개월 체험 — billing_key null이라 cron 과금 대상에서 자동 제외되고,
       // 만료 후에는 게이트(subscriptionAllows/isAllowed)가 결제 등록으로 유도한다.
+      //
+      // 탈퇴 후 재가입 체험 차단(2026-08-14): 이전 탈퇴 계정의 해시 표식과 대조 —
+      // 일치하면 가입은 그대로 진행하되 구독 행을 만료 상태로 만든다(체험 없음).
+      // trial_redemptions(번호 소진)는 게이트가 켜져 있을 때만 작동해, 게이트가 꺼진
+      // 지금은 이 표식이 유일한 재수령 방벽이다.
+      const trialDenied = await usedTrialBeforeWithdrawal(supabaseAdmin, {
+        phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
+        emailHash: realEmailStr ? markHash(realEmailStr) : null,
+      });
       const now = new Date();
       const trialEnd = new Date(now);
       trialEnd.setMonth(trialEnd.getMonth() + 1);
+      if (trialDenied) trialEnd.setTime(now.getTime());
       const pro = PLANS.monthly_pro;
       const { error: subErr } = await supabaseAdmin.from("subscriptions").upsert(
         {
           user_id: user.user.id,
           plan: pro.id,
-          status: "trialing",
+          status: trialDenied ? "canceled" : "trialing",
           billing_key: null,
           amount: pro.amount,
           currency: pro.currency,

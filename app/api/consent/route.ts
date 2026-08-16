@@ -3,9 +3,26 @@
 // (수신자 승인 응답은 app/api/consent/[token]/route.ts — 이름만 겹치는 별개 흐름)
 import { NextResponse } from "next/server";
 import { getAdminClient, getUserFromRequest } from "@/lib/portone";
-import { consentMetaPatch, recordConsent } from "@/lib/consent";
+import { consentMetaPatch, isConsentCurrent, recordConsent } from "@/lib/consent";
 
 export const runtime = "nodejs";
+
+// 앱 ConsentGate용 상태 조회(2026-08-14, 인앱 고지 시스템). 버전 상수를 앱에 복제하면
+// 개정 때마다 두 저장소를 같이 올려야 하고 어긋나는 순간 게이트가 안 뜬다 — 판정은 서버만 한다.
+// 약관·처리방침이 개정되면(TERMS_VERSION/PRIVACY_VERSION 범프) 웹은 ConsentGate가,
+// 앱은 이 GET을 보는 재동의 모달이 전 사용자에게 고지+재동의를 받는다.
+export async function GET(request: Request) {
+  try {
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+    return NextResponse.json({
+      needsConsent: !isConsentCurrent((user.user_metadata ?? {}) as Record<string, unknown>),
+    });
+  } catch (e) {
+    console.error("consent status error:", e);
+    return NextResponse.json({ error: "서버 오류" }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {

@@ -10,6 +10,7 @@ import { getOrgContext } from "@/lib/org";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
 import { isConsentCurrent, consentMetaPatch, recordConsent } from "@/lib/consent";
+import { extractMarks, markHash, usedTrialBeforeWithdrawal } from "@/lib/withdrawal";
 
 export const runtime = "nodejs";
 
@@ -175,23 +176,50 @@ export async function POST(request: Request) {
 
     // 카드 없는 Pro 1개월 체험 — 가입 위저드의 발급 블록과 동일 필드
     const now = new Date();
+    // ── 탈퇴 후 재가입 체험 차단 (2026-08-14 Chris 승인) ──
+    // 이전 탈퇴 계정의 해시 표식(전화·카카오·이메일)과 대조 — 일치하면 계정은 만들어주되
+    // 체험 없이 시작한다(구독 행을 만료 상태로 생성). 막다른 길이 아니다: 홈 만료 배너가
+    // 구독 경로로 안내한다.
+    const rejoinMarks = {
+      phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
+      ...(() => {
+        const m = extractMarks(user as Parameters<typeof extractMarks>[0]);
+        return { kakaoHash: m.kakaoHash, emailHash: m.emailHash };
+      })(),
+    };
+    const trialDenied = await usedTrialBeforeWithdrawal(admin, rejoinMarks);
+
     const trialEnd = new Date(now);
     trialEnd.setMonth(trialEnd.getMonth() + 1);
     const pro = PLANS.monthly_pro;
     const { error: subErr } = await admin.from("subscriptions").upsert(
-      {
-        user_id: user.id,
-        plan: pro.id,
-        status: "trialing",
-        billing_key: null,
-        amount: pro.amount,
-        currency: pro.currency,
-        trial_end: trialEnd.toISOString(),
-        current_period_end: trialEnd.toISOString(),
-        trial_used: true,
-        failed_attempts: 0,
-        updated_at: now.toISOString(),
-      },
+      trialDenied
+        ? {
+            user_id: user.id,
+            plan: pro.id,
+            status: "canceled",
+            billing_key: null,
+            amount: pro.amount,
+            currency: pro.currency,
+            trial_end: now.toISOString(),
+            current_period_end: now.toISOString(),
+            trial_used: true,
+            failed_attempts: 0,
+            updated_at: now.toISOString(),
+          }
+        : {
+            user_id: user.id,
+            plan: pro.id,
+            status: "trialing",
+            billing_key: null,
+            amount: pro.amount,
+            currency: pro.currency,
+            trial_end: trialEnd.toISOString(),
+            current_period_end: trialEnd.toISOString(),
+            trial_used: true,
+            failed_attempts: 0,
+            updated_at: now.toISOString(),
+          },
       { onConflict: "user_id" },
     );
     if (subErr) {
@@ -199,7 +227,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "체험 개시에 실패했습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, trialEnd: trialEnd.toISOString() });
+    return NextResponse.json({
+      success: true,
+      trialEnd: trialDenied ? now.toISOString() : trialEnd.toISOString(),
+      // 클라이언트가 "체험 없이 시작합니다"를 구분해 안내할 수 있게
+      trialDenied: trialDenied || undefined,
+    });
   } catch (e) {
     console.error("claim-trial error:", e);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });

@@ -82,7 +82,13 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json({ error: `Deepgram API 오류: ${errorText}` }, { status: response.status });
+      // ⚠️ Deepgram의 상태 코드를 그대로 릴레이하지 않는다(2026-08-14 검수).
+      // 클라이언트는 이 라우트의 402=구독, 429=우리 한도로 번역한다 — Deepgram 크레딧이
+      // 바닥나면(402) 정상 구독자 전원이 "구독이 필요해요"를, Deepgram 레이트리밋(429)이면
+      // "한도를 다 썼어요"를 보게 된다. 우리 쪽 문제가 아닌 실패는 전부 502(서버 오류)로:
+      // 클라이언트가 'network/재시도 가능'으로 분류해 거짓 막다른 길이 생기지 않는다.
+      console.error("Deepgram error:", response.status, errorText.slice(0, 500));
+      return NextResponse.json({ error: "음성 변환 서버 오류 — 잠시 후 다시 시도해주세요." }, { status: 502 });
     }
 
     const data = await response.json();
