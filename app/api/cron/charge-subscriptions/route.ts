@@ -8,6 +8,7 @@ import {
   SubscriptionRow,
 } from "@/lib/billing";
 import { restoreGrandfatherIfEligible } from "@/lib/grandfather";
+import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { cancelOrgSeatMirrors } from "@/lib/org";
 import { resolveOrgSeatAccounting } from "@/lib/orgSeats";
 import { OWNER_SEAT_SUB_COLUMNS, restoreOrgSeats, type OwnerSeatSub } from "@/lib/seatRestore";
@@ -441,6 +442,44 @@ async function run(request: Request) {
           results.grandfatherRestored++;
         }
       }
+    }
+
+    // ── 적자 계정 감시 (2026-08-16 Chris: "최악의 시나리오에서도 손해는 안 봐야") ──
+    // 문서 한도를 깎아 이론상 적자를 0으로 만드는 대신, 계정별 이번 달 변동원가를 매일
+    // 실측해 임계(순매출 4,165원의 ~84%)를 넘는 순간 운영자에게 알린다 — 고래가 실제로
+    // 나타나면 그 패턴에 맞는 대응(회사 단위 요금제 업셀)을 하기 위해. 실패해도 청구
+    // 결과에는 영향 없다(전체 try/catch).
+    try {
+      const monthStartISO = (() => {
+        const kst = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
+        return new Date(`${kst}-01T00:00:00+09:00`).toISOString();
+      })();
+      const KRW_PER_STT_MIN = 5.93; // Deepgram nova-2 $0.0043/분 × ₩1,380
+      const KRW_PER_AI_CALL = 25;   // Haiku 평균(프롬프트+원문 in, 요약 out) 보수적 추정
+      const COST_ALERT_KRW = 3500;
+      const [sttAgg, aiAgg] = await Promise.all([
+        admin.from("stt_usage").select("user_id, seconds").gte("created_at", monthStartISO),
+        admin.from("ai_usage").select("user_id").gte("created_at", monthStartISO),
+      ]);
+      const cost = new Map<string, number>();
+      for (const r of (sttAgg.data ?? []) as { user_id: string; seconds: number }[]) {
+        cost.set(r.user_id, (cost.get(r.user_id) ?? 0) + (Number(r.seconds) / 60) * KRW_PER_STT_MIN);
+      }
+      for (const r of (aiAgg.data ?? []) as { user_id: string }[]) {
+        cost.set(r.user_id, (cost.get(r.user_id) ?? 0) + KRW_PER_AI_CALL);
+      }
+      const whales = [...cost.entries()].filter(([, c]) => c >= COST_ALERT_KRW).sort((a, b) => b[1] - a[1]);
+      if (whales.length && mailerConfigured()) {
+        const lines = whales.map(([id, c]) => `· ${id} — 이번 달 추정 원가 ${Math.round(c).toLocaleString()}원`).join("\n");
+        await sendMail({
+          to: "qkymzh123@gmail.com",
+          subject: `[안톡 운영] 고사용 계정 ${whales.length}건 — 원가가 순매출에 근접`,
+          html: `<pre>계정당 순매출 4,165원 기준 임계(3,500원) 초과:\n\n${lines}\n\n대응 후보: 사용 패턴 확인 → 회사 단위 요금제 제안(업셀). 이 알림은 매일 1회 크론에서 재계산됩니다.</pre>`,
+        });
+      }
+      (results as Record<string, unknown>).costWatch = { flagged: whales.length };
+    } catch (e) {
+      console.error("cost-watch error:", e);
     }
 
     return NextResponse.json({ success: true, ...results });
