@@ -7,7 +7,7 @@ import {
   addOneMonth,
   getPlan,
 } from "@/lib/portone";
-import { chargeSubscription } from "@/lib/billing";
+import { chargeSubscription, isStoreSource } from "@/lib/billing";
 import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
 import { isSelfPaid } from "@/lib/orgSeats";
 import { paymentsEnabled } from "@/lib/utils";
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     // 시작하기 전에 끊어야 하고, 발급된 빌링키가 붕 뜬 채 남지도 않는다.
     const { data: existing } = await admin
       .from("subscriptions")
-      .select("trial_used, status, billing_key, plan, current_period_end")
+      .select("trial_used, status, billing_key, plan, current_period_end, source, trial_end")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -215,6 +215,84 @@ export async function POST(request: Request) {
     //  끊으므로 도달할 수 없는 코드였고, 남겨두면 "카드로도 구독할 수 있다"는 거짓 신호가 된다.
     //  스토어 인앱결제·조직 편입 경로는 여전히 그 표식을 남긴다: app/api/billing/{apple,google}/verify,
     //  app/api/org/attach. 복원은 lib/grandfather.ts restoreGrandfatherIfEligible.)
+
+    // --- 살아 있는 구독 보호 (2026-08-14 검수 확정) ---
+    // 모바일 PG 리디렉션 복귀가 새 브라우저 컨텍스트로 떨어지면 sessionStorage의
+    // {mode:'update'}가 유실되고 클라이언트가 mode를 기본값 'subscribe'로 보낸다
+    // (BillingRedirectHandler). 그 순간 '결제수단 변경'이 아래 신규/재구독 분기로 들어가
+    //  · 스토어(google_play) 구독자 → source 원복 + STORE_FIELDS_CLEARED로 RTDN 연결이
+    //    끊기고, 구글 4,900 + 카드 3,900 이중청구가 조용히 지속된다.
+    //  · 기간이 남은 카드 구독자 → cpe가 now로 덮여 이미 낸 기간이 소멸하고 같은 달을
+    //    두 번 결제한다. /api/payments/charge에는 있는 '기간 남으면 청구 금지' 가드가
+    //    이 경로에만 없었다.
+    // 클라이언트가 보낸 mode를 믿지 않고 서버가 상태로 의도를 재판정한다:
+    // 살아 있는 구독이면 결제수단 교체로만 처리한다. 이 가드는 반드시 첫 체험 분기보다
+    // 앞에 있어야 한다 — 스토어 구독자는 서버 trial_used가 false일 수 있어 첫 체험
+    // 분기에서도 같은 파괴가 일어난다.
+    const hasRemaining =
+      !!existing?.current_period_end && new Date(existing.current_period_end) > now;
+    if (
+      existing &&
+      ["active", "trialing", "past_due"].includes(existing.status) &&
+      (isStoreSource(existing.source) || hasRemaining)
+    ) {
+      const { error } = await admin
+        .from("subscriptions")
+        .update({
+          billing_key: billingKey,
+          card_info: cardInfo,
+          billing_key_verified: !acceptedUnverified,
+          failed_attempts: 0,
+          updated_at: now.toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (error) {
+        console.error("live-sub billing-key swap error:", error);
+        return NextResponse.json({ error: "결제수단 변경 실패" }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, updated: true });
+    }
+
+    // --- 해지 후 기간이 남은 계정: 재활성 (청구 없음, 기간 보존) ---
+    // 종전에는 이 상태가 곧장 재구독 분기로 가서, '무료체험 중이면 남은 기간까지 그대로
+    // 이용할 수 있다'는 해지 안내를 믿고 마음을 바꾼 사용자가 남은 기간을 잃고 즉시
+    // 전액을 결제했다. 이미 확보된 기간은 보존하고 자동갱신만 되살린다 — 다음 청구는
+    // 기간 종료일에 크론이 한다.
+    if (existing && existing.status === "canceled" && hasRemaining) {
+      const stillTrial = !!existing.trial_end && new Date(existing.trial_end) > now;
+      const { data: revived, error } = await admin
+        .from("subscriptions")
+        .update({
+          status: stillTrial ? "trialing" : "active",
+          billing_key: billingKey,
+          card_info: cardInfo,
+          billing_key_verified: !acceptedUnverified,
+          pending_plan: selectedPlan.id !== existing.plan ? selectedPlan.id : null,
+          failed_attempts: 0,
+          canceled_at: null,
+          updated_at: now.toISOString(),
+        })
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      if (error || !revived) {
+        console.error("canceled-sub revive error:", error);
+        return NextResponse.json({ error: "구독 재개 실패" }, { status: 500 });
+      }
+      if (ctx.kind === "owner" && ctx.org) {
+        const r = await restoreOrgSeatMirrors(ctx.org.id, admin);
+        if (r.failed > 0) console.error("billing-key revive: 미러 복원 일부 실패(다음 크론 스윕이 수습)", r);
+      }
+      return NextResponse.json({
+        success: true,
+        revived: true,
+        subscription: {
+          status: revived.status,
+          card_info: revived.card_info,
+          current_period_end: revived.current_period_end,
+        },
+      });
+    }
 
     if (!trialUsed) {
       // --- 최초 구독: 첫 달 무료 체험 ---

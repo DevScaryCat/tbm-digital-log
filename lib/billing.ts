@@ -595,7 +595,7 @@ export async function chargeSubscription(
   const amount = opts.amount ?? billable.amount;
   // 초회 결제(checkout 등)는 1회성 id를 주입할 수 있다 — 같은 날 해지→재구독 시
   // 날짜 키 paymentId가 재사용되어 환불 기록을 덮거나 결제가 거절되는 문제 방지 (리뷰 B/하)
-  const paymentId = opts.paymentIdOverride ?? periodPaymentId(sub);
+  let paymentId = opts.paymentIdOverride ?? periodPaymentId(sub);
   const now = new Date();
 
   if (!sub.billing_key) {
@@ -610,6 +610,15 @@ export async function chargeSubscription(
     .maybeSingle();
   if (existing?.status === "paid") {
     return { ok: true, paymentId, status: "skipped", detail: "이미 결제됨" };
+  }
+  // 같은 날 결제→해지(환불)→재구독이면 날짜 키가 그대로 재사용된다: 취소된 결제 ID로
+  // PortOne 재청구는 거절되고, 아래 upsert(onConflict: payment_id)가 환불 행('canceled')을
+  // 'failed'로 덮어 장부에서 환불 이력이 사라진다. paymentIdOverride를 만들어 놓고 어떤
+  // 호출부도 안 쓰던 게 원인(2026-08-14 검수 확정) — 호출부에 지우는 대신 여기서 한 번에
+  // 해결한다: 기존 행이 살아 있는 결제가 아니면 접미사를 붙인 새 키로 비켜 간다.
+  if (existing && existing.status !== "paid") {
+    const dead = ["canceled", "partial_canceled", "cancelled"].includes(existing.status);
+    if (dead) paymentId = `${paymentId}_r${Math.random().toString(36).slice(2, 6)}`;
   }
 
   // 낙관수용한 미검증 키는 과금 전에 소유권을 재검증 (통과 못 하면 여기서 중단)
