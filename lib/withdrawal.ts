@@ -19,7 +19,9 @@ export function markHash(value: string): string {
 export interface WithdrawalMarks {
   phoneHash: string | null;
   kakaoHash: string | null;
-  emailHash: string | null;
+  /** auth 이메일(아이디 가입은 합성 `id@tbm.com`) + real_email — 있는 것 전부 (2026-08-16 QA:
+   *  auth 이메일만 남기면 signup 대조(realEmail)와 교집합이 공집합이라 차단이 무동작이었다) */
+  emailHashes: string[];
 }
 
 /** 탈퇴하는 사용자에게서 표식 재료를 뽑는다 — 있는 것만 해시한다 */
@@ -32,11 +34,13 @@ export function extractMarks(user: {
   const kakao = (user.identities ?? []).find((i) => i.provider === "kakao");
   // 카카오 식별자는 provider user id — identity_data.sub 또는 provider_id에 있다
   const kakaoId = String(kakao?.identity_data?.sub ?? kakao?.identity_data?.provider_id ?? kakao?.id ?? "");
-  const email = String(user.email ?? "");
+  const emails = [String(user.email ?? ""), String(user.user_metadata?.real_email ?? "")]
+    .map((e) => e.trim())
+    .filter(Boolean);
   return {
     phoneHash: phone ? markHash(phone) : null,
     kakaoHash: kakao && kakaoId ? markHash(kakaoId) : null,
-    emailHash: email ? markHash(email) : null,
+    emailHashes: [...new Set(emails.map(markHash))],
   };
 }
 
@@ -46,13 +50,16 @@ export async function recordWithdrawalMarks(
   marks: WithdrawalMarks,
   trialUsed: boolean,
 ): Promise<boolean> {
-  if (!marks.phoneHash && !marks.kakaoHash && !marks.emailHash) return true;
-  const { error } = await admin.from("withdrawn_users").insert({
-    phone_hash: marks.phoneHash,
-    kakao_hash: marks.kakaoHash,
-    email_hash: marks.emailHash,
+  const emails = marks.emailHashes.length ? marks.emailHashes : [null];
+  if (!marks.phoneHash && !marks.kakaoHash && !emails[0]) return true;
+  // 이메일이 여럿(로그인용 합성 + 실이메일)이면 행을 나눠 각각 대조 가능하게 남긴다
+  const rows = emails.map((e, i) => ({
+    phone_hash: i === 0 ? marks.phoneHash : null,
+    kakao_hash: i === 0 ? marks.kakaoHash : null,
+    email_hash: e,
     trial_used: trialUsed,
-  });
+  }));
+  const { error } = await admin.from("withdrawn_users").insert(rows);
   if (error) console.error("withdrawal mark insert error:", error);
   return !error;
 }
@@ -60,12 +67,12 @@ export async function recordWithdrawalMarks(
 /** 재가입자가 이전 탈퇴 계정에서 체험을 이미 썼는가 — 1년 지난 표식은 무시 */
 export async function usedTrialBeforeWithdrawal(
   admin: SupabaseClient,
-  marks: Partial<WithdrawalMarks>,
+  marks: { phoneHash?: string | null; kakaoHash?: string | null; emailHashes?: (string | null)[] },
 ): Promise<boolean> {
   const ors: string[] = [];
   if (marks.phoneHash) ors.push(`phone_hash.eq.${marks.phoneHash}`);
   if (marks.kakaoHash) ors.push(`kakao_hash.eq.${marks.kakaoHash}`);
-  if (marks.emailHash) ors.push(`email_hash.eq.${marks.emailHash}`);
+  for (const e of marks.emailHashes ?? []) if (e) ors.push(`email_hash.eq.${e}`);
   if (!ors.length) return false;
   const since = new Date(Date.now() - MARK_TTL_DAYS * 86_400_000).toISOString();
   const { data, error } = await admin

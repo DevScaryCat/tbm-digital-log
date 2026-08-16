@@ -434,6 +434,13 @@ export async function resolveSeatCharge(
     if (isStoreSource(source) && !sub.billing_key) {
       return { ok: false, ...zero, reason: "method", error: "등록된 결제수단이 없습니다." };
     }
+    // 만료된 카드 없는 체험(행이 trialing인 채 영원히 남는다 — 크론이 상태를 안 바꾼다)은
+    // 통과시키면 안 된다(2026-08-16 QA 확정): org/context가 이 판정으로 '0원 발급 가능'을
+    // 내려주는데 정작 발급 라우트는 subscriptionAllows로 402를 던져, 서버가 한쪽에서는
+    // "만들 수 있다" 다른 쪽에서는 402를 말하는 어긋남이 됐다. 같은 만료 기준으로 가른다.
+    if (!sub.billing_key && sub.current_period_end && new Date(sub.current_period_end) <= new Date()) {
+      return { ok: false, ...zero, reason: "subscription", error: "무료체험이 끝났어요. 구독을 시작하면 현장 계정을 추가할 수 있어요." };
+    }
     return { ok: true, ...zero };
   }
 
@@ -615,10 +622,28 @@ export async function chargeSubscription(
   // PortOne 재청구는 거절되고, 아래 upsert(onConflict: payment_id)가 환불 행('canceled')을
   // 'failed'로 덮어 장부에서 환불 이력이 사라진다. paymentIdOverride를 만들어 놓고 어떤
   // 호출부도 안 쓰던 게 원인(2026-08-14 검수 확정) — 호출부에 지우는 대신 여기서 한 번에
-  // 해결한다: 기존 행이 살아 있는 결제가 아니면 접미사를 붙인 새 키로 비켜 간다.
-  if (existing && existing.status !== "paid") {
-    const dead = ["canceled", "partial_canceled", "cancelled"].includes(existing.status);
-    if (dead) paymentId = `${paymentId}_r${Math.random().toString(36).slice(2, 6)}`;
+  // 해결한다: 기존 행이 취소 상태면 접미사 키로 비켜 간다.
+  //
+  // ⚠️ 접미사는 반드시 **결정적**이어야 한다(2026-08-16 QA — 랜덤이면 이중청구). 랜덤 접미사는
+  // "결제 성공 + 기록 실패 → 재시도" 경로에서 매번 새 ID로 PortOne에 정상 승인돼 같은 달을
+  // 두 번 청구하고, PG측 중복 차단(ALREADY_PAID 재조정)이라는 최후 방어선까지 제거한다.
+  // 같은 기준 키의 취소 행 개수로 파생하면 재시도·경합이 같은 ID로 수렴해 멱등이 보존된다.
+  if (existing && ["canceled", "partial_canceled", "cancelled"].includes(existing.status)) {
+    const { count } = await admin
+      .from("payments")
+      .select("payment_id", { count: "exact", head: true })
+      .like("payment_id", `${paymentId}%`)
+      .in("status", ["canceled", "partial_canceled", "cancelled"]);
+    paymentId = `${paymentId}_r${count ?? 1}`;
+    // 파생 키에 이미 성공한 결제가 있으면 재청구하지 않는다 — 기준 키 멱등 검사와 동일 규칙
+    const { data: existing2 } = await admin
+      .from("payments")
+      .select("status")
+      .eq("payment_id", paymentId)
+      .maybeSingle();
+    if (existing2?.status === "paid") {
+      return { ok: true, paymentId, status: "skipped", detail: "이미 결제됨" };
+    }
   }
 
   // 낙관수용한 미검증 키는 과금 전에 소유권을 재검증 (통과 못 하면 여기서 중단)

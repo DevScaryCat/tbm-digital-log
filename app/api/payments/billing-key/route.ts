@@ -168,6 +168,9 @@ export async function POST(request: Request) {
           billing_key: billingKey,
           card_info: cardInfo,
           billing_key_verified: !acceptedUnverified,
+          // 한도 초과로 실패가 쌓이던 사람이 카드를 바꾸는 게 이 경로다 — 카운터를 안 비우면
+          // 새 카드의 첫 실패 한 번에 3회차로 강제 해지된다(2026-08-16 QA)
+          failed_attempts: 0,
           updated_at: now.toISOString(),
         })
         .eq("user_id", user.id);
@@ -264,6 +267,12 @@ export async function POST(request: Request) {
         .from("subscriptions")
         .update({
           status: stillTrial ? "trialing" : "active",
+          // 스토어(구글/애플) 해지 후 카드 전환도 이 분기로 들어온다(2026-08-16 QA 확정) —
+          // source를 되돌리지 않으면 청구 크론(.eq source portone)이 이 행을 영영 안 긁어
+          // '결제수단 등록 완료' 안내를 받은 사용자가 기간 종료일에 청구 한 번 없이 끊기고,
+          // 남은 store_purchase_token으로 스토어 만료 RTDN이 행을 도로 죽인다.
+          source: "portone",
+          ...STORE_FIELDS_CLEARED,
           billing_key: billingKey,
           card_info: cardInfo,
           billing_key_verified: !acceptedUnverified,

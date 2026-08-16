@@ -26,11 +26,12 @@ export default function DeleteAccountPage() {
                     <h2 className="text-[15px] font-bold text-cur-ink">삭제되는 데이터</h2>
                     <p className="text-[14px] leading-relaxed text-cur-body">
                         계정, TBM 회의록·안전보건교육일지·위험성 평가 등 작성 문서, 서명·현장 사진,
-                        보고서 수신처, AI 사용 기록이 즉시 삭제되며 복구할 수 없습니다.
+                        보고서 수신처가 즉시 삭제되며 복구할 수 없습니다.
                     </p>
                     <h2 className="pt-2 text-[15px] font-bold text-cur-ink">보관되는 데이터</h2>
                     <p className="text-[14px] leading-relaxed text-cur-body">
                         결제·구독 기록은 전자상거래법에 따라 5년간 보존됩니다(계정과 분리된 형태).
+                        음성 변환·AI 사용량 집계는 비용 정산 근거로 계정과 분리해 보존됩니다.
                         무료체험 부정 재사용 방지를 위한 복원 불가능한 해시 표식이 1년간 보관됩니다.
                         약관 동의 증빙은 분쟁 대응을 위해 보존됩니다.
                     </p>

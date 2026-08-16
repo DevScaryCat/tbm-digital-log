@@ -78,16 +78,30 @@ export async function POST(request: Request) {
 
         // 같은 영수증이 다른 계정에 이미 붙어 있으면 거절 — 영수증 하나로 여러 계정을 여는 경로 차단.
         // (DB에도 부분 유일 인덱스가 있지만, 여기서 막아야 사용자에게 이유를 설명할 수 있다)
+        // ⚠️ 죽은 행의 토큰은 회수한다(2026-08-16 QA 확정): 탈퇴·계정 교체 뒤 같은 Apple ID로
+        // 재구독하면 애플은 같은 originalTransactionId를 재사용하는데, 이전 계정의 만료·해지·
+        // 가명(auth 삭제) 행이 토큰을 쥔 채 남아 있으면 새 계정이 영구 409 — 애플은 과금하는데
+        // 권한은 안 열리는 최악의 상태가 된다. 살아 있는 타인 구독만 거절한다.
         const { data: owner } = await admin
             .from("subscriptions")
-            .select("user_id")
+            .select("id, user_id, status, current_period_end")
             .eq("store_purchase_token", token)
             .maybeSingle()
         if (owner && owner.user_id !== user.id) {
-            return NextResponse.json(
-                { error: "이 결제는 다른 계정에 이미 연결되어 있습니다." },
-                { status: 409 }
-            )
+            const ownerLive =
+                ["active", "trialing", "past_due"].includes(owner.status) ||
+                (owner.current_period_end && new Date(owner.current_period_end) > new Date())
+            if (ownerLive) {
+                return NextResponse.json(
+                    { error: "이 결제는 다른 계정에 이미 연결되어 있습니다." },
+                    { status: 409 }
+                )
+            }
+            // 죽은 행에서 토큰 회수 — 유일 인덱스 충돌 방지 후 아래 upsert가 새 계정에 붙인다
+            await admin
+                .from("subscriptions")
+                .update({ store_purchase_token: null, updated_at: new Date().toISOString() })
+                .eq("id", owner.id)
         }
 
         const status = toLocalStatus(purchase)
@@ -113,6 +127,12 @@ export async function POST(request: Request) {
             source: "app_store",
             store_product_id: purchase.productId,
             store_purchase_token: token,
+            // 구글 시절 정원 잔재 청산(2026-08-16 QA CRITICAL 확정) — iOS는 좌석 요금제가
+            // 없다(애플 정책 대기). 구글 정원이 남은 채 source만 app_store로 바뀌면 좌석
+            // 회계가 그 정원을 상한으로 계속 믿어 카드 좌석 발급이 전부 무과금이 된다.
+            store_base_plan_id: null,
+            store_seat_capacity: null,
+            store_pending_seat_capacity: null,
             current_period_end: purchase.expiresAt,
             amount: 4900, // 앱 가격(스토어 수수료 15% 포함) — 웹 3,900원과 별도
             currency: "KRW",

@@ -308,7 +308,10 @@ export async function POST(request: Request) {
       // 지금은 이 표식이 유일한 재수령 방벽이다.
       const trialDenied = await usedTrialBeforeWithdrawal(supabaseAdmin, {
         phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
-        emailHash: realEmailStr ? markHash(realEmailStr) : null,
+        // 로그인 합성 이메일(`id@tbm.com`)이 핵심이다 — 탈퇴 표식의 auth 이메일과 이것이
+        // 대조돼야 같은 아이디 재가입이 잡힌다(2026-08-16 QA: realEmail만 보던 종전 대조는
+        // 표식과 교집합이 없어 완전 무동작이었다)
+        emailHashes: [markHash(fullEmailId), ...(realEmailStr ? [markHash(realEmailStr)] : [])],
       });
       const now = new Date();
       const trialEnd = new Date(now);

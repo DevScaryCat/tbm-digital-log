@@ -161,8 +161,26 @@ export async function POST(request: Request) {
           .from("trial_redemptions")
           .insert({ phone: normalizedPhone, user_id: user.id });
         if (redeemErr) {
+          // 구독 행 없이 409만 던지면 홈 게이트가 이 화면으로 계속 되돌려보내는 무한
+          // 막다른 길이 된다(2026-08-16 QA 확정) — 만료 상태 행을 만들어 홈 진입을 열고,
+          // 홈의 만료 배너가 결제 경로(구독 화면)로 안내하게 한다.
+          await admin.from("subscriptions").upsert(
+            {
+              user_id: user.id,
+              plan: PLANS.monthly_pro.id,
+              status: "canceled",
+              billing_key: null,
+              amount: PLANS.monthly_pro.amount,
+              currency: PLANS.monthly_pro.currency,
+              trial_end: new Date().toISOString(),
+              current_period_end: new Date().toISOString(),
+              trial_used: true,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+          );
           return NextResponse.json(
-            { error: "이 번호로는 무료체험을 이미 사용했습니다. 결제수단을 등록하면 바로 이용할 수 있어요." },
+            { error: "이 번호로는 무료체험을 이미 사용했습니다. 구독을 시작하면 바로 이용할 수 있어요.", trialDenied: true },
             { status: 409 },
           );
         }
@@ -180,12 +198,11 @@ export async function POST(request: Request) {
     // 이전 탈퇴 계정의 해시 표식(전화·카카오·이메일)과 대조 — 일치하면 계정은 만들어주되
     // 체험 없이 시작한다(구독 행을 만료 상태로 생성). 막다른 길이 아니다: 홈 만료 배너가
     // 구독 경로로 안내한다.
+    const m0 = extractMarks(user as Parameters<typeof extractMarks>[0]);
     const rejoinMarks = {
       phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
-      ...(() => {
-        const m = extractMarks(user as Parameters<typeof extractMarks>[0]);
-        return { kakaoHash: m.kakaoHash, emailHash: m.emailHash };
-      })(),
+      kakaoHash: m0.kakaoHash,
+      emailHashes: m0.emailHashes,
     };
     const trialDenied = await usedTrialBeforeWithdrawal(admin, rejoinMarks);
 

@@ -67,16 +67,25 @@ export async function POST(request: Request) {
 
   // 대상 계정: 감독자면 크론의 회사 경로와 동일하게 본인+소속 현장 병합 —
   // 수동 발송이 본인 현장만 담으면 매월 1일 받던 통합본과 다른 문서가 나간다.
-  const siteNameOf = async (id: string): Promise<string> => {
+  // 현장명 해석은 크론(monthly-report)과 같은 규칙 — 다르면 '지금 한 번 보내보기'가
+  // 매월 1일본과 현장 이름이 다른 문서를 승인 수신처(원청)에 보낸다(2026-08-16 QA).
+  // 규칙: site_name 우선, 감독자의 company_name은 회사명이라 현장명으로 쓰지 않는다.
+  const siteNameOf = async (id: string, isOwner: boolean): Promise<string> => {
     try {
       const { data: u } = await admin.auth.admin.getUserById(id);
-      return ((u?.user?.user_metadata as any)?.company_name as string)?.trim() || "현장";
+      const m = (u?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      const label = String(m.site_name ?? "").trim()
+        || (isOwner ? "" : String(m.company_name ?? "").trim());
+      return label || "현장";
     } catch { return "현장"; }
   };
   const memberIds = ctx.kind === "owner" ? (ctx.memberIds ?? []) : [];
+  const ownerLabel = ctx.kind === "owner"
+    ? await siteNameOf(user.id, true)
+    : ((user.user_metadata as any)?.company_name as string)?.trim() || "현장";
   const accounts = [
-    { userId: user.id, siteName: ((user.user_metadata as any)?.company_name as string)?.trim() || "현장" },
-    ...(await Promise.all(memberIds.map(async (id) => ({ userId: id, siteName: await siteNameOf(id) })))),
+    { userId: user.id, siteName: ownerLabel },
+    ...(await Promise.all(memberIds.map(async (id) => ({ userId: id, siteName: await siteNameOf(id, false) })))),
   ];
   const company =
     (ctx.kind === "owner" && ctx.org?.name) || accounts[0].siteName;

@@ -24,13 +24,27 @@ export const runtime = "nodejs"
 // 앱이 켜질 때마다 호출되므로 CDN에 잠깐 태워 원본 호출을 줄인다
 export const revalidate = 300
 
-export async function GET() {
-    return NextResponse.json(
-        {
+/** iOS 최신 버전 — iOS 릴리스마다 올린다. 아직 미출시라 0.0.0(배너 영구 침묵). */
+const LATEST_APP_VERSION_IOS = "0.0.0"
+/** App Store 앱 페이지 — 출시 후 실제 앱 ID URL로 교체(비어 있으면 앱이 배너를 숨긴다) */
+const IOS_STORE_URL = ""
+
+export async function GET(request: Request) {
+    // 플랫폼 무구분이면 iOS 사용자가 '새 버전' 배너에서 Google Play로 보내진다(2026-08-16 QA).
+    // 파라미터 누락(구버전 앱)은 안드로이드로 폴백 — 현행 사용자 전원이 안드로이드다.
+    const platform = new URL(request.url).searchParams.get("platform") === "ios" ? "ios" : "android"
+    const body = platform === "ios"
+        ? {
+            minVersion: process.env.APP_MIN_VERSION_IOS ?? MIN_APP_VERSION,
+            latestVersion: process.env.APP_LATEST_VERSION_IOS ?? LATEST_APP_VERSION_IOS,
+            storeUrl: process.env.APP_STORE_URL_IOS ?? IOS_STORE_URL,
+        }
+        : {
             minVersion: process.env.APP_MIN_VERSION ?? MIN_APP_VERSION,
             latestVersion: process.env.APP_LATEST_VERSION ?? LATEST_APP_VERSION,
             storeUrl: "https://play.google.com/store/apps/details?id=kr.bitflip.tbm",
-        },
-        { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } }
-    )
+        }
+    return NextResponse.json(body, {
+        headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+    })
 }

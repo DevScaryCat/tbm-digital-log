@@ -32,10 +32,24 @@ async function isUnusedWithdrawal(
 ): Promise<boolean> {
   if (now.getTime() - paidAt.getTime() > WITHDRAWAL_DAYS * DAY) return false;
   const since = paidAt.toISOString();
+  // '미사용'은 결제가 산 것 전체 기준이다 — 감독자 결제는 소속 현장 계정들의 이용까지
+  // 산 것이므로, 본인 계정만 세면 현장들이 매일 쓴 조직도 전액 환불된다(2026-08-16 QA
+  // CRITICAL 확정). 멤버 조회가 실패하면 본인만으로 계속한다 — 아래 count 실패 가드가
+  // 어차피 '사용함'(환불 거절) 쪽으로 처리하는 것과 달리, 여기서 막으면 진짜 미사용
+  // 솔로의 정당한 철회까지 막게 되기 때문이다.
+  let ids = [userId];
+  try {
+    const { data: members } = await admin
+      .from("org_members")
+      .select("member_user_id, organizations!inner(owner_user_id)")
+      .eq("organizations.owner_user_id", userId)
+      .eq("status", "active");
+    ids = [userId, ...((members ?? []) as { member_user_id: string }[]).map((m) => m.member_user_id)];
+  } catch { /* 본인만으로 진행 */ }
   const [minutes, logs, ra] = await Promise.all([
-    admin.from("tbm_minutes").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
-    admin.from("tbm_logs").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
-    admin.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", since),
+    admin.from("tbm_minutes").select("id", { count: "exact", head: true }).in("user_id", ids).gte("created_at", since),
+    admin.from("tbm_logs").select("id", { count: "exact", head: true }).in("user_id", ids).gte("created_at", since),
+    admin.from("tbm_risk_assessments").select("id", { count: "exact", head: true }).in("user_id", ids).gte("created_at", since),
   ]);
   // 조회 실패는 '사용함'으로 간주 — 못 셌다고 전액 환불해버리면 어뷰징 경로가 열린다
   if (minutes.error || logs.error || ra.error) {

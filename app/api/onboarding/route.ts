@@ -42,7 +42,9 @@ export async function POST(request: Request) {
         ...meta,
         preferred_export_format: exportFormat,
         ...(workerType ? { worker_type: workerType } : {}),
-        usage_type: usage,
+        // 최초 기록만 — 이미 값이 있는 계정(특히 multi)을 온보딩 재실행이 solo로 덮으면
+        // /api/profile/usage의 강등 가드(연결 현장 검사)를 우회한다(2026-08-16 QA)
+        ...(meta.usage_type ? {} : { usage_type: usage }),
         onboarded_at: now,
         // 이메일을 적었으면 즉시 '인증된 내 이메일'로 — 위 파일 머리말의 결정 사항
         ...(email ? { real_email: email, real_email_verified_at: now } : {}),

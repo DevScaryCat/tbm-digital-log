@@ -101,9 +101,23 @@ export async function POST(request: Request) {
       ["email_verifications", "user_id"],
       ["password_reset_tokens", "user_id"],
     ];
+    let wipeFailed = false;
     for (const [table, col] of wipe) {
       const { error } = await admin.from(table).delete().eq(col, userId);
-      if (error) console.error(`withdrawal wipe ${table} error:`, error);
+      if (error) {
+        wipeFailed = true;
+        console.error(`withdrawal wipe ${table} error:`, error);
+      }
+    }
+    // 파기 실패가 하나라도 있으면 비가역 단계(스토리지 삭제·deleteUser) 전에 멈춘다 —
+    // 계속 가면 tbm_logs FK(NO ACTION) 잔존 행에 deleteUser가 실패해 "데이터는 지워졌는데
+    // 계정은 남은" 반쪽 상태가 되고, 앱은 '탈퇴할 수 없어요'라는 반쪽 거짓말을 하게 된다
+    // (2026-08-16 QA 확정). 표식은 이미 남았지만 재시도 append는 무해하다.
+    if (wipeFailed) {
+      return NextResponse.json(
+        { error: "일부 기록 삭제에 실패했어요. 잠시 후 다시 시도해주세요 — 이미 삭제된 기록은 복구되지 않습니다." },
+        { status: 500 },
+      );
     }
     // 사용량(stt/ai_usage)·payments·consents(동의 증빙)·trial_redemptions(번호 소진)는 남긴다 —
     // 비용 정산·법정 보존·어뷰즈 방지 근거이고, auth 삭제 후엔 가명 데이터다.
