@@ -11,6 +11,8 @@ export const AI_DAILY_LIMITS = {
   "suggestion-hazards": 60, // 근로자 의견 → 위험요인 변환 (minutes와 별도 카운트 — 회의록 한도 잠식 방지)
   "minutes-insight": 30,
   "education-insight": 30,
+  // 저장 후 피드백(점수·총평) — 문서당 1회가 정상 사용, 캐시가 재진입을 흡수
+  tbm_feedback: 60,
 } as const
 
 export async function checkAndRecordAiUsage(
