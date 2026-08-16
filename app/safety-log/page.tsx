@@ -594,6 +594,8 @@ export default function TBMPage() {
             }
 
             setSavedLogId(logData.id)
+            // 문서가 저장됐으니 이제야 원음을 폐기한다(tbm-minutes와 동일 규칙, 2026-08-14 검수)
+            audioCapture.reset()
             setStep(S_DONE)
 
         } catch (e: unknown) {
@@ -769,15 +771,21 @@ export default function TBMPage() {
         setIsProcessingSTT(true)
         setStep(S_ROSTER)
 
-        // 원음이 있으면 서버(정확) 전사로 교체 — 실패·한도초과면 실시간본을 그대로 쓴다
+        // 원음이 있으면 서버(정확) 전사로 교체 — 실패·한도초과면 실시간본을 그대로 쓴다.
+        // 교체·폐기·안내 규칙은 tbm-minutes/page.tsx submitRecording과 동일(2026-08-14 검수):
+        // 부분 성공본으로 전체를 덮지 않고, 원음은 저장 완료까지 보존하고, 실패 사유를 그대로 말한다.
         let text = collapseSttCascade(accumulatedTranscript)
+        let server: Awaited<ReturnType<typeof transcribeBlobs>> | null = null
         if (SERVER_STT_ENABLED) {
             try {
                 const { data } = await supabase.auth.getSession()
-                const accurate = await transcribeBlobs(audioCapture.getBlobs(), data?.session?.access_token)
-                if (accurate.length >= 5) {
-                    text = accurate
-                    setAccumulatedTranscript(accurate)
+                server = await transcribeBlobs(audioCapture.getBlobs(), data?.session?.access_token)
+                if (server.failed === 0 && server.text.length >= 5) {
+                    text = server.text
+                    setAccumulatedTranscript(server.text)
+                } else if (server.text && !text.trim()) {
+                    text = server.text
+                    setAccumulatedTranscript(server.text)
                 }
             } catch { /* 실시간본 폴백 */ }
         }
@@ -786,11 +794,16 @@ export default function TBMPage() {
         if (!text.trim()) {
             setIsProcessingSTT(false)
             setStep(S_RECORD)
-            showAlert("음성을 인식하지 못했어요.\n마이크(휴대폰 아래쪽)에 조금 더 가까이서 다시 녹음해주세요.")
+            showAlert(
+                server?.reason === "network"
+                    ? "네트워크 연결을 확인하고 다시 시도해주세요.\n녹음된 원음은 남아 있어요."
+                    : server?.detail
+                        ? `${server.detail}\n녹음된 원음은 남아 있어요.`
+                        : "음성을 인식하지 못했어요.\n마이크(휴대폰 아래쪽)에 조금 더 가까이서 다시 녹음해주세요.",
+            )
             return
         }
 
-        audioCapture.reset()
         setIsProcessingSTT(false)
         requestAISummary(text)
     }

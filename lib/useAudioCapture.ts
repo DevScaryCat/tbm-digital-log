@@ -112,15 +112,32 @@ export function useAudioCapture() {
 
 /**
  * 원음 조각들을 서버로 보내 정확본을 받는다.
- * 실패·한도초과는 빈 문자열을 돌려주고, 호출부가 실시간 인식본을 그대로 쓰게 한다.
+ *
+ * ⚠️ 2026-08-14 검수 확정으로 반환형을 문자열에서 구조체로 바꿨다. 종전에는 조각 실패를
+ * `continue`로 삼켜서 ① 가운데 조각이 죽으면 앞뒤만 이어붙인 **구멍 난 부분본**이 성공처럼
+ * 돌아가 호출부가 전체 실시간본을 그걸로 교체했고(원문 소실), ② iOS(실시간본 없음)에서
+ * 한도초과(429)·구독(402)·서버 오류가 전부 "마이크에 가까이서 다시 녹음하라"는 거짓
+ * 안내가 됐다 — 재녹음해도 영원히 실패하는 막다른 길. 이제 실패 수와 사유를 함께 돌려주고
+ * 판단은 호출부가 한다.
  */
+export interface ServerTranscription {
+    text: string
+    total: number
+    failed: number
+    /** 마지막 실패의 분류 — 안내 문구 분기용. null이면 실패 없음 */
+    reason: "quota" | "subscription" | "too_large" | "server" | "network" | null
+    /** 서버가 준 실제 사유 문구(있으면 이걸 그대로 보여주는 게 가장 정확하다) */
+    detail: string | null
+}
+
 // 저장 재시도(AI 실패 후 재제출 등) 때 이미 전사한 조각을 다시 올리면 Deepgram에
 // 그대로 이중 과금된다(실측 17.3초 녹음에 38.9초 청구). 성공 응답은 Blob 단위로
 // 기억해 재호출 시 업로드 없이 재사용한다 — 실패한 조각만 다시 시도된다.
 const transcriptCache = new WeakMap<Blob, string>()
 
-export async function transcribeBlobs(blobs: Blob[], accessToken?: string): Promise<string> {
-    if (!blobs.length) return ""
+export async function transcribeBlobs(blobs: Blob[], accessToken?: string): Promise<ServerTranscription> {
+    const out: ServerTranscription = { text: "", total: blobs.length, failed: 0, reason: null, detail: null }
+    if (!blobs.length) return out
     const texts: string[] = []
     for (const [i, blob] of blobs.entries()) {
         const cached = transcriptCache.get(blob)
@@ -138,15 +155,27 @@ export async function transcribeBlobs(blobs: Blob[], accessToken?: string): Prom
                 headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
                 body: form,
             })
-            if (!res.ok) continue // 한 조각 실패로 전체를 버리지 않는다
+            if (!res.ok) {
+                out.failed++
+                const j = (await res.json().catch(() => ({}))) as { error?: string }
+                out.detail = j.error ?? out.detail
+                out.reason =
+                    res.status === 429 ? "quota"
+                    : res.status === 402 || res.status === 403 ? "subscription"
+                    : res.status === 413 ? "too_large"
+                    : "server"
+                continue // 한 조각 실패로 전체를 버리지 않는다 — 남은 조각은 계속 시도
+            }
             const j = (await res.json()) as { transcript?: string }
             const t = j.transcript?.trim() ?? ""
             // 무음 조각(빈 전사)도 성공 응답이면 기억 — 재시도마다 다시 과금되는 것을 막는다
             transcriptCache.set(blob, t)
             if (t) texts.push(t)
         } catch {
-            /* 이 조각은 건너뛴다 */
+            out.failed++
+            out.reason = "network"
         }
     }
-    return texts.join(" ").trim()
+    out.text = texts.join(" ").trim()
+    return out
 }

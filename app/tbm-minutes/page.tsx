@@ -671,6 +671,9 @@ export default function TBMMinutesPage() {
             }
 
             setSavedLogId(logData.id)
+            // 문서가 저장됐으니 이제야 원음을 폐기한다 — submitRecording에서 지우면
+            // '이전 → 이어서 녹음' 재제출 때 이전 회차가 소실된다(2026-08-14 검수).
+            audioCapture.reset()
             setStep(S_DONE)
 
         } catch (e: unknown) {
@@ -838,14 +841,21 @@ export default function TBMMinutesPage() {
 
         // 원음이 있으면 서버(정확) 전사로 교체 — 실패·한도초과면 실시간본을 그대로 쓴다.
         // 원문(raw_transcript)이 증거이자 AI 입력이라, 여기서 품질이 결정된다.
+        // 교체는 **전 조각 성공**일 때만 한다(2026-08-14 검수 확정): 가운데 조각이 죽은
+        // 부분본으로 전체 실시간본을 덮으면 그 구간 발언이 소리 없이 사라진다.
+        // 예외는 iOS(SERVER_STT_ONLY) — 실시간본이 없어 부분본이라도 없는 것보다 낫다.
         let text = collapseSttCascade(accumulatedTranscript)
+        let server: Awaited<ReturnType<typeof transcribeBlobs>> | null = null
         if (SERVER_STT_ENABLED) {
             try {
                 const { data } = await supabase.auth.getSession()
-                const accurate = await transcribeBlobs(audioCapture.getBlobs(), data?.session?.access_token)
-                if (accurate.length >= 5) {
-                    text = accurate
-                    setAccumulatedTranscript(accurate)
+                server = await transcribeBlobs(audioCapture.getBlobs(), data?.session?.access_token)
+                if (server.failed === 0 && server.text.length >= 5) {
+                    text = server.text
+                    setAccumulatedTranscript(server.text)
+                } else if (server.text && !text.trim()) {
+                    text = server.text
+                    setAccumulatedTranscript(server.text)
                 }
             } catch { /* 실시간본 폴백 */ }
         }
@@ -854,11 +864,24 @@ export default function TBMMinutesPage() {
         if (!text.trim()) {
             setIsProcessingSTT(false)
             setStep(S_RECORD)
-            showAlert("음성을 인식하지 못했어요.\n마이크(휴대폰 아래쪽)에 조금 더 가까이서 다시 녹음해주세요.")
+            // 실패 사유를 아는데 "가까이서 다시 녹음하라"고 하면 거짓 안내가 된다 —
+            // iOS 사용자가 한도초과·서버 오류에서 재녹음을 반복하던 막다른 길(검수 확정).
+            showAlert(
+                server?.reason === "network"
+                    ? "네트워크 연결을 확인하고 다시 시도해주세요.\n녹음된 원음은 남아 있어요."
+                    : server?.detail
+                        ? `${server.detail}\n녹음된 원음은 남아 있어요.`
+                        : "음성을 인식하지 못했어요.\n마이크(휴대폰 아래쪽)에 조금 더 가까이서 다시 녹음해주세요.",
+            )
             return
         }
 
-        audioCapture.reset()
+        // ⚠️ 여기서 audioCapture.reset()을 부르지 않는다(2026-08-14 검수 확정 — CRITICAL).
+        // 종전에는 전사 성공 직후 원음을 폐기했는데, 사용자가 '이전 → 이어서 녹음'으로
+        // 돌아와 두 번째 'AI 요약'을 누르면 새 회차 blob만 전사되어 **이전 회차 발언
+        // 전체가 소실**됐다. blob을 유지하면 재제출 시 전 회차가 다시 합쳐지고,
+        // transcriptCache(WeakMap)가 성공 조각의 재과금을 막는다. 폐기는 저장 완료
+        // 시점(handleSave)과 언마운트 정리에서만 한다.
         setIsProcessingSTT(false)
         requestAIMinutes(text)
     }
