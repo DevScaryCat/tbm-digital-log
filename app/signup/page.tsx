@@ -143,8 +143,8 @@ export default function SignupPage() {
         }
         if (key === "site") {
             if (!siteName.trim()) return "현장명(회사명)을 입력해주세요."
-            if (!industry) return "업종을 선택해주세요."
-            if (!workCategory) return "공종을 선택해주세요."
+            if (!industry) return "업종(대분류)를 선택해주세요."
+            if (!workCategory) return "업종(중분류)를 선택해주세요."
         }
         if (key === "phone") {
             if (!verificationId) return "휴대폰 인증을 완료해주세요."
@@ -363,7 +363,7 @@ export default function SignupPage() {
                                     <Input id="siteName" type="text" placeholder="소속 현장명 (또는 업체명)" value={siteName} onChange={(e) => setSiteName(e.target.value)} className={inputCls} />
                                 </div>
                                 <div className="space-y-2.5">
-                                    <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
+                                    <Label className="text-[13px] font-medium text-cur-body">업종(대분류)</Label>
                                     <Select value={industry} onValueChange={(v) => {
                                         setIndustry(v)
                                         // 중분류가 하나뿐인 업종(전기·가스, 부동산 등)은 공종을 자동 선택
@@ -371,7 +371,7 @@ export default function SignupPage() {
                                         setWorkCategory(minors.length === 1 ? minors[0].name : "")
                                     }}>
                                         <SelectTrigger className={selectCls}>
-                                            <SelectValue placeholder="업종을 선택해주세요" />
+                                            <SelectValue placeholder="업종(대분류)를 선택해주세요" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                                             {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
@@ -381,10 +381,10 @@ export default function SignupPage() {
                                 {/* 중분류가 대분류와 같은 단일 항목(전기·가스, 기타)이면 이미 자동 선택됨 — 같은 이름을 두 번 고르게 하지 않는다 */}
                                 {industry && !isSingleSameMinor(industry) && (
                                     <div className="space-y-2.5 animate-in slide-in-from-top-2">
-                                        <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
+                                        <Label className="text-[13px] font-medium text-cur-body">업종(중분류)</Label>
                                         <Select value={workCategory} onValueChange={setWorkCategory}>
                                             <SelectTrigger className={selectCls}>
-                                                <SelectValue placeholder="주력 공종을 선택해주세요" />
+                                                <SelectValue placeholder="업종(중분류)를 선택해주세요" />
                                             </SelectTrigger>
                                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                                                 {(findKsicMajor(industry)?.minors ?? []).map((mi) => <SelectItem key={mi.code} value={mi.name} className="text-[15px] py-2.5">{mi.name}</SelectItem>)}
@@ -438,8 +438,8 @@ export default function SignupPage() {
                                     ["현장명", siteName],
                                     // 업종=공종 동일 문자열이면 한 줄로 — 같은 값이 두 줄 반복되면 오타처럼 읽힌다
                                     ...(isSingleSameMinor(industry)
-                                        ? [["업종·공종", industry]]
-                                        : [["업종 (대분류)", industry], ["공종 (중분류)", workCategory]]),
+                                        ? [["업종(대분류·중분류)", industry]]
+                                        : [["업종(대분류)", industry], ["업종(중분류)", workCategory]]),
                                     ...(phoneEnabled ? [["휴대폰", phone.replace(/\D/g, "").replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")]] : []),
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex justify-between items-center px-4 py-3.5">

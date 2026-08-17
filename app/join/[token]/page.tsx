@@ -235,7 +235,7 @@ export default function JoinOrgPage({ params }: { params: Promise<{ token: strin
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">현장담당자 이름</Label>
                         <Input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="현장담당자 성함 (나중에 변경 가능)" className={inputCls} />
-                        <p className="text-[12px] text-cur-muted-soft">업종·공종 등 현장 정보는 회사(안전관리자) 설정을 따라요.</p>
+                        <p className="text-[12px] text-cur-muted-soft">업종(대분류·중분류) 등 현장 정보는 회사(안전관리자) 설정을 따라요.</p>
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[14px] font-semibold text-cur-ink">이메일</Label>

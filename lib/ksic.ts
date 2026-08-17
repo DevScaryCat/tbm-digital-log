@@ -1,5 +1,6 @@
-// lib/ksic.ts — 업종·공종 선택 목록 (한국표준산업분류 KSIC 10차 기반, TBM 관련 업종만 발췌)
-// 용어 매핑(제품 언어): 업종 = KSIC 대분류, 공종 = KSIC 중분류.
+// lib/ksic.ts — 업종(대분류·중분류) 선택 목록 (한국표준산업분류 KSIC 10차 기반, TBM 관련 업종만 발췌)
+// 용어 매핑(제품 언어): "업종(대분류)" = KSIC 대분류, "업종(중분류)" = KSIC 중분류.
+// (구 라벨 '공종'은 UI에서 폐기 — DB 컬럼·변수명 work_category와 아래 분류 값 문자열은 그대로 유지)
 // 가입 단순화를 위해 TBM·안전관리 수요가 있는 고위험 업종만 남기고 나머지는 "기타"로 수렴.
 // 가입 위저드(app/signup)와 내 정보 수정(app/profile)이 공유한다.
 // 저장 값은 이름 문자열(코드 아님) — 기존 user_metadata(industry/work_category)와 형식 호환.
@@ -103,8 +104,8 @@ export function findKsicMajor(name: string): KsicMajor | undefined {
 
 /**
  * 중분류가 단 하나뿐이고 이름까지 대분류와 같은 업종(전기·가스, 기타).
- * 이런 업종에서 공종 셀렉트를 또 보여주면 같은 문자열을 두 번 고르게 된다 —
- * 가입·확인 화면은 이 판정으로 공종 칸을 숨기고 한 줄로 합친다(값은 자동 선택돼 저장은 동일).
+ * 이런 업종에서 업종(중분류) 셀렉트를 또 보여주면 같은 문자열을 두 번 고르게 된다 —
+ * 가입·확인 화면은 이 판정으로 업종(중분류) 칸을 숨기고 한 줄로 합친다(값은 자동 선택돼 저장은 동일).
  */
 export function isSingleSameMinor(name: string): boolean {
     const mj = findKsicMajor(name)

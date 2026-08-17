@@ -58,5 +58,26 @@ export async function POST(request: Request) {
   // 수신처에도 바로 올린다 — 발송 판정(approved만 발송)과 화면 목록이 이 행을 본다
   if (email) await ensureSelfConsent(admin, user.id, email);
 
+  // 복구 판정(email_verifications)도 즉시 채운다(2026-08-17 Chris: 제대로 적어 냈으면 인증
+  // 없이 등록 완료). 종전엔 수신 등록은 여기서 끝나는데 recoveryReady 판정만 '메일 링크를
+  // 눌렀다는 증거'를 따로 요구해서, 온보딩 이메일이 화면에선 영원히 '인증 대기'로 보였다.
+  // 실패해도 온보딩은 막지 않는다 — 수신 등록은 이미 끝났으므로 로그만 남긴다.
+  if (email) {
+    try {
+      const { data: dup } = await admin
+        .from("email_verifications")
+        .select("id")
+        .eq("user_id", user.id)
+        .ilike("email", email)
+        .not("verified_at", "is", null)
+        .maybeSingle();
+      if (!dup) {
+        await admin.from("email_verifications").insert({ user_id: user.id, email, verified_at: now });
+      }
+    } catch (e) {
+      console.error("온보딩 이메일 인증행 기록 실패:", e);
+    }
+  }
+
   return NextResponse.json({ success: true });
 }

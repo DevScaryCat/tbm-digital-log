@@ -9,7 +9,7 @@ import { getAdminClient, getUserFromRequest, PLANS } from "@/lib/portone";
 import { getOrgContext } from "@/lib/org";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
-import { isConsentCurrent, consentMetaPatch, recordConsent } from "@/lib/consent";
+import { isConsentCurrent, consentMetaPatch, recordConsent, ensureSelfConsent } from "@/lib/consent";
 import { extractMarks, markHash, usedTrialBeforeWithdrawal } from "@/lib/withdrawal";
 
 export const runtime = "nodejs";
@@ -124,6 +124,20 @@ export async function POST(request: Request) {
     if (usage) committed.usage_type = usage;
     if (workerType) committed.worker_type = workerType;
     if (exportFormat) committed.preferred_export_format = exportFormat;
+    // 카카오 계정 이메일 시딩(2026-08-17 Chris: 무인증 등록) — real_email이 비어 있으면
+    // 카카오 계정 이메일을 그대로 '내 이메일'로 등록한다. 종전엔 카카오 이메일이
+    // auth.users.email에만 머물러, 보고서 폴백(resolveMyReportEmail)으로는 쓰이면서
+    // 화면에선 '등록 안 됨/인증 대기'로 보이는 어긋남이 있었다. @tbm.com은 발급 계정
+    // 합성 주소라 제외.
+    const authEmail = String(user.email ?? "").trim();
+    const seedEmail =
+      !String(meta.real_email ?? "").trim() && authEmail && !authEmail.toLowerCase().endsWith("@tbm.com")
+        ? authEmail
+        : "";
+    if (seedEmail) {
+      committed.real_email = seedEmail;
+      committed.real_email_verified_at = new Date().toISOString();
+    }
     // 원장 기록이 실패하면 동의 캐시는 심지 않는다 — 증빙 0건인데 게이트만 닫혀
     // 재동의를 영영 못 받는 상태가 된다. 가입·체험은 그대로 진행하고(사용자를 막지 않는다)
     // 동의만 남겨 ConsentGate가 다음 진입 때 다시 받게 한다.
@@ -132,6 +146,27 @@ export async function POST(request: Request) {
     if (metaErr) {
       console.error("claim-trial metadata update error:", metaErr);
       return NextResponse.json({ error: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
+    }
+
+    if (seedEmail) {
+      // 수신처·복구 판정 즉시 등록 — /api/onboarding과 동일 처리. 실패해도 가입 마무리는 막지 않는다.
+      await ensureSelfConsent(admin, user.id, seedEmail);
+      try {
+        const { data: dup } = await admin
+          .from("email_verifications")
+          .select("id")
+          .eq("user_id", user.id)
+          .ilike("email", seedEmail)
+          .not("verified_at", "is", null)
+          .maybeSingle();
+        if (!dup) {
+          await admin
+            .from("email_verifications")
+            .insert({ user_id: user.id, email: seedEmail, verified_at: new Date().toISOString() });
+        }
+      } catch (e) {
+        console.error("claim-trial 이메일 인증행 기록 실패:", e);
+      }
     }
 
     // 휴대폰 인증 — 가입 위저드와 동일 검증 (게이트가 꺼져 있으면 생략).
@@ -204,7 +239,12 @@ export async function POST(request: Request) {
       kakaoHash: m0.kakaoHash,
       emailHashes: m0.emailHashes,
     };
-    const trialDenied = await usedTrialBeforeWithdrawal(admin, rejoinMarks);
+    // 테스트 번호는 탈퇴 표식 대조를 건너뛴다 — 탈퇴→재가입 반복 테스트용 (/api/signup과 동일 규칙,
+    // 2026-08-17. 표식은 카카오ID·이메일 해시로도 걸려 화이트리스트만으론 한 번 탈퇴 시 무제한이 깨진다)
+    const trialDenied =
+      normalizedPhone && isTrialTestPhone(normalizedPhone)
+        ? false
+        : await usedTrialBeforeWithdrawal(admin, rejoinMarks);
 
     const trialEnd = new Date(now);
     trialEnd.setMonth(trialEnd.getMonth() + 1);

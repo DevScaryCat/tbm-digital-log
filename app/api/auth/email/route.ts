@@ -16,12 +16,19 @@ export async function GET(request: Request) {
   // 계정 복구가 실제로 가능한가 — 보고서 수신 가능(real_email_verified_at)과 기준이 다르다.
   // 온보딩은 인증 없이도 그 시각을 찍으므로, 복구는 '메일 링크를 눌렀다는 증거'까지 요구한다
   // (lib/accountRecovery.hasLinkVerifiedRecoveryEmail — 재설정 발송 조건과 같은 판정).
-  const recoveryReady = current
+  let recoveryReady = current
     ? await hasLinkVerifiedRecoveryEmail(getAdminClient(), user.id, current)
     : false;
+  const reportEmail = resolveMyReportEmail(user as never);
+  // 카카오 계정: real_email이 없어도 카카오 계정 이메일이 이미 보고서 수신에 쓰인다
+  // (resolveMyReportEmail 폴백) — 화면 판정만 '등록 완료'로 (2026-08-17 Chris: 무인증 등록).
+  // 이 값은 표시용이다. 실제 복구 게이트(find-id/request-reset)는 각자
+  // hasLinkVerifiedRecoveryEmail을 따로 계산하고, 카카오 계정의 복구는 카카오 로그인 자체다.
+  const provider = String((user.app_metadata as Record<string, unknown> | undefined)?.provider ?? "");
+  if (!recoveryReady && !current && provider === "kakao" && reportEmail) recoveryReady = true;
   return NextResponse.json({
     // 인증까지 끝나 실제로 보고서를 받을 수 있는 주소
-    email: resolveMyReportEmail(user as never),
+    email: reportEmail,
     // 입력은 했지만 아직 **복구가 가능하지 않은** 주소 — 화면이 '인증 대기'를 말할 수 있게.
     //
     // ⚠️ 기준은 real_email_verified_at이 아니라 recoveryReady다(2026-08-11 Chris 실기기 버그).

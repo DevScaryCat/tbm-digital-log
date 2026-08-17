@@ -24,13 +24,16 @@ export function normalizePhone(input: unknown): string | null {
 }
 
 /**
- * 개발자 테스트 번호 — 무료체험 1회 제한(trial_redemptions)을 우회한다.
- * 발송 사전 체크와 가입 시 소진 기록 양쪽에서 건너뛰므로 같은 번호로 반복 가입 테스트 가능.
- * TRIAL_TEST_PHONES 환경변수(쉼표 구분)로 교체할 수 있다.
+ * 개발자 테스트 번호 — 무료체험 1회 제한(trial_redemptions)과 탈퇴 표식(withdrawn_users)
+ * 검사·기록을 전부 우회한다. 같은 번호로 가입→탈퇴→재가입 반복 테스트가 영구히 가능.
+ * TRIAL_TEST_PHONES 환경변수(쉼표 구분)는 이 기본값을 **대체**한다(추가 아님) —
+ * env를 쓸 때는 기존 번호까지 전부 나열할 것.
+ * 2026-08-17: 01022521071 테스터 추가(Chris). 01063522968은 8/16 탈퇴 표식에 걸려
+ * 무제한이 깨져 있었음 → 탈퇴 표식 우회도 이날 함께 추가.
  */
 export function isTrialTestPhone(phone: string | null): boolean {
   if (!phone) return false
-  return (process.env.TRIAL_TEST_PHONES ?? "01063522968")
+  return (process.env.TRIAL_TEST_PHONES ?? "01063522968,01022521071")
     .split(",")
     .map((p) => p.replace(/\D/g, ""))
     .includes(phone)

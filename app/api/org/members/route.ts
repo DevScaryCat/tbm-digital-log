@@ -16,6 +16,12 @@ import {
 
 export const runtime = "nodejs";
 
+// Supabase Auth 유출 비밀번호 차단(HIBP) 거부 판정 — 사용자 입력 문제라 500이 아닌 400으로
+// 구체 안내한다. 웹 첫 로그인 흐름(app/page.tsx)의 매핑과 같은 정규식.
+function isWeakPasswordError(err: { message?: string } | null | undefined): boolean {
+  return /weak|easy to guess|pwned/i.test(err?.message ?? "");
+}
+
 async function requireOwner(
   request: Request,
   opts: { requireValidSub?: boolean; createOrgIfMissing?: boolean } = {}
@@ -148,7 +154,19 @@ export async function POST(request: Request) {
       },
     });
     if (userErr || !created?.user) {
-      if (userErr?.message?.includes("already registered") || userErr?.status === 422) {
+      console.error("member create error:", userErr);
+      // 유출 비밀번호 차단(HIBP) 422 — 종전엔 '422=중복 아이디'로 뭉뚱그려 흔한 비밀번호를
+      // '이미 존재하는 아이디'로 오답했다(2026-08-17 QA). 중복은 메시지·코드로만 판정한다.
+      if (isWeakPasswordError(userErr)) {
+        return NextResponse.json(
+          { error: "너무 흔한 비밀번호예요. 숫자·문자를 섞어 다른 초기 비밀번호를 정해주세요." },
+          { status: 400 },
+        );
+      }
+      if (
+        userErr?.message?.includes("already registered") ||
+        (userErr as { code?: string } | null)?.code === "email_exists"
+      ) {
         return NextResponse.json({ error: "이미 존재하는 아이디입니다." }, { status: 400 });
       }
       return NextResponse.json({ error: userErr?.message || "계정 생성 실패" }, { status: 400 });
@@ -226,7 +244,18 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "비밀번호는 8자 이상 입력해주세요." }, { status: 400 });
       }
       const { error } = await r.admin.auth.admin.updateUserById(String(userId), { password: newPassword });
-      if (error) return NextResponse.json({ error: "비밀번호 변경 실패" }, { status: 500 });
+      if (error) {
+        // 원문은 로그로 — 종전엔 전부 '비밀번호 변경 실패' 500으로 뭉개져 원인 추적이 불가능했다
+        // (2026-08-17 QA: 12345678이 유출 비밀번호 차단(HIBP) 422로 거부된 케이스가 이 문구로 나감).
+        console.error("member password reset error:", error);
+        if (isWeakPasswordError(error)) {
+          return NextResponse.json(
+            { error: "너무 흔한 비밀번호예요. 숫자·문자를 섞어 다른 비밀번호를 정해주세요." },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json({ error: "비밀번호 변경 실패" }, { status: 500 });
+      }
       return NextResponse.json({ success: true });
     }
 

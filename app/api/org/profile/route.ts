@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const ctx = await getOrgContext(user.id, admin);
     if (ctx.kind === "member") {
       return NextResponse.json(
-        { error: "업종·공종은 회사 공통 설정입니다. 회사 감독자에게 문의하세요." },
+        { error: "업종(대분류·중분류)는 회사 공통 설정입니다. 회사 감독자에게 문의하세요." },
         { status: 403 }
       );
     }

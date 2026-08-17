@@ -306,13 +306,20 @@ export async function POST(request: Request) {
       // 일치하면 가입은 그대로 진행하되 구독 행을 만료 상태로 만든다(체험 없음).
       // trial_redemptions(번호 소진)는 게이트가 켜져 있을 때만 작동해, 게이트가 꺼진
       // 지금은 이 표식이 유일한 재수령 방벽이다.
-      const trialDenied = await usedTrialBeforeWithdrawal(supabaseAdmin, {
-        phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
-        // 로그인 합성 이메일(`id@tbm.com`)이 핵심이다 — 탈퇴 표식의 auth 이메일과 이것이
-        // 대조돼야 같은 아이디 재가입이 잡힌다(2026-08-16 QA: realEmail만 보던 종전 대조는
-        // 표식과 교집합이 없어 완전 무동작이었다)
-        emailHashes: [markHash(fullEmailId), ...(realEmailStr ? [markHash(realEmailStr)] : [])],
-      });
+      // 테스트 번호는 탈퇴 표식 대조를 통째로 건너뛴다 — 테스터는 탈퇴→재가입을
+      // 반복 검증해야 하는데, 표식은 번호 외에 아이디·이메일 해시로도 걸려서
+      // 화이트리스트(trial_redemptions 우회)만으로는 한 번 탈퇴하는 순간 무제한이 깨진다
+      // (01063522968이 2026-08-16 실제로 이렇게 깨졌다).
+      const trialDenied =
+        normalizedPhone && isTrialTestPhone(normalizedPhone)
+          ? false
+          : await usedTrialBeforeWithdrawal(supabaseAdmin, {
+              phoneHash: normalizedPhone ? markHash(normalizedPhone) : null,
+              // 로그인 합성 이메일(`id@tbm.com`)이 핵심이다 — 탈퇴 표식의 auth 이메일과 이것이
+              // 대조돼야 같은 아이디 재가입이 잡힌다(2026-08-16 QA: realEmail만 보던 종전 대조는
+              // 표식과 교집합이 없어 완전 무동작이었다)
+              emailHashes: [markHash(fullEmailId), ...(realEmailStr ? [markHash(realEmailStr)] : [])],
+            });
       const now = new Date();
       const trialEnd = new Date(now);
       trialEnd.setMonth(trialEnd.getMonth() + 1);

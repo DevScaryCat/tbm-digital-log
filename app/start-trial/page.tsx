@@ -184,8 +184,8 @@ export default function StartTrialPage() {
         if (!usage) { setError("사용 형태를 선택해주세요."); return }
         if (!fullName.trim()) { setError("성명을 입력해주세요."); return }
         if (!companyName.trim()) { setError("현장명(또는 업체명)을 입력해주세요."); return }
-        if (!industry) { setError("업종을 선택해주세요."); return }
-        if (!workCategory) { setError("공종을 선택해주세요."); return }
+        if (!industry) { setError("업종(대분류)를 선택해주세요."); return }
+        if (!workCategory) { setError("업종(중분류)를 선택해주세요."); return }
         if (!exportFormat) { setError("문서 출력 형식을 선택해주세요."); return }
         if (phoneEnabled && !verificationId) { setError("휴대폰 인증을 완료해주세요."); return }
         setLoading(true)
@@ -373,7 +373,7 @@ export default function StartTrialPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
+                        <Label className="text-[13px] font-medium text-cur-body">업종(대분류)</Label>
                         <Select
                             value={industry}
                             onValueChange={(v) => {
@@ -384,7 +384,7 @@ export default function StartTrialPage() {
                             }}
                         >
                             <SelectTrigger className={selectCls}>
-                                <SelectValue placeholder="업종을 선택해주세요" />
+                                <SelectValue placeholder="업종(대분류)를 선택해주세요" />
                             </SelectTrigger>
                             <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                                 {KSIC_MAJORS.map((m) => (
@@ -397,10 +397,10 @@ export default function StartTrialPage() {
                     {/* 중분류가 대분류와 같은 단일 항목(전기·가스, 기타)이면 이미 자동 선택됨 — 같은 이름을 두 번 고르게 하지 않는다 */}
                     {industry && !isSingleSameMinor(industry) && (
                         <div className="space-y-1.5">
-                            <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
+                            <Label className="text-[13px] font-medium text-cur-body">업종(중분류)</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory}>
                                 <SelectTrigger className={selectCls}>
-                                    <SelectValue placeholder="주력 공종을 선택해주세요" />
+                                    <SelectValue placeholder="업종(중분류)를 선택해주세요" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                                     {minors.map((mi) => (

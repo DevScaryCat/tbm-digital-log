@@ -577,8 +577,8 @@ export default function MainPage() {
     if (setupPw.length < 8) { setSetupErr("비밀번호는 8자 이상이어야 해요."); return }
     if (setupPw !== setupPw2) { setSetupErr("비밀번호가 서로 달라요. 다시 확인해주세요."); return }
     if (!setupSite.trim()) { setSetupErr("현장명을 입력해주세요."); return }
-    if (!setupInheritedProfile && !setupIndustry) { setSetupErr("업종을 선택해주세요."); return }
-    if (!setupInheritedProfile && !setupWorkCategory) { setSetupErr("공종을 선택해주세요."); return }
+    if (!setupInheritedProfile && !setupIndustry) { setSetupErr("업종(대분류)를 선택해주세요."); return }
+    if (!setupInheritedProfile && !setupWorkCategory) { setSetupErr("업종(중분류)를 선택해주세요."); return }
     setSetupBusy(true)
     try {
       const { error } = await supabase.auth.updateUser({
@@ -826,7 +826,7 @@ export default function MainPage() {
             {/* 업종·공종은 발급 시 회사 공통 값을 상속받았으면 묻지 않는다 (레거시 계정만 수집) */}
             {!setupInheritedProfile && (
               <div className="space-y-1">
-                <label className="text-[13px] font-medium text-cur-body">업종 (대분류)</label>
+                <label className="text-[13px] font-medium text-cur-body">업종(대분류)</label>
                 <Select value={setupIndustry} onValueChange={(v) => {
                   setSetupIndustry(v)
                   // 중분류가 하나뿐인 업종은 공종을 자동 선택 (가입 위저드와 동일 규칙)
@@ -834,7 +834,7 @@ export default function MainPage() {
                   setSetupWorkCategory(minors.length === 1 ? minors[0].name : "")
                 }}>
                   <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
-                    <SelectValue placeholder="업종을 선택해주세요" />
+                    <SelectValue placeholder="업종(대분류)를 선택해주세요" />
                   </SelectTrigger>
                   <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                     {KSIC_MAJORS.map((m) => <SelectItem key={m.code} value={m.name} className="text-[15px] py-2.5">{m.name}</SelectItem>)}
@@ -845,10 +845,10 @@ export default function MainPage() {
             {/* 중분류가 대분류와 같은 단일 항목이면 자동 선택돼 있어 묻지 않는다 (가입 위저드와 동일 규칙) */}
             {!setupInheritedProfile && setupIndustry && !isSingleSameMinor(setupIndustry) && (
               <div className="space-y-1 animate-in slide-in-from-top-2">
-                <label className="text-[13px] font-medium text-cur-body">공종 (중분류)</label>
+                <label className="text-[13px] font-medium text-cur-body">업종(중분류)</label>
                 <Select value={setupWorkCategory} onValueChange={setSetupWorkCategory}>
                   <SelectTrigger className="w-full h-11 text-[15px] border-cur-hairline rounded-[8px] bg-cur-elevated text-cur-ink focus:ring-1 focus:ring-cur-primary">
-                    <SelectValue placeholder="주력 공종을 선택해주세요" />
+                    <SelectValue placeholder="업종(중분류)를 선택해주세요" />
                   </SelectTrigger>
                   <SelectContent className="bg-cur-card border-cur-hairline rounded-[12px]">
                     {(findKsicMajor(setupIndustry)?.minors ?? []).map((mi) => <SelectItem key={mi.code} value={mi.name} className="text-[15px] py-2.5">{mi.name}</SelectItem>)}

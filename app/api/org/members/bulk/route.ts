@@ -150,7 +150,18 @@ export async function POST(request: Request) {
           },
         });
         if (userErr || !createdUser?.user) {
-          if (userErr?.message?.includes("already registered") || userErr?.status === 422) continue;
+          // 유출 비밀번호 차단(HIBP) 422 — 배치 전체가 같은 초기 비밀번호라 continue하면
+          // 후보 아이디만 소진하며 헛돌고 '빈 아이디 부족' 오답이 된다. 즉시 중단·구체 안내.
+          if (/weak|easy to guess|pwned/i.test(userErr?.message ?? "")) {
+            throw new Error("너무 흔한 비밀번호예요. 숫자·문자를 섞어 다른 초기 비밀번호를 정해주세요.");
+          }
+          // 중복 아이디는 메시지·코드로만 판정 — '422 전부 중복' 판정은 위 케이스를 삼켰다(2026-08-17 QA)
+          if (
+            userErr?.message?.includes("already registered") ||
+            (userErr as { code?: string } | null)?.code === "email_exists"
+          ) {
+            continue;
+          }
           throw new Error(userErr?.message || "계정 생성 실패");
         }
 

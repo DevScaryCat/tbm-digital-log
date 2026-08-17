@@ -267,7 +267,7 @@ export default function ProfilePage() {
                 {/* 역할 판정 실패 — fail-closed로 잠겨 있으니 복구 수단을 화면에 준다 */}
                 {!ctxLoading && !ctx && (
                     <div className="bg-cur-card rounded-2xl border border-cur-hairline px-4 py-3.5 flex items-center justify-between gap-3">
-                        <p className="text-[13px] text-cur-muted">역할 확인에 실패해 업종·공종 수정이 잠겨 있어요.</p>
+                        <p className="text-[13px] text-cur-muted">역할 확인에 실패해 업종(대분류·중분류) 수정이 잠겨 있어요.</p>
                         <button
                             type="button"
                             onClick={() => loadCtx(true)}
@@ -281,7 +281,7 @@ export default function ProfilePage() {
                 <div className="bg-cur-card rounded-2xl p-5 border border-cur-hairline space-y-4">
                     {isMember && (
                         <p className="text-[12px] text-cur-muted">
-                            업종·공종은 감독자가 관리해요.
+                            업종(대분류·중분류)는 감독자가 관리해요.
                         </p>
                     )}
                     <div className="space-y-2">
@@ -317,7 +317,7 @@ export default function ProfilePage() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-cur-body">업종 (대분류)</Label>
+                        <Label className="text-[13px] font-medium text-cur-body">업종(대분류)</Label>
                         <Select
                             value={industry}
                             onValueChange={(v) => {
@@ -329,7 +329,7 @@ export default function ProfilePage() {
                             disabled={!companyEditable}
                         >
                             <SelectTrigger className="w-full h-11 text-[14px]">
-                                <SelectValue placeholder="업종 선택" />
+                                <SelectValue placeholder="업종(대분류) 선택" />
                             </SelectTrigger>
                             <SelectContent>
                                 {KSIC_MAJORS.map((m) => (
@@ -345,10 +345,10 @@ export default function ProfilePage() {
                     </div>
                     {industry && (
                         <div className="space-y-2">
-                            <Label className="text-[13px] font-medium text-cur-body">공종 (중분류)</Label>
+                            <Label className="text-[13px] font-medium text-cur-body">업종(중분류)</Label>
                             <Select value={workCategory} onValueChange={setWorkCategory} disabled={!companyEditable}>
                                 <SelectTrigger className="w-full h-11 text-[14px]">
-                                    <SelectValue placeholder="공종 선택" />
+                                    <SelectValue placeholder="업종(중분류) 선택" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {minors.map((mi) => (
@@ -366,7 +366,7 @@ export default function ProfilePage() {
                     {/* solo에게는 숨김 — 아직 자식 현장이 없어 '모든 현장 계정' 문구가 혼란만 준다 */}
                     {ctx?.kind === "owner" && (
                         <p className="text-[12px] text-cur-muted">
-                            업종·공종은 저장하면 모든 현장 계정에 함께 적용돼요.
+                            업종(대분류·중분류)는 저장하면 모든 현장 계정에 함께 적용돼요.
                         </p>
                     )}
                     {/* 문서 출력 형식은 여기서 뺐다(Chris) — 보고서 설정 > 문서 형식 탭이 단일 창구 */}
