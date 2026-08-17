@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   // 이 값은 표시용이다. 실제 복구 게이트(find-id/request-reset)는 각자
   // hasLinkVerifiedRecoveryEmail을 따로 계산하고, 카카오 계정의 복구는 카카오 로그인 자체다.
   const provider = String((user.app_metadata as Record<string, unknown> | undefined)?.provider ?? "");
-  if (!recoveryReady && !current && provider === "kakao" && reportEmail) recoveryReady = true;
+  if (!recoveryReady && !current && ["kakao", "apple"].includes(provider) && reportEmail) recoveryReady = true;
   return NextResponse.json({
     // 인증까지 끝나 실제로 보고서를 받을 수 있는 주소
     email: reportEmail,

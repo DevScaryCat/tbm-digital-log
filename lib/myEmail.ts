@@ -9,10 +9,14 @@ export interface MyEmailSource {
   identities?: { provider: string }[] | null
 }
 
+// 소셜 계정 판정(카카오+애플, 2026-08-17 애플 로그인 도입) — 이름은 호환을 위해 유지.
+// 둘 다 비밀번호가 없고 provider가 검증한 이메일이 auth email로 온다는 점에서 규칙이 같다.
+// 애플 '이메일 가리기'의 @privaterelay.appleid.com 주소도 실수신 가능(발신 도메인을 애플
+// 콘솔에 등록해야 함 — STORE_SUBMISSION §9).
 export function isKakaoUser(u: MyEmailSource): boolean {
   return (
-    (u.app_metadata ?? {})["provider"] === "kakao" ||
-    (u.identities ?? []).some((i) => i.provider === "kakao")
+    ["kakao", "apple"].includes(String((u.app_metadata ?? {})["provider"])) ||
+    (u.identities ?? []).some((i) => i.provider === "kakao" || i.provider === "apple")
   )
 }
 
