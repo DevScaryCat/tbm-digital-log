@@ -23,6 +23,7 @@ import {
   resolveSeatCharge,
   getStoreSeatCapacity,
   CAPACITY_FULL_MESSAGE,
+  isStoreSource,
 } from "@/lib/billing";
 
 export const runtime = "nodejs";
@@ -109,6 +110,19 @@ export async function POST(request: Request) {
     if (!selfPaid) {
       const gate = await resolveSeatCharge(admin, sub as any, { count: 1, seatsClaimed: false });
       if (!gate.ok) {
+        // 스토어 구독인데 정원 요금제(seats-NN)가 아니면 dry-run이 카드 경로로 떨어져
+        // "등록된 결제 수단이 없습니다"를 낸다 — 스토어 구독자에게 카드 안내는 오답이고
+        // 진짜 할 일은 자리(정원) 요금제로 바꾸는 것이다(2026-08-17 QA 실측: 기본 구독
+        // 상태에서 재연결 시도). reason을 capacity로 내려 앱이 '구독 및 결제' 링크를 잡게 한다.
+        if (isStoreSource((sub as { source?: string | null }).source)) {
+          return NextResponse.json(
+            {
+              error: "현장 계정 자리(정원)가 있는 요금제가 아니에요. 자리를 늘린 뒤 다시 연결해주세요.",
+              reason: "capacity",
+            },
+            { status: 402 }
+          );
+        }
         return NextResponse.json(
           { error: gate.error ?? "결제에 실패했습니다.", reason: gate.reason },
           { status: 402 }
