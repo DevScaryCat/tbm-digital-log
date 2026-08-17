@@ -20,10 +20,16 @@ export async function PATCH(request: Request) {
 
   const admin = getAdminClient();
 
+  // 소속 현장(member)은 사용 형태의 주체가 아니다 — multi로 바꾸면 자식이 부모 UI(메뉴·정원
+  // 게이트)를 얻는 오염이 된다(2026-08-17 앱 multi-intro 신설과 함께 발견된 구멍. 앱 가드와 이중 방어).
+  const ctx = await getOrgContext(user.id, admin);
+  if (ctx.kind === "member") {
+    return NextResponse.json({ error: "소속 현장 계정은 사용 형태를 바꿀 수 없어요." }, { status: 403 });
+  }
+
   // multi→solo: 활성 현장 계정이 남아 있으면 서버가 막는다 — 화면 비활성화는 우회 가능하고,
   // 연결이 남은 채 solo가 되면 '혼자'라면서 회사 좌석 청구가 계속되는 모순 상태가 된다.
   if (usage === "solo") {
-    const ctx = await getOrgContext(user.id, admin);
     if (ctx.kind === "owner" && (ctx.memberIds ?? []).length > 0) {
       return NextResponse.json({ error: "현장 계정 연결을 먼저 해제해주세요." }, { status: 409 });
     }
