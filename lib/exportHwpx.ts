@@ -9,6 +9,7 @@
 //                               본문 <hc:img binaryItemIDRef="…">가 그 id를 참조
 // - 표 구성·항목·강조는 exportDocx.ts(docx 빌더)와 동일하게 재현한다.
 // - 텍스트 문서 생성 경로는 Node에서도 동작(브라우저 전용 API는 이미지 로드 경로에만 존재).
+import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import JSZip from "jszip"
 import {
     loadImage,
@@ -629,6 +630,8 @@ const TRANSCRIPT_NOTE =
  * (&, <, > 가 날것으로 남으면 section0.xml이 깨져 한/글이 파일을 아예 못 연다).
  */
 function transcriptParas(doc: HwpxDoc, raw?: string | null): string[] {
+    // 원문 노출 정지(2026-08-18 Chris) — 수집·저장은 그대로, 출력물에서만 뺀다. lib/reportFlags.ts 참조
+    if (!TRANSCRIPT_VISIBLE) return []
     // STT 텍스트에 \r\n·\r이 섞여 들어와도 문단 분할이 어긋나지 않게 정규화
     const text = String(raw ?? "").replace(/\r\n?/g, "\n").trim()
     if (!text) return []

@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { TRANSCRIPT_VISIBLE } from "@/lib/reportFlags"
 import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -145,7 +146,8 @@ export default function ReportPage() {
 
     if (!log) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
 
-    const transcript = log.raw_transcript?.trim() || ""
+    // 원문 노출 정지(2026-08-18 Chris) — 수집은 유지, 화면·토글·출력에서만 숨긴다(lib/reportFlags.ts)
+    const transcript = TRANSCRIPT_VISIBLE ? log.raw_transcript?.trim() || "" : ""
     const maleCount = participants.filter(p => p.gender === 'M').length
     const femaleCount = participants.filter(p => p.gender === 'F').length
     const totalCount = participants.length

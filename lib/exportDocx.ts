@@ -3,6 +3,7 @@
 // - MinutesView / ReportView의 표 구조·항목·강조를 docx Table로 재현
 // - Packer.toBlob 사용 (Node Buffer 등 서버 전용 API 금지)
 // - 서명/사진 로드 실패는 이미지만 생략 — 문서 생성 자체는 계속 진행
+import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import {
     AlignmentType,
     BorderStyle,
@@ -278,6 +279,8 @@ function footer(company?: string | null): Paragraph {
  * 원문이 비면 빈 배열 → 제목만 남은 페이지가 생기지 않는다.
  */
 function transcriptParas(raw?: string | null): Paragraph[] {
+    // 원문 노출 정지(2026-08-18 Chris) — 수집·저장은 그대로, 출력물에서만 뺀다. lib/reportFlags.ts 참조
+    if (!TRANSCRIPT_VISIBLE) return []
     // STT 텍스트에 CRLF가 섞여 들어와도 줄 단위가 깨지지 않게 통일.
     // docx 라이브러리는 XML 1.0 금지 문자를 걸러주지 않아, 원문에 제어문자가 섞이면
     // 워드가 파일을 아예 못 연다 — 여기서 떨궈낸다(HWPX의 esc()와 같은 문자군).

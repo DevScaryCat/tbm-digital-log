@@ -6,6 +6,7 @@
 // - exceljs는 무겁기 때문에 이 모듈 자체를 호출부에서 `await import("@/lib/exportXlsx")`로
 //   동적 로드하는 것을 전제로 한다(정적 재노출·사이드이펙트 없음 → 코드 스플리팅 안전).
 import ExcelJS from "exceljs"
+import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import {
     loadImage,
     type EducationDocItem,
@@ -225,6 +226,8 @@ function appendTranscript(
     cols: number,
     raw: string | null | undefined
 ): void {
+    // 원문 노출 정지(2026-08-18 Chris) — 수집·저장은 그대로, 출력물에서만 뺀다. lib/reportFlags.ts 참조
+    if (!TRANSCRIPT_VISIBLE) return
     // ExcelJS는 C0 제어문자는 걸러주지만 U+FFFE·U+FFFF(XML 1.0 비문자)는 그대로 써서
     // 파일이 안 열린다 — 다른 형식과 같은 문자군을 여기서도 떨궈낸다.
     const text = String(raw ?? "")

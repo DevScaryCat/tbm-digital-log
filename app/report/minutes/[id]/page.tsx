@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { TRANSCRIPT_VISIBLE } from "@/lib/reportFlags"
 import { resolveSignedMap, signed } from "@/lib/storageSign"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -187,7 +188,8 @@ export default function MinutesReportPage() {
 
     if (!minutes) return <div className="min-h-screen flex items-center justify-center bg-gray-100">데이터가 없습니다.</div>
 
-    const transcript = minutes.raw_transcript?.trim() || ""
+    // 원문 노출 정지(2026-08-18 Chris) — 수집은 유지, 화면·토글·출력에서만 숨긴다(lib/reportFlags.ts)
+    const transcript = TRANSCRIPT_VISIBLE ? minutes.raw_transcript?.trim() || "" : ""
 
     return (
         <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-cur-card text-black font-sans">
