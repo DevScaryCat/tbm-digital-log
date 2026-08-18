@@ -1,6 +1,6 @@
 // app/signup/page.tsx — 가입 위저드
 // ① 계정 ② 현장 정보(업종·공종 — 데이터 분석용) ③ 휴대폰 인증(솔라피 OTP, 켜져 있을 때만) ④ 확인·가입
-// 휴대폰 인증이 켜져 있으면(서버 env) 가입 즉시 카드 없이 1개월 무료체험이 시작된다.
+// 휴대폰 인증이 켜져 있으면(서버 env) 가입 즉시 카드 없이 7일 무료체험이 시작된다.
 // 꺼져 있으면 기존 흐름(가입 → 카드 등록 시 체험) 그대로 3단계로 동작한다.
 "use client"
 
@@ -226,7 +226,7 @@ export default function SignupPage() {
                         <h2 className="text-[24px] font-normal text-cur-ink tracking-[-0.72px]">회원가입 완료!</h2>
                         {trialStarted ? (
                             <p className="text-[15px] text-cur-muted font-medium">
-                                <b className="text-cur-primary">1개월 무료체험</b>이 시작되었습니다. 🎉<br />
+                                <b className="text-cur-primary">7일 무료체험</b>이 시작되었습니다. 🎉<br />
                                 모든 기능을 자유롭게 써보세요.<br />
                                 {autoLoggedIn ? "잠시 후 홈으로 이동합니다." : "잠시 후 로그인 페이지로 이동합니다."}
                             </p>
@@ -314,7 +314,7 @@ export default function SignupPage() {
                     <CardDescription className="text-[13px] text-cur-muted font-medium">
                         {stepKey === "account" && "로그인에 사용할 계정을 만들어주세요"}
                         {stepKey === "site" && "현장 정보를 알려주세요 — 맞춤 통계에 활용돼요"}
-                        {stepKey === "phone" && "본인 확인 후 1개월 무료체험이 시작됩니다"}
+                        {stepKey === "phone" && "본인 확인 후 7일 무료체험이 시작됩니다"}
                         {stepKey === "confirm" && "입력하신 내용을 확인해주세요"}
                     </CardDescription>
 
@@ -452,7 +452,7 @@ export default function SignupPage() {
 
                         {stepKey === "confirm" && phoneEnabled && (
                             <p className="text-[13px] text-cur-muted bg-cur-primary/5 border border-cur-primary/20 rounded-[8px] p-3.5 leading-5">
-                                가입과 동시에 <b className="text-cur-primary">1개월 무료체험</b>이 시작됩니다. 체험이 끝나면 결제수단을 등록해 월 3,900원으로 이어서 이용할 수 있어요.
+                                가입과 동시에 <b className="text-cur-primary">7일 무료체험</b>이 시작됩니다. 체험이 끝나면 결제수단을 등록해 월 3,900원으로 이어서 이용할 수 있어요.
                             </p>
                         )}
 

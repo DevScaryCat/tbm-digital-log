@@ -107,7 +107,7 @@ export default function PricingPage() {
                     onClick={() => router.push("/login")}
                     className="w-full h-12 rounded-[8px] bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[15px] font-bold"
                 >
-                    첫 달 무료로 시작하기
+                    7일 무료로 시작하기
                 </Button>
             )
         }
@@ -228,7 +228,7 @@ export default function PricingPage() {
                                     ? `계정 ${accountCount}개 × ${SEAT_PRICE.toLocaleString()}원 · 매달 · VAT 포함`
                                     : `계정 1개당 · 매달 · VAT 포함`}
                             </p>
-                            <p className="text-[12px] text-cur-muted-soft mt-1">첫 달 무료 · 언제든 해지</p>
+                            <p className="text-[12px] text-cur-muted-soft mt-1">7일 무료 · 언제든 해지</p>
                         </div>
                     )}
 

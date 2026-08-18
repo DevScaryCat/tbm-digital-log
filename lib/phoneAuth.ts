@@ -1,7 +1,7 @@
 import { createHmac } from "crypto"
 import { SolapiMessageService } from "solapi"
 
-// 휴대폰인증(솔라피 SMS OTP) — 카드 없는 1개월 Pro 무료체험 게이트.
+// 휴대폰인증(솔라피 SMS OTP) — 카드 없는 Pro 무료체험(lib/billing TRIAL_DAYS일) 게이트.
 //
 // 활성화 규칙: SOLAPI_API_KEY/SECRET/SENDER 3개가 모두 있으면 실발송으로 켜진다.
 // 프로덕션에 키가 없으면 기능 자체가 꺼져 기존(카드 우선) 가입 흐름이 그대로 유지된다 —

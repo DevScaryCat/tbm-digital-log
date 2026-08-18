@@ -1,7 +1,7 @@
 // app/api/auth/claim-trial/route.ts — 기존 계정의 가입 마무리 + 무료체험 개시 (카카오·구 무인증 가입용)
 // 아이디 가입 위저드는 가입 시점에 체험을 받지만, 카카오 OAuth와 인증 게이트가 꺼져 있던
 // 시절의 가입자는 subscriptions 행 없이, 그리고 위저드가 받던 온보딩 값(업종·공종·근로자
-// 구분·출력 형식·약관 동의) 없이 시작한다 — 랜딩의 "첫 달 무료" 약속이 그 경로에서만
+// 구분·출력 형식·약관 동의) 없이 시작한다 — 랜딩의 무료체험 약속이 그 경로에서만
 // 깨졌고, 문서에는 카톡 닉네임이 업체명으로 인쇄됐다. 이 라우트가 위저드와 동일한
 // 규칙(휴대폰 인증 + trial_redemptions 번호 1회)으로 그 공백을 한 번에 메운다.
 import { NextResponse } from "next/server";
@@ -11,6 +11,7 @@ import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneA
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
 import { isConsentCurrent, consentMetaPatch, recordConsent, ensureSelfConsent } from "@/lib/consent";
 import { extractMarks, markHash, usedTrialBeforeWithdrawal } from "@/lib/withdrawal";
+import { TRIAL_DAYS } from "@/lib/billing";
 
 export const runtime = "nodejs";
 
@@ -227,7 +228,7 @@ export async function POST(request: Request) {
       await admin.auth.admin.updateUserById(user.id, { user_metadata: committed });
     }
 
-    // 카드 없는 Pro 1개월 체험 — 가입 위저드의 발급 블록과 동일 필드
+    // 카드 없는 Pro 무료체험(TRIAL_DAYS일) — 가입 위저드의 발급 블록과 동일 필드
     const now = new Date();
     // ── 탈퇴 후 재가입 체험 차단 (2026-08-14 Chris 승인) ──
     // 이전 탈퇴 계정의 해시 표식(전화·카카오·이메일)과 대조 — 일치하면 계정은 만들어주되
@@ -247,7 +248,7 @@ export async function POST(request: Request) {
         : await usedTrialBeforeWithdrawal(admin, rejoinMarks);
 
     const trialEnd = new Date(now);
-    trialEnd.setMonth(trialEnd.getMonth() + 1);
+    trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
     const pro = PLANS.monthly_pro;
     const { error: subErr } = await admin.from("subscriptions").upsert(
       trialDenied

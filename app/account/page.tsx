@@ -345,7 +345,7 @@ export default function AccountPage() {
                             {/* 체험이 공짜로 끝나는 게 아니라 유료로 이어진다는 걸 상단에서 먼저 말한다 */}
                             {cardlessTrialActive && (
                                 <p className="text-[12px] text-cur-muted -mt-2 mb-4">
-                                    무료체험 1달 후부터 월 사용료가 청구됩니다
+                                    무료체험이 끝나면 결제수단을 등록해야 이어서 쓸 수 있어요
                                 </p>
                             )}
 

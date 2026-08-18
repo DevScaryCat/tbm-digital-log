@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { phoneAuthEnabled, normalizePhone, isTrialTestPhone } from "@/lib/phoneAuth";
 import { PLANS, subscriptionAllows, isBillablePlan } from "@/lib/portone";
-import { isStoreSource } from "@/lib/billing";
+import { isStoreSource, TRIAL_DAYS } from "@/lib/billing";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { consentMetaPatch, recordConsent } from "@/lib/consent";
 import { EXPORT_FORMATS } from "@/lib/exportFormats";
@@ -299,7 +299,7 @@ export async function POST(request: Request) {
         await supabaseAdmin.from("phone_otps").update({ consumed: true }).eq("id", verifiedOtpId);
       }
 
-      // 카드 없는 Pro 1개월 체험 — billing_key null이라 cron 과금 대상에서 자동 제외되고,
+      // 카드 없는 Pro 무료체험(TRIAL_DAYS일) — billing_key null이라 cron 과금 대상에서 자동 제외되고,
       // 만료 후에는 게이트(subscriptionAllows/isAllowed)가 결제 등록으로 유도한다.
       //
       // 탈퇴 후 재가입 체험 차단(2026-08-14): 이전 탈퇴 계정의 해시 표식과 대조 —
@@ -322,7 +322,7 @@ export async function POST(request: Request) {
             });
       const now = new Date();
       const trialEnd = new Date(now);
-      trialEnd.setMonth(trialEnd.getMonth() + 1);
+      trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
       if (trialDenied) trialEnd.setTime(now.getTime());
       const pro = PLANS.monthly_pro;
       const { error: subErr } = await supabaseAdmin.from("subscriptions").upsert(

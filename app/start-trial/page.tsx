@@ -3,7 +3,7 @@
 // 가입 마무리 화면 — 구독 행 없이 시작한 계정(카카오 OAuth, 구 무인증 가입) 전용.
 // 아이디 가입 위저드가 가입 시점에 받는 것(약관 동의·현장명·업종·공종·근로자 구분)에
 // 성명·출력 형식까지 한 화면에서 받고, 동일한 규칙(휴대폰 인증 · 번호당 1회)으로 카드 없는
-// 1개월 체험을 발급한다. 이 값들이 비면 문서에 카톡 닉네임이 업체명으로 인쇄되고,
+// 7일 체험을 발급한다. 이 값들이 비면 문서에 카톡 닉네임이 업체명으로 인쇄되고,
 // 회의록 진행자 칸에도 닉네임이 들어가며, 교육시간 목표가 12시간으로 단정되고, 출력은
 // PDF로 고정된다.
 // useRequireSubscription이 "구독 행 없음" 계정을 /pricing 대신 여기로 보낸다.
@@ -264,9 +264,9 @@ export default function StartTrialPage() {
                 <div className="flex flex-col items-center gap-4">
                     <Logo size="md" />
                     <div className="text-center space-y-1.5">
-                        <h1 className="text-[22px] font-bold tracking-[-0.02em]">첫 달 무료로 시작해요</h1>
+                        <h1 className="text-[22px] font-bold tracking-[-0.02em]">7일 무료로 시작해요</h1>
                         <p className="text-[13px] text-cur-muted leading-relaxed">
-                            한 달간 모든 기능이 무료예요.
+                            7일간 모든 기능이 무료예요.
                             <br />결제수단을 등록하기 전에는 요금이 청구되지 않습니다.
                         </p>
                     </div>

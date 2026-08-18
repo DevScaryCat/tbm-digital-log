@@ -73,7 +73,7 @@ const METHODS = ALL_METHODS.filter(
 export function SubscribeButtons({
     onSuccess,
     ctaSuffix = "로 시작하기",
-    successText = "구독이 시작되었습니다! 첫 달은 무료입니다.",
+    successText = "구독이 시작되었습니다!",
     mode = "subscribe",
     plan = "monthly_pro",
     currentMethod = null,
@@ -304,7 +304,7 @@ export function SubscribeButtons({
                     <p>· 이용요금: 월 {billedAmount.toLocaleString()}원(VAT 포함){accountCount > 1 ? ` — 계정 ${accountCount}개 x ${SEAT_PRICE.toLocaleString()}원` : " · 계정 1개"}. 현장 계정을 추가하면 그만큼 더해집니다.</p>
                 )}
                 {mode !== "update" && (
-                    <p>· 첫 달은 무료 체험으로 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
+                    <p>· 무료체험 대상이면 7일 무료체험이 제공되며, 체험 종료 후 자동 결제가 시작됩니다.</p>
                 )}
                 {/* 7일 전액환불은 PortOne(웹 카드) 구독 정책 — 스토어 구독자의 좌석 카드에는 해당 없음(환불·해지는 스토어) */}
                 {seatOnly ? (

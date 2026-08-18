@@ -4,10 +4,9 @@ import {
   getUserFromRequest,
   getBillingKeyInfo,
   extractCardInfo,
-  addOneMonth,
   getPlan,
 } from "@/lib/portone";
-import { chargeSubscription, isStoreSource } from "@/lib/billing";
+import { chargeSubscription, isStoreSource, TRIAL_DAYS } from "@/lib/billing";
 import { getOrgContext, restoreOrgSeatMirrors } from "@/lib/org";
 import { isSelfPaid } from "@/lib/orgSeats";
 import { paymentsEnabled } from "@/lib/utils";
@@ -43,7 +42,7 @@ const PROVIDER_LABEL: Record<string, string> = {
 
 // 카드 등록(빌링키 발급) 완료 후 호출.
 // mode='update' : 결제수단만 교체(구독 상태/체험/결제일 유지)
-// 그 외        : 신규 구독(첫 달 무료) 또는 재구독(체험 소진 시 즉시 결제)
+// 그 외        : 신규 구독(무료체험 TRIAL_DAYS일) 또는 재구독(체험 소진 시 즉시 결제)
 export async function POST(request: Request) {
   try {
     if (!paymentsEnabled()) {
@@ -181,7 +180,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, updated: true });
     }
 
-    // 첫 달 무료(카드 등록형 체험)는 휴대폰 인증 게이트가 켜져 있으면 인증된 계정에만 —
+    // 카드 등록형 무료체험(TRIAL_DAYS일)은 휴대폰 인증 게이트가 켜져 있으면 인증된 계정에만 —
     // 인증 없는 대량 계정 생성(manager 모드 등)으로 체험이 무한 발급되는 우회 차단 (리뷰 E)
     const phoneVerified = !!(user.user_metadata as any)?.phone_verified_at;
     const trialUsed = existing?.trial_used === true || (phoneAuthEnabled() && !phoneVerified);
@@ -304,8 +303,9 @@ export async function POST(request: Request) {
     }
 
     if (!trialUsed) {
-      // --- 최초 구독: 첫 달 무료 체험 ---
-      const nextChargeAt = addOneMonth(now);
+      // --- 최초 구독: 무료체험(TRIAL_DAYS일) 후 첫 과금 ---
+      const nextChargeAt = new Date(now);
+      nextChargeAt.setDate(nextChargeAt.getDate() + TRIAL_DAYS);
       const { data, error } = await admin
         .from("subscriptions")
         .upsert(

@@ -246,6 +246,13 @@ export const CAPACITY_FULL_MESSAGE =
 export const TRIAL_SEAT_LIMIT = 2;
 
 /**
+ * 무료체험 기간(일) — 2026-08-19 Chris 확정 "1달 말고 1주일". 발급 3경로(가입 위저드 ·
+ * claim-trial · 카드 등록형)가 전부 이 값을 쓴다. 이미 발급된 체험의 종료일은 행에 박혀
+ * 있어 소급되지 않는다. 문구는 별도라 여기만 바꾸면 화면이 거짓말을 한다 — "7일 무료" 검색.
+ */
+export const TRIAL_DAYS = 7;
+
+/**
  * 스토어 결제가 확인되지 않은 정원제 감독자에게 보여줄 문구 (grace = past_due).
  * 서버의 두 판정(resolveSeatCharge 정원 분기 · /api/org/context canIssueSeats)이 **같은 문장**을
  * 쓰게 해서, 앱이 "만들 수 있다"고 말한 뒤 서버가 402로 되돌려보내는 일이 없게 한다.
@@ -425,7 +432,7 @@ export async function resolveSeatCharge(
   }
 
   // 무료체험 중에는 일할 청구를 하지 않는다.
-  // '첫 달 무료'라고 안내해 놓고 현장을 추가했다는 이유로 당일 3,900원을 긁으면 약속 위반이고,
+  // '무료체험'이라고 안내해 놓고 현장을 추가했다는 이유로 당일 3,900원을 긁으면 약속 위반이고,
   // 카드 없는 휴대폰 인증 체험 계정은 아예 결제수단이 없어 여기서 막히면 현장을 하나도
   // 못 만든다(가입 직후 안내되는 첫 화면이 바로 '현장 계정 만들기'다).
   // 체험이 끝나는 날 cron이 늘어난 계정 수로 온전히 청구한다.
@@ -445,7 +452,7 @@ export async function resolveSeatCharge(
       return { ok: false, ...zero, reason: "subscription", error: "무료체험이 끝났어요. 구독을 시작하면 현장 계정을 추가할 수 있어요." };
     }
     // 체험 중 현장 계정 상한(2026-08-18 Chris: "체험중 현장 최대 2개까지") — 체험은 청구
-    // 수단이 없어(카드리스) 이 게이트가 유일한 상한이다. 없으면 한 달짜리 체험 하나가
+    // 수단이 없어(카드리스) 이 게이트가 유일한 상한이다. 없으면 체험 하나가
     // 현장 수십 개 분량의 STT·AI 원가를 공짜로 태울 수 있다. 멀티 체험 가치는 2개면 충분,
     // 구독을 시작하면 무제한. 카운트는 정원제와 같은 식(checkSeatCapacity — 자리 = 본인 1 + 현장).
     const trialCap = await checkSeatCapacity(admin, {

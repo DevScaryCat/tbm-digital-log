@@ -67,7 +67,7 @@ export default function ManualPage() {
 
                 <Section title="5. 요금">
                     <ul className="list-disc pl-5 text-[14px] leading-relaxed text-cur-body space-y-1">
-                        <li><b>월 4,900원 / 계정</b> (부가세 포함) — 첫 달 무료 체험, 카드 등록 없이 시작</li>
+                        <li><b>월 4,900원 / 계정</b> (부가세 포함) — 7일 무료체험, 카드 등록 없이 시작</li>
                         <li>체험이 끝나도 자동 결제되지 않습니다 — 구독은 직접 결정합니다</li>
                         <li>모든 기능 포함: AI 회의록·교육일지, 월 보고서 자동 발송, 전 형식 출력</li>
                     </ul>

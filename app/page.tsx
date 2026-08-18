@@ -947,9 +947,9 @@ export default function MainPage() {
                 onClick={() => router.push("/login")}
                 className="h-12 px-8 w-full sm:w-auto bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px]"
               >
-                첫 달 무료로 시작하기
+                7일 무료로 시작하기
               </Button>
-              <p className="text-[13px] text-cur-muted-soft">첫 달 무료 체험 · 이후 계정 1개당 월 3,900원</p>
+              <p className="text-[13px] text-cur-muted-soft">7일 무료체험 · 이후 계정 1개당 월 3,900원</p>
             </div>
           </div>
         </section>
@@ -1044,16 +1044,16 @@ export default function MainPage() {
           {/* 하단 CTA */}
           <div className="bg-cur-ink rounded-[20px] px-6 sm:px-12 py-12 sm:py-16 text-center flex flex-col items-center gap-5">
             <h2 className="text-[24px] sm:text-[34px] font-bold text-white leading-tight tracking-tight">
-              첫 달 무료로 시작하세요
+              7일 무료로 시작하세요
             </h2>
             <p className="text-white/70 text-[15px] sm:text-[16px] max-w-xl">
-              설치 없이 카카오·일반 계정으로 바로 시작하세요. 첫 달 무료, 이후 계정 1개당 월 3,900원 — 추가한 만큼만 내요. 언제든 해지할 수 있어요.
+              설치 없이 카카오·일반 계정으로 바로 시작하세요. 7일 무료, 이후 계정 1개당 월 3,900원 — 추가한 만큼만 내요. 언제든 해지할 수 있어요.
             </p>
             <Button
               onClick={() => router.push("/login")}
               className="h-12 px-8 bg-cur-primary hover:bg-cur-primary-active text-cur-on-primary text-[16px] font-bold rounded-[8px] mt-1"
             >
-              첫 달 무료로 시작하기
+              7일 무료로 시작하기
             </Button>
           </div>
         </section>
