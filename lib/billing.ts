@@ -242,6 +242,9 @@ export type SeatBlockReason = "plan" | "subscription" | "method" | "period" | "c
 export const CAPACITY_FULL_MESSAGE =
   "현장 계정 정원이 가득 찼어요. 정원을 늘린 뒤 다시 시도해주세요.";
 
+/** 무료체험 중 만들 수 있는 현장(자식) 계정 상한 — 2026-08-18 Chris 확정 "체험중 현장 최대 2개까지" */
+export const TRIAL_SEAT_LIMIT = 2;
+
 /**
  * 스토어 결제가 확인되지 않은 정원제 감독자에게 보여줄 문구 (grace = past_due).
  * 서버의 두 판정(resolveSeatCharge 정원 분기 · /api/org/context canIssueSeats)이 **같은 문장**을
@@ -440,6 +443,24 @@ export async function resolveSeatCharge(
     // "만들 수 있다" 다른 쪽에서는 402를 말하는 어긋남이 됐다. 같은 만료 기준으로 가른다.
     if (!sub.billing_key && sub.current_period_end && new Date(sub.current_period_end) <= new Date()) {
       return { ok: false, ...zero, reason: "subscription", error: "무료체험이 끝났어요. 구독을 시작하면 현장 계정을 추가할 수 있어요." };
+    }
+    // 체험 중 현장 계정 상한(2026-08-18 Chris: "체험중 현장 최대 2개까지") — 체험은 청구
+    // 수단이 없어(카드리스) 이 게이트가 유일한 상한이다. 없으면 한 달짜리 체험 하나가
+    // 현장 수십 개 분량의 STT·AI 원가를 공짜로 태울 수 있다. 멀티 체험 가치는 2개면 충분,
+    // 구독을 시작하면 무제한. 카운트는 정원제와 같은 식(checkSeatCapacity — 자리 = 본인 1 + 현장).
+    const trialCap = await checkSeatCapacity(admin, {
+      userId: sub.user_id,
+      capacity: 1 + TRIAL_SEAT_LIMIT,
+      count,
+      seatsClaimed: opts.seatsClaimed,
+    });
+    if (!trialCap.ok) {
+      return {
+        ok: false,
+        ...zero,
+        reason: "capacity",
+        error: `무료체험 중에는 현장 계정을 ${TRIAL_SEAT_LIMIT}개까지 만들 수 있어요. 구독을 시작하면 제한 없이 추가할 수 있어요.`,
+      };
     }
     return { ok: true, ...zero };
   }
