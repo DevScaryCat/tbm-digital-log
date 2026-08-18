@@ -7,6 +7,7 @@ import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { formatRangeLabelKo } from "@/lib/utils";
 import type { AiBatch } from "@/lib/aiBatch";
 import type { EducationReportContent } from "@/lib/educationReport";
+import { hazardKey, mergeContainedKeys, tallyHazardWords } from "@/lib/hazardKey";
 
 export interface ReportSubscription {
   id: string;
@@ -32,7 +33,7 @@ export interface HazardRow {
   measure: string;
   process: string;
   date: string;
-  /** 같은 (요인·등급·대책)이 몇 개 회의록에서 언급됐는가 — 표 병합 후의 횟수 표기용 */
+  /** 같은 위험요인이 몇 번 언급됐는가 — 표 병합 후의 '×N회 언급' 표기용 */
   count?: number;
 }
 
@@ -105,22 +106,39 @@ import { accidentTypeTop, agentTop } from "./koshaTaxonomy";
 const pad = (n: number) => String(n).padStart(2, "0");
 
 
-/** 표시용 위험요인 병합 — 같은 (요인·등급·대책)을 한 줄로 합치고 언급 횟수를 센다.
+/** 표시용 위험요인 병합 — 같은 위험요인을 한 줄로 합치고 언급 횟수를 센다.
  *  종전에는 회의록 수만큼 같은 줄이 반복돼 표가 중첩됐다(2026-08-16 Chris 확인 — "1개에서
- *  합집합된 것도 합산되어 들어가는"). 통계(mentioned·high·mid·keywords)는 언급 횟수 기준
- *  그대로 두고 **표만** 합친다 — "몇 번 언급됐는가"는 정보고, 같은 줄 반복은 소음이다. */
+ *  합집합된 것도 합산되어 들어가는"). 통계(mentioned·high·mid)는 언급 횟수 기준 그대로 두고
+ *  **표만** 합친다 — "몇 번 언급됐는가"는 정보고, 같은 줄 반복은 소음이다. */
+
+/** 같은 위험요인 두 행을 하나로 — 등급은 더 높은 쪽, 대책은 그 등급의 것을 남긴다 */
+function mergeHazard(target: HazardRow, src: HazardRow): void {
+  target.count = (target.count ?? 1) + (src.count ?? 1);
+  if (rankOf(src.level) > rankOf(target.level)) {
+    target.level = src.level;
+    // 등급이 더 높은 쪽의 대책을 채택한다 — 최악의 경우에 맞춘 조치가 남아야 한다
+    if (src.measure) target.measure = src.measure;
+  } else if (!target.measure && src.measure) {
+    target.measure = src.measure;
+  }
+  if (src.date && (!target.date || src.date > target.date)) target.date = src.date;
+  if (!target.process && src.process) target.process = src.process;
+}
+
+/**
+ * 위험요인 병합. 키는 **정규화한 요인 문구 하나**다.
+ * 종전 키는 `요인|등급|대책`이라 같은 위험도 대책 문구가 조금만 달라지면 별개 행이 됐고,
+ * 그 중복이 아래 재해유형·기인물 집계까지 부풀렸다(2026-08-19 수정). 병합 규칙은 lib/hazardKey.ts.
+ */
 function dedupeHazards(items: HazardRow[], limit: number): HazardRow[] {
   const grouped = new Map<string, HazardRow>();
   for (const it of items) {
-    const key = `${it.factor}|${it.level}|${it.measure}`;
+    const key = hazardKey(it.factor) || it.factor;
     const g = grouped.get(key);
-    if (g) {
-      g.count = (g.count ?? 1) + 1;
-      if (it.date && (!g.date || it.date > g.date)) g.date = it.date;
-    } else {
-      grouped.set(key, { ...it, count: 1 });
-    }
+    if (g) mergeHazard(g, it);
+    else grouped.set(key, { ...it, count: 1 });
   }
+  mergeContainedKeys(grouped, mergeHazard);
   return [...grouped.values()]
     .sort((a, b) => rankOf(b.level) - rankOf(a.level) || (b.count ?? 1) - (a.count ?? 1))
     .slice(0, limit);
@@ -171,9 +189,9 @@ async function buildMinutesContent(
     }
   }
 
-  const freq = new Map<string, number>();
-  for (const it of items) freq.set(it.factor, (freq.get(it.factor) || 0) + 1);
-  const keywords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }));
+  // 표기만 다른 같은 요인은 한 낱말로 — 안 합치면 "분전함 감전 위험"이 표기 차이로 갈라져
+  // 키워드 칩이 같은 말을 두 번 보여주고 '반복 지적' 수도 어긋난다(2026-08-19).
+  const keywords = tallyHazardWords(items.map((it) => it.factor), 8);
 
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
@@ -181,7 +199,7 @@ async function buildMinutesContent(
 
   const low = items.filter((it) => it.level === "하").length;
   // 같은 문구가 2회 이상 나온 것 = 반복 지적된 위험 (우선 관리 대상)
-  const recurringCount = [...freq.values()].filter((c) => c > 1).length;
+  const recurringCount = keywords.filter((k) => k.count > 1).length;
   const stats: ReportStats = { total: minuteRows.length, high, mid, low, mentioned: items.length, recurring: recurringCount };
   // 회의록 0건이면 총평의 근거가 없다 — 호출 자체를 하지 않는다(AI는 유료). 호출자는 어차피 no_data로 끝낸다.
   const aiSummary = stats.total > 0 ? await generateAISummary(companyName, periodLabel, stats, keywords) : "";
@@ -295,14 +313,14 @@ export async function buildMergedMinutesForRange(
     }
   }
 
-  const freq = new Map<string, number>();
-  for (const it of items) freq.set(it.factor, (freq.get(it.factor) || 0) + 1);
-  const keywords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }));
+  // 표기만 다른 같은 요인은 한 낱말로 — 안 합치면 "분전함 감전 위험"이 표기 차이로 갈라져
+  // 키워드 칩이 같은 말을 두 번 보여주고 '반복 지적' 수도 어긋난다(2026-08-19).
+  const keywords = tallyHazardWords(items.map((it) => it.factor), 8);
   const high = items.filter((it) => it.level === "상").length;
   const mid = items.filter((it) => it.level === "중").length;
   const hazards = dedupeHazards(items, 40);
   const low = items.filter((it) => it.level === "하").length;
-  const recurringCount = [...freq.values()].filter((c) => c > 1).length;
+  const recurringCount = keywords.filter((k) => k.count > 1).length;
   const stats: ReportStats = { total: totalMinutes, high, mid, low, mentioned: items.length, recurring: recurringCount };
   const improvements = monthCtx
     ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
@@ -637,7 +655,13 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
 
   // 키워드 칩은 '주요 위험요인' 표를 한 번 더 보여주는 것에 지나지 않았다(Chris).
   // 대신 재해유형·기인물로 묶어 "무엇 때문에 어떻게 다칠 위험이 언급됐나"를 보여준다.
-  const hazardTexts = [...hazards.map((h) => h.factor), ...riskItems.map((r) => `${r.hazard} ${r.cause}`)];
+  // ⚠️ riskItems를 여기 함께 넣지 말 것 — 그것은 **같은 회의록 위험요인을 AI가 다시 묶어
+  // 쓴 것**이라, 합쳐 세면 모든 위험이 두 번 계산돼 막대가 통째로 부풀었다
+  // (2026-08-19 Chris "기인물도 중첩되서 나오더라"). 승인용 PDF(approvalPdf)는 처음부터
+  // hazards만 썼다 — 이제 두 문서의 집계가 같아진다.
+  // 회의록이 없어 hazards가 빈 보고서에서만 riskItems로 대신한다.
+  const hazardTexts =
+    hazards.length > 0 ? hazards.map((h) => h.factor) : riskItems.map((r) => `${r.hazard} ${r.cause}`);
   const typeTop = accidentTypeTop(hazardTexts, 5);
   const agentTopList = agentTop(hazardTexts, 5);
   const maxOf = (rows: { count: number }[]) => Math.max(1, ...rows.map((r) => r.count));

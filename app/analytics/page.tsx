@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ChevronRight } from "lucide-react"
+import { tallyHazardWords } from "@/lib/hazardKey"
 
 interface Keyword { word: string; count: number; trend?: string }
 interface RiskCard { id: number; minuteId?: string; level: string; category: string; subCategory: string; workName: string; date: string }
@@ -35,9 +36,8 @@ function computeMonth(minutes: any[], monthKey: string) {
         if (!h?.factor) continue
         items.push({ factor: String(h.factor), level: h.level, minuteId: m.id, date: m.date || "", workName: m.work_name || "TBM 회의록", process: m.process_name || "" })
     }
-    const freq = new Map<string, number>()
-    for (const it of items) { const n = it.factor.trim(); if (n) freq.set(n, (freq.get(n) || 0) + 1) }
-    const keywords: Keyword[] = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([word, count]) => ({ word, count }))
+    // 표기만 다른 같은 요인을 한 칩으로 (보고서 집계와 같은 규칙 — lib/hazardKey.ts)
+    const keywords: Keyword[] = tallyHazardWords(items.map((it) => it.factor), 8)
     const high = items.filter((it) => gradeOf(it.level) === "상").length
     const mid = items.filter((it) => gradeOf(it.level) === "중").length
     const cards: RiskCard[] = items.slice().sort((a, b) => gradeRank(b.level) - gradeRank(a.level)).slice(0, 10)
