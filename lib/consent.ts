@@ -3,7 +3,7 @@
 //  (2) 약관·개인정보처리방침 동의 — 파일 하단. 서비스 이용자 본인의 동의 증빙.
 import { SupabaseClient } from "@supabase/supabase-js";
 import { sendMail, mailerConfigured } from "@/lib/mailer";
-import { escapeHtml } from "@/lib/monthlyReport";
+import { escapeHtml } from "@/lib/htmlEscape";
 
 export type ConsentStatus = "pending" | "approved" | "declined";
 

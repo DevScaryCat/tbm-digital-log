@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendMail } from "./mailer";
 import { resolveMyReportEmail } from "./myEmail";
 // 사용자 값은 전부 이스케이프한다 — lib/consent.ts와 같은 출처·같은 함수(문구 사본 금지).
-import { escapeHtml } from "./monthlyReport";
+import { escapeHtml } from "./htmlEscape";
 
 export type OrgNoticeKind =
   | "charge_failed"

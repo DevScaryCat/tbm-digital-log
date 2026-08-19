@@ -8,6 +8,7 @@ import { formatRangeLabelKo } from "@/lib/utils";
 import type { AiBatch } from "@/lib/aiBatch";
 import type { EducationReportContent } from "@/lib/educationReport";
 import { hazardKey, mergeContainedKeys, tallyHazardWords } from "@/lib/hazardKey";
+import { escapeHtml } from "@/lib/htmlEscape";
 
 export interface ReportSubscription {
   id: string;
@@ -808,9 +809,9 @@ export function renderReportHtml(content: ReportContent, viewUrl?: string): stri
   </div>`;
 }
 
-export function escapeHtml(s: string): string {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
-}
+// escapeHtml 본체는 lib/htmlEscape.ts로 이동(2026-08-19) — 이 파일을 import하면
+// Anthropic SDK·nodemailer까지 딸려와 가벼운 라우트 번들을 오염시킨다. 재수출은 하위 호환용.
+export { escapeHtml };
 
 function appBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
