@@ -57,6 +57,8 @@ export async function POST(request: Request) {
     // 클라이언트 RLS로는 남의 현장 회의록을 읽을 수 없다. solo는 기존대로 클라이언트 텍스트.
     const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
     let work = "";
+    // 서로 다른 TBM(회의) 건수 — '반복'은 2건 이상일 때만 성립한다(아래 recurring 강제 판정)
+    let minuteCount = 0;
     let eduSessions = 0;
     let builtLabel = "";
     // owner는 대상이 본인이어도 서버가 회의록을 직접 읽어 컨텍스트를 빌드한다 —
@@ -96,6 +98,7 @@ export async function POST(request: Request) {
         );
       }
       work = blocks.join("\n\n");
+      minuteCount = blocks.length; // 서버 강제 판정용(아래 recurring)
       if (work.length > 11000) work = work.slice(0, 11000);
       builtLabel = `${fromS} ~ ${toS}`;
       const { count: eduCount } = await admin
@@ -130,6 +133,9 @@ export async function POST(request: Request) {
       [작성 규칙]
       - 여러 TBM에 흩어져 있는 위험요인을 분석하되, 같거나 유사한 위험요인은 반드시 '하나의 항목'으로 통합하세요. 중복으로 나열하지 마세요.
       - 두 건 이상의 TBM에서 반복적으로 등장하는 위험요인은 recurring=true 로 표시하세요. (반복될수록 현장에 상존하는 핵심 위험이므로 우선 관리 대상)
+      - ⚠️ **한 건의 TBM 안에서 비슷한 표현이 여러 줄로 나온 것은 '반복'이 아닙니다.** 서로 다른 날짜의
+        TBM 블록(=== TBM (날짜, ...) ===) 2개 이상에 등장할 때만 recurring=true 입니다.
+        입력에 TBM 블록이 하나뿐이면 recurring은 **전부 false** 여야 합니다.
       - **입력된 TBM에서 실제로 언급·관찰된 위험요인만** 정리하세요. 해당 공정에서 일반적으로
         발생 가능하다는 이유로 언급되지 않은 요인을 추가하지 마세요 — 이 문서의 가치는
         "근로자들이 실제로 참여해 말한 기록"이라는 데 있고, 지어낸 항목이 섞이면 그 근거가
@@ -139,7 +145,7 @@ export async function POST(request: Request) {
         2) cause: 발생 원인/상황 — TBM에서 말한 상황 그대로, 구체적으로
         3) measures: 감소대책 — TBM에서 실제 언급된 조치만 개조식으로 다듬어서.
            언급된 대책이 없으면 빈 문자열("")로 두세요. 만들어 채우지 마세요.
-        4) recurring: 여러 TBM에서 반복 등장하면 true, 아니면 false
+        4) recurring: **서로 다른 날짜의** TBM 2건 이상에 등장하면 true, 아니면 false (블록이 1개뿐이면 무조건 false)
       - 일반론이 아니라 입력된 TBM 내용에 특화된 내용으로 작성하세요.
     `;
 
@@ -191,7 +197,9 @@ export async function POST(request: Request) {
         hazard: String(it?.hazard ?? "").trim(),
         cause: String(it?.cause ?? "").trim(),
         measures: String(it?.measures ?? "").trim(),
-        recurring: it?.recurring === true,
+        // ⚠️ 서버가 최종 판정한다 — 프롬프트로 '1건이면 false'라고 말해도 모델은 지킨다는 보장이 없다.
+        //    입력 TBM이 1건뿐이면 '반복'은 정의상 성립하지 않는다(2026-08-21 Chris 확인).
+        recurring: it?.recurring === true && minuteCount > 1,
       }))
       .filter((it) => it.hazard)
       .sort((a, b) => Number(b.recurring) - Number(a.recurring));

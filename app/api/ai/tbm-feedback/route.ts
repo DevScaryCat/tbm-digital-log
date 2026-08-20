@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const admin = getAdminClient();
     const { data: m } = await admin
       .from("tbm_minutes")
-      .select("id, user_id, work_name, work_content, instructions, safety_phrase, hazards, raw_transcript, start_time, end_time")
+      .select("id, user_id, work_name, work_content, instructions, safety_phrase, hazards, raw_transcript, start_time, end_time, health_check, ppe_check")
       .eq("id", minutesId)
       .eq("user_id", user.id) // 본인 문서만 — 타인 회의록 채점은 열지 않는다
       .maybeSingle();
@@ -45,6 +45,11 @@ export async function POST(request: Request) {
         ? "위험요인:\n" + hazards.map((h) => `- ${h.factor ?? ""} (${h.level ?? "중"}) → 대책: ${h.measure || "(언급 없음)"}`).join("\n")
         : "위험요인: (없음)",
       m.instructions ? `협의·지시사항: ${m.instructions}` : "",
+      // 시작 전 확인(건강상태·보호구)을 채점에 명시적으로 넣는다(2026-08-21 Chris 결정).
+      // ⚠️ AI가 녹음에서 실제로 들었을 때만 값이 차 있다 — 하드코딩 기본값을 그대로 먹이면
+      //    모든 문서가 같은 문장을 받아 채점이 무의미해진다(minutes 라우트의 healthCheck/ppeCheck 규칙).
+      m.health_check ? `시작 전 건강상태 확인: ${m.health_check}` : "",
+      m.ppe_check ? `시작 전 보호구 확인: ${m.ppe_check}` : "",
       m.raw_transcript ? `\n[음성 원문]\n${String(m.raw_transcript).slice(0, 12000)}` : "\n[음성 원문 없음 — 직접 입력으로 작성됨]",
     ].filter(Boolean).join("\n");
 
@@ -66,7 +71,10 @@ export async function POST(request: Request) {
       ① 구체성: 오늘 작업·구역·장비가 구체적으로 언급됐는가 (일반론·훈시만 있으면 낮음)
       ② 위험요인-대책 짝: 위험을 짚고 그에 대한 행동 지시까지 이어졌는가
       ③ 근로자 참여: 질문·대답·건의 등 양방향 대화가 있었는가 (일방 훈시는 낮음)
-      ④ 완결성: 인사→작업 공유→위험 짚기→구호 등 회의 흐름이 갖춰졌는가
+      ④ 완결성: 인사→작업 공유→위험 짚기→구호 등 회의 흐름이 갖춰졌는가.
+         **시작 전 확인(건강상태·보호구 착용)을 실제로 챙겼는지**를 이 항목에서 함께 봅니다 —
+         위 기록에 '시작 전 건강상태 확인'·'시작 전 보호구 확인' 줄이 있으면 그만큼 가점,
+         둘 다 없으면 흐름이 덜 갖춰진 것으로 봅니다(단, 없다고 0점은 아닙니다).
 
       [작성 규칙]
       - summary(총평): 2~3문장. 잘한 점을 먼저, 그다음 아쉬운 점 하나. 현장 사람에게 말하듯

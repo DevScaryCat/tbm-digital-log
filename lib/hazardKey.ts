@@ -67,6 +67,42 @@ export function mergeContainedKeys<T>(map: Map<string, T>, merge: (target: T, sr
  * 위험요인 문구 목록 → 빈도 집계. 표시 문구는 **처음 나온 원문 그대로**다
  * (정규화 키는 공백이 없어 사람이 읽을 것이 못 된다).
  */
+/**
+ * 위험요인 문구 → **회의(문서) 단위** 집계.
+ *
+ * ⚠️ tallyHazardWords(행 단위)와 목적이 다르다. '반복 지적'은 "여러 회의에서 되풀이됐다"는
+ *    뜻이어야 하는데, 행 단위로 세면 **한 회의 안에서** 비슷한 표현이 두 줄로 나뉜 것만으로도
+ *    '반복'이 된다(2026-08-21 Chris 확인: "같은 위험 여러 줄 아닌데도 반복 집계된다").
+ *    그래서 같은 회의에서 몇 번 나왔든 그 회의는 1로 센다.
+ * @returns meetings = 그 위험이 등장한 서로 다른 회의 수, count = 총 등장 행 수(참고용)
+ */
+export function tallyHazardMeetings(
+  rows: { factor: string; minuteId: string }[],
+  limit = 8
+): { word: string; count: number; meetings: number }[] {
+  const m = new Map<string, { word: string; count: number; ids: Set<string> }>();
+  for (const r of rows) {
+    const label = String(r?.factor ?? "").trim();
+    if (!label) continue;
+    const key = hazardKey(label) || label;
+    const cur = m.get(key);
+    if (cur) {
+      cur.count += 1;
+      cur.ids.add(r.minuteId);
+    } else {
+      m.set(key, { word: label, count: 1, ids: new Set([r.minuteId]) });
+    }
+  }
+  mergeContainedKeys(m, (target, src) => {
+    target.count += src.count;
+    src.ids.forEach((id) => target.ids.add(id));
+  });
+  return [...m.values()]
+    .map((v) => ({ word: v.word, count: v.count, meetings: v.ids.size }))
+    .sort((a, b) => b.meetings - a.meetings || b.count - a.count)
+    .slice(0, limit);
+}
+
 export function tallyHazardWords(factors: string[], limit = 8): { word: string; count: number }[] {
   const m = new Map<string, { word: string; count: number }>();
   for (const raw of factors) {

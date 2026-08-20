@@ -7,7 +7,7 @@ import { sendMail, mailerConfigured } from "@/lib/mailer";
 import { formatRangeLabelKo } from "@/lib/utils";
 import type { AiBatch } from "@/lib/aiBatch";
 import type { EducationReportContent } from "@/lib/educationReport";
-import { hazardKey, mergeContainedKeys, tallyHazardWords } from "@/lib/hazardKey";
+import { hazardKey, mergeContainedKeys, tallyHazardWords, tallyHazardMeetings } from "@/lib/hazardKey";
 import { escapeHtml } from "@/lib/htmlEscape";
 
 export interface ReportSubscription {
@@ -36,6 +36,8 @@ export interface HazardRow {
   date: string;
   /** 같은 위험요인이 몇 번 언급됐는가 — 표 병합 후의 '×N회 언급' 표기용 */
   count?: number;
+  /** 어느 회의(문서)에서 나왔는가 — '반복 지적'을 회의 단위로 세기 위한 식별자 */
+  minuteId?: string;
 }
 
 /** 위험요인 분석 항목 (주요 위험요인 아래 표) — 등급 산정 없는 정보성 기록 */
@@ -186,6 +188,7 @@ async function buildMinutesContent(
         measure: String(h?.measure ?? "").trim(),
         process: m.process_name || m.work_name || "",
         date: m.date || "",
+        minuteId: String(m.id ?? `${m.date ?? ""}#${m.user_id ?? ""}`),
       });
     }
   }
@@ -199,8 +202,13 @@ async function buildMinutesContent(
   const hazards = dedupeHazards(items, 30);
 
   const low = items.filter((it) => it.level === "하").length;
-  // 같은 문구가 2회 이상 나온 것 = 반복 지적된 위험 (우선 관리 대상)
-  const recurringCount = keywords.filter((k) => k.count > 1).length;
+  // '반복 지적' = **서로 다른 회의 2건 이상**에서 나온 위험. 종전에는 행 수(k.count)로 셌는데,
+  // 그러면 한 회의 안에서 비슷한 표현이 두 줄로 갈라진 것만으로 '반복'이 됐다
+  // (2026-08-21 Chris: "같은 위험 여러 줄 아닌데도 반복 집계된다"). 회의 1건이면 항상 0이다.
+  const recurringCount = tallyHazardMeetings(
+    items.map((it) => ({ factor: it.factor, minuteId: it.minuteId ?? it.date })),
+    50
+  ).filter((k) => k.meetings > 1).length;
   const stats: ReportStats = { total: minuteRows.length, high, mid, low, mentioned: items.length, recurring: recurringCount };
   // 회의록 0건이면 총평의 근거가 없다 — 호출 자체를 하지 않는다(AI는 유료). 호출자는 어차피 no_data로 끝낸다.
   const aiSummary = stats.total > 0 ? await generateAISummary(companyName, periodLabel, stats, keywords) : "";
@@ -276,6 +284,7 @@ export async function buildMergedMinutesForRange(
           measure: String(h?.measure ?? "").trim(),
           process: proc ? `${acc.siteName} · ${proc}` : acc.siteName,
           date: m.date || "",
+          minuteId: String(m.id ?? `${m.date ?? ""}#${acc.userId ?? acc.siteName}`),
         });
       }
     }
@@ -321,7 +330,11 @@ export async function buildMergedMinutesForRange(
   const mid = items.filter((it) => it.level === "중").length;
   const hazards = dedupeHazards(items, 40);
   const low = items.filter((it) => it.level === "하").length;
-  const recurringCount = keywords.filter((k) => k.count > 1).length;
+  // 회의 단위 집계(위 단일 현장 경로와 동일 규칙 — 두 경로가 갈리면 같은 달에 다른 수가 나온다)
+  const recurringCount = tallyHazardMeetings(
+    items.map((it) => ({ factor: it.factor, minuteId: it.minuteId ?? it.date })),
+    50
+  ).filter((k) => k.meetings > 1).length;
   const stats: ReportStats = { total: totalMinutes, high, mid, low, mentioned: items.length, recurring: recurringCount };
   const improvements = monthCtx
     ? await computeImprovements(admin, accounts, monthCtx.year, monthCtx.month, { total: totalMinutes, days: curDays.size, high })
@@ -463,8 +476,13 @@ function summaryRequestParams(
     `대상 기간: ${periodLabel} (TBM 회의록 기준)`,
     `회의록 ${stats.total}건`,
     `회의에서 언급된 위험 총 ${stats.mentioned ?? stats.high + stats.mid}건 = 상 ${stats.high}건 + 중 ${stats.mid}건 + 하 ${stats.low ?? 0}건`,
-    stats.recurring ? `여러 회의에서 반복 언급된 위험 ${stats.recurring}건` : "",
-    `자주 논의된 위험요인: ${keywords.map((k) => `${k.word}(${k.count})`).join(", ") || "없음"}`,
+    // ⚠️ 0건일 때도 **반드시** 넘긴다. 줄이 사라지면 모델에게 '반복 여부는 미지'가 되고,
+    //    미지는 그럴듯하게 채워진다(2026-08-20 테스터: 회의 1건인데 "추락이 반복 지적되었으며").
+    stats.recurring
+      ? `둘 이상의 회의에서 반복 언급된 위험 ${stats.recurring}건`
+      : `둘 이상의 회의에서 반복 언급된 위험 0건 (반복 사례 없음)`,
+    // ⚠️ 라벨을 '자주 논의된'으로 두면 1회짜리도 '자주'로 옮겨 적힌다. 중립 라벨 + 횟수 단위 명시.
+    `언급된 위험요인(괄호 안은 언급 횟수): ${keywords.map((k) => `${k.word}(${k.count}회)`).join(", ") || "없음"}`,
   ].join("\n");
   return {
     model: "claude-haiku-4-5-20251001",
@@ -485,6 +503,10 @@ function summaryRequestParams(
       "- 주어진 집계 수치만 사용하고, 없는 수치·사실을 지어내지 마세요.",
       "- 총 건수와 등급별 건수를 절대 섞지 마세요. '총 N건'은 상+중+하 합계이고, '상 N건'은 그중 상 등급만입니다.",
       "- 이 집계는 TBM에서 '언급·지적된' 위험이지 위험성평가 결과가 아닙니다. '평가되었다'가 아니라 '언급되었다/지적되었다'로 쓰세요.",
+      // 표본이 1건인데 '반복·경향'을 단정하면 보고서 전체의 신뢰가 무너진다(2026-08-20 테스터 지적).
+      "- 회의록이 2건 미만이면 '반복', '지속', '계속', '여전히', '자주', '빈번', '추세', '경향', '증가', '감소' 같은 빈도·시간 표현을 절대 쓰지 마세요. 한 번의 기록은 한 번으로만 서술합니다.",
+      "- '반복'은 위 집계의 '반복 언급된 위험 N건'이 1 이상일 때만 쓸 수 있고, 괄호 안 횟수가 2회 이상인 요인에만 붙일 수 있습니다. (1회)인 요인은 '한 차례 언급되었다'로 쓰세요.",
+      "- 지난 기간과 비교하는 표현('늘었다', '줄었다', '개선되었다')은 비교 자료가 주어지지 않았으므로 쓰지 마세요.",
     ].join("\n"),
     messages: [{ role: "user", content: facts }],
   };
