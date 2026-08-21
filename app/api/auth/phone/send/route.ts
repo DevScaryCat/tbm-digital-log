@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/portone"
-import { phoneAuthEnabled, normalizePhone, hashOtp, generateOtpCode, sendOtpSms, isTrialTestPhone } from "@/lib/phoneAuth"
+import { phoneAuthEnabled, normalizePhone, hashOtp, generateOtpCode, sendOtpMessage, isTrialTestPhone } from "@/lib/phoneAuth"
 
 export const runtime = "nodejs"
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "발송 준비에 실패했습니다." }, { status: 500 })
     }
 
-    await sendOtpSms(phone, code)
+    await sendOtpMessage(phone, code)
     return NextResponse.json({ success: true })
   } catch (e) {
     console.error("phone send error:", e)

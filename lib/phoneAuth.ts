@@ -52,8 +52,24 @@ export function generateOtpCode(): string {
   return String(buf[0] % 1000000).padStart(6, "0")
 }
 
-/** 인증번호 SMS 발송. 라이브 키가 없으면(개발) 서버 콘솔에 출력만 한다. */
-export async function sendOtpSms(phone: string, code: string): Promise<void> {
+/**
+ * 알림톡 발송 여부 — 발신프로필(PFID)과 승인된 템플릿 ID가 둘 다 있을 때만 켜진다.
+ * 켜고 끄는 게 env 두 개뿐이라 배포 없이 되돌릴 수 있다: 알림톡은 보안 템플릿이라
+ * 잠금화면 미리보기가 뜨지 않아 SMS 자동입력이 안 된다 — 가입 이탈이 늘면 env를 지워
+ * 즉시 SMS로 복귀시킨다.
+ */
+export function alimtalkLive(): boolean {
+  return !!(process.env.SOLAPI_PFID && process.env.SOLAPI_OTP_TEMPLATE_ID)
+}
+
+/**
+ * 인증번호 발송. 알림톡 env가 채워져 있으면 알림톡으로, 아니면 지금까지처럼 SMS로 보낸다.
+ * 라이브 키가 없으면(개발) 서버 콘솔에 출력만 한다.
+ *
+ * 알림톡일 때도 from·text를 그대로 넘긴다 — 카톡 미설치·채널 차단으로 알림톡이 실패하면
+ * 솔라피가 이 문구로 대체발송(SMS)한다. disableSms를 켜면 그 사용자는 가입 자체가 막힌다.
+ */
+export async function sendOtpMessage(phone: string, code: string): Promise<void> {
   if (!phoneAuthLive()) {
     console.log(`[phone-auth DEV] ${phone} 인증번호: ${code}`)
     return
@@ -61,9 +77,23 @@ export async function sendOtpSms(phone: string, code: string): Promise<void> {
   const service = new SolapiMessageService(process.env.SOLAPI_API_KEY!, process.env.SOLAPI_API_SECRET!)
   // 발신번호는 하이픈이 섞여 있어도(예: 010-6352-2968) 숫자만 사용 — env 실수 방지
   const from = (process.env.SOLAPI_SENDER || "").replace(/\D/g, "")
-  await service.send({
-    to: phone,
-    from,
-    text: `[안톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`,
-  })
+  const text = `[안톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`
+
+  if (alimtalkLive()) {
+    await service.send({
+      to: phone,
+      from,
+      text,
+      kakaoOptions: {
+        pfId: process.env.SOLAPI_PFID!,
+        templateId: process.env.SOLAPI_OTP_TEMPLATE_ID!,
+        // 키는 템플릿의 치환자를 그대로 쓴다(솔라피 규격).
+        // 첫 실발송에서 인증번호 자리가 비어 나오면 이 키 형식부터 의심할 것.
+        variables: { "#{인증번호}": code },
+      },
+    })
+    return
+  }
+
+  await service.send({ to: phone, from, text })
 }
