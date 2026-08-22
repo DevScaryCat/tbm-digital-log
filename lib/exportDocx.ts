@@ -490,25 +490,21 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
         cell({ span: 5, children: checkLines.map((l) => new Paragraph({ children: [run(l)] })) }),
     ], 900))
 
-    // 교육 인원 (구분/계/남/여/비고)
-    const maleCount = parts.filter((p) => p.gender === "M").length
-    const femaleCount = parts.filter((p) => p.gender === "F").length
+    // 교육 인원 (구분/계/비고)
+    // 남/여 칸 삭제(2026-08-22 Chris) — 앱·QR 서명 어디서도 성별을 묻지 않기로 했다.
+    // 물어보지 않은 값을 칸만 남겨두면 전원이 '남'으로 찍힌다(수집을 끊은 쪽이 먼저였다).
     const totalCount = parts.length
     rows.push(row([
         cell({ text: "교육 인원", fill: C.gray100, bold: true, align: AlignmentType.CENTER, rowSpan: 3 }),
         cell({ text: "구분", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
         cell({ text: "계", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
-        cell({ text: "남", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
-        cell({ text: "여", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
-        cell({ text: "비고", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
+        cell({ span: 3, text: "비고", fill: C.gray50, bold: true, align: AlignmentType.CENTER }),
     ], 400))
     for (const label of ["대상 인원", "참석 인원"]) {
         rows.push(row([
             cell({ text: label, bold: true, align: AlignmentType.CENTER }),
             cell({ text: String(totalCount), align: AlignmentType.CENTER }),
-            cell({ text: String(maleCount), align: AlignmentType.CENTER }),
-            cell({ text: String(femaleCount), align: AlignmentType.CENTER }),
-            cell({ text: "", align: AlignmentType.CENTER }),
+            cell({ span: 3, text: "", align: AlignmentType.CENTER }),
         ], 400))
     }
 

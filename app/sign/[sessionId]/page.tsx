@@ -140,7 +140,9 @@ export default function SignPage() {
     const sessionId = urlParams.sessionId as string
 
     const [name, setName] = useState("")
-    const [gender, setGender] = useState<"M" | "F">("M")
+    // 성별 입력 제거(2026-08-22 Chris) — 근로자에게 굳이 물을 이유가 없고, 출력 서식에서도
+    // 남/여 칸을 걷어냈다. 다만 tbm_pending_signatures.gender가 NOT NULL이라 값은 보내야 한다.
+    const gender = "M" as const
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
     // 서명 제출 후 선형 흐름: suggest(의견·제안 — 선택사항, 건너뛰기 가능) → done(완료 안내)
@@ -305,30 +307,6 @@ export default function SignPage() {
                             placeholder="성명 (정자로 입력)"
                             className="h-14 text-lg font-bold border-2 border-cur-hairline focus-visible:ring-slate-900"
                         />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-base text-cur-body">성별</Label>
-                        <div className="flex bg-cur-elevated p-1.5 rounded-xl border border-cur-hairline">
-                           <button
-                                onClick={() => setGender('M')}
-                                className={cn(
-                                    "flex-1 py-3 text-base font-bold rounded-lg transition-all",
-                                    gender === 'M' ? "bg-white text-blue-600  transform scale-[1.02]" : "text-cur-muted"
-                                )}
-                            >
-                                남
-                            </button>
-                            <button
-                                onClick={() => setGender('F')}
-                                className={cn(
-                                    "flex-1 py-3 text-base font-bold rounded-lg transition-all",
-                                    gender === 'F' ? "bg-white text-pink-600  transform scale-[1.02]" : "text-cur-muted"
-                                )}
-                            >
-                                여
-                            </button>
-                        </div>
                     </div>
 
                     <div className="space-y-2 flex-1 flex flex-col min-h-[300px]">

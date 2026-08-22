@@ -451,26 +451,22 @@ async function fillEducationSheet(
         { v: checkText, span: 5 },
     ], 54)
 
-    // 교육 인원 (구분/계/남/여/비고) — 좌측 머리글 3행 세로 병합
-    const maleCount = parts.filter((p) => p.gender === "M").length
-    const femaleCount = parts.filter((p) => p.gender === "F").length
+    // 교육 인원 (구분/계/비고) — 좌측 머리글 3행 세로 병합
+    // 남/여 칸 삭제(2026-08-22 Chris) — 앱·QR 서명 어디서도 성별을 묻지 않기로 했다.
+    // 물어보지 않은 값을 칸만 남겨두면 전원이 '남'으로 찍힌다.
     const totalCount = parts.length
     mergeBox(ws, r, 1, r + 2, 1, "교육 인원", { fill: C.gray100, bold: true, align: "center" })
     putRow(ws, r, [
         { v: "구분", fill: C.gray50, bold: true, align: "center" },
         { v: "계", fill: C.gray50, bold: true, align: "center" },
-        { v: "남", fill: C.gray50, bold: true, align: "center" },
-        { v: "여", fill: C.gray50, bold: true, align: "center" },
-        { v: "비고", fill: C.gray50, bold: true, align: "center" },
+        { v: "비고", fill: C.gray50, bold: true, align: "center", span: 3 },
     ], 20, 2)
     r++
     for (const label of ["대상 인원", "참석 인원"]) {
         putRow(ws, r, [
             { v: label, bold: true, align: "center" },
             { v: String(totalCount), align: "center" },
-            { v: String(maleCount), align: "center" },
-            { v: String(femaleCount), align: "center" },
-            { v: "", align: "center" },
+            { v: "", align: "center", span: 3 },
         ], 20, 2)
         r++
     }
