@@ -88,6 +88,21 @@ export async function POST(request: Request) {
     }
     // 수신처 원장에도 올린다 — 온보딩 경로와 같은 처리(발송 판정이 이 행을 본다)
     await ensureSelfConsent(admin, user.id, target);
+    // ⚠️ 복구 판정(email_verifications)도 같이 채운다. 이걸 빼면 메타에는 저장돼도
+    //    GET이 recoveryReady=false로 읽어 화면이 영원히 '인증 대기 중'을 말한다
+    //    (2026-08-22 실기기: 등록했는데 대기중으로 남음). /api/onboarding과 같은 처리다.
+    try {
+      const { data: dup } = await admin
+        .from("email_verifications")
+        .select("id")
+        .eq("user_id", user.id)
+        .ilike("email", target)
+        .not("verified_at", "is", null)
+        .maybeSingle();
+      if (!dup) await admin.from("email_verifications").insert({ user_id: user.id, email: target, verified_at: nowIso });
+    } catch (e) {
+      console.error("first-email 인증행 기록 실패:", e);
+    }
     return NextResponse.json({ success: true, email: target, verified: true });
   }
 
