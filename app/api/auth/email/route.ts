@@ -4,6 +4,7 @@ import { getAdminClient, getUserFromRequest } from "@/lib/portone";
 import { sendRealEmailVerification, isValidEmail } from "@/lib/emailVerification";
 import { resolveMyReportEmail } from "@/lib/myEmail";
 import { hasLinkVerifiedRecoveryEmail } from "@/lib/accountRecovery";
+import { ensureSelfConsent } from "@/lib/consent";
 
 export const runtime = "nodejs";
 
@@ -62,6 +63,33 @@ export async function POST(request: Request) {
   const baseUrl = host ? `${proto}://${host}` : undefined;
 
   const admin = getAdminClient();
+
+  // ── 첫 등록은 인증 없이 바로 저장한다(2026-08-22 Chris) ─────────────────────────
+  // 온보딩에서 이메일 단계를 건너뛴 사람이 내 정보 수정에서 적을 때, 여기서만 메일 링크를
+  // 요구하면 같은 값을 넣는데 경로에 따라 규칙이 달라진다(/api/onboarding은 인증 없이 저장).
+  // 아직 등록된 주소가 없다면 온보딩과 같은 취급으로 즉시 저장한다.
+  // ⚠️ **주소를 바꾸는 경우는 그대로 링크 인증을 요구한다** — 등록된 이메일은 계정 복구
+  //    수단이라, 무인증 변경을 허용하면 계정을 통째로 옮길 수 있는 구멍이 된다.
+  const currentEmail = (() => {
+    const m = (user.user_metadata ?? {}) as Record<string, unknown>;
+    return typeof m.real_email === "string" ? m.real_email.trim() : "";
+  })();
+  if (!currentEmail) {
+    const nowIso = new Date().toISOString();
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(user.id);
+      const meta = (u?.user?.user_metadata ?? {}) as Record<string, unknown>;
+      await admin.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...meta, real_email: target, real_email_verified_at: nowIso },
+      });
+    } catch (e) {
+      console.error("first-email save 실패:", e);
+      return NextResponse.json({ error: "저장에 실패했습니다. 잠시 후 다시 시도해주세요." }, { status: 500 });
+    }
+    // 수신처 원장에도 올린다 — 온보딩 경로와 같은 처리(발송 판정이 이 행을 본다)
+    await ensureSelfConsent(admin, user.id, target);
+    return NextResponse.json({ success: true, email: target, verified: true });
+  }
 
   // 발송 남용 방지 3중 — 임의 주소로 보낼 수 있는 구조라(본인 수신용 이메일 입력) 폭탄 방지가 필수.
   // phone/send 라우트와 같은 DB-count 패턴: ① 60초 쿨다운(연타 차단) ② 시간당 5회 ③ 일 10회.
