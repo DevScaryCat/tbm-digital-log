@@ -8,6 +8,10 @@ import { STT_DOMAIN_HINT } from "@/lib/sttDomainHints";
 
 export const runtime = "nodejs";
 
+// 출력 규칙을 바꾸면 여기 버전을 올린다(캐시 무효화). v2: 안전구호·건강상태·보호구·대책에
+// 원문 근거 대조를 적용해 근거 없으면 빈 칸으로 내보내기 시작.
+const AI_CACHE_KIND = "minutes:v2";
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -31,7 +35,9 @@ export async function POST(request: Request) {
 
     // 동일 원문 재요청은 캐시로 — 일일 한도도 소모하지 않는다 (한도 검사보다 먼저)
     const inputHash = aiInputHash(text);
-    const cached = await getAiCache(user.id, "minutes", inputHash);
+    // 캐시 키에 규칙 버전을 박는다 — 캐시는 녹취 해시만 보므로, 근거 게이트를 바꿔도
+    // 같은 녹음이면 **예전에 지어낸 결과**가 그대로 다시 나온다(v2 = 2026-08-22 근거 게이트).
+    const cached = await getAiCache(user.id, AI_CACHE_KIND, inputHash);
     if (cached) return NextResponse.json(cached);
 
     // 남용 방어(비용 보호): KST 일일 한도 — 정상 사용은 닿지 않는 상한
@@ -60,6 +66,9 @@ export async function POST(request: Request) {
            ⚠️ 대책이 언급되지 않은 요인은 measure를 빈 문자열("")로 두세요. 언급되지 않은
            대책을 만들어 채우지 마세요 — 이 문서는 "현장에서 실제로 논의한 기록"이며,
            작성자가 검토 화면에서 직접 채웁니다.
+         - measureQuote: measure를 적었다면 **그 대책이 언급된 원문 문구를 그대로 복사**해 넣으세요.
+           measure가 빈 문자열이면 measureQuote도 빈 문자열("")입니다.
+           근거를 못 대는 대책은 서버가 지웁니다(요인 행 자체는 남습니다).
          - quote: **그 위험이 언급된 녹음 원문 문구를 그대로 복사**해 넣으세요(10~40자).
            원문에 없는 말을 지어내면 서버 검증에서 그 행이 통째로 삭제됩니다. 요약·의역 금지 —
            반드시 원문에 있는 글자 그대로여야 합니다.
@@ -74,14 +83,24 @@ export async function POST(request: Request) {
          - 예: 근로자가 자재 반입 시간을 물어 조정한 것, 특정 구역 작업 순서 협의, 근로자 건의에 대한 리더의 답변 등.
          - 그런 대화가 녹음에 없으면 빈 문자열("")로 두세요. 대부분의 TBM에서 비어 있는 것이 정상입니다.
          - 항목 구분은 줄바꿈으로.
-      6. safetyPhrase (안전구호): 녹음에 안전구호(예: "무재해 가자!", "안전, 좋아, 좋아")가 있으면 **들린 그대로 100% 동일하게** 추출. 없을 때만 작업에 맞는 짧은 구호를 하나 생성.
-      7. healthCheck (개인별 건강상태 이상 유무): 건강 상태를 **실제로 확인하는 대화가 있었을 때만** 그 결과를 적으세요.
-         - 예: "전원 이상 없음", "김씨 감기 기운 — 경작업 배치", "1명 허리 통증 호소"
-         - 건강 이야기가 아예 없으면 빈 문자열(""). ⚠️ 묻지도 않은 것을 "전원 이상 없음"으로 적지 마세요 —
-           '확인 안 함'과 '확인해서 이상 없음'은 다른 기록입니다.
-      8. ppeCheck (개인 보호구 착용 상태): 녹음에서 **실제로 언급된 보호구만** 쉼표로 나열.
-         - 예: "안전모, 안전대, 방진마스크", "안전모 미착용 1명 — 즉시 착용 지시"
-         - 보호구 언급이 없으면 빈 문자열(""). 종류를 지어내지 마세요.
+      6. safetyPhrase (안전구호): 녹음에 안전구호(예: "무재해 가자!", "안전, 좋아, 좋아")가 있으면
+         **들린 그대로 100% 동일하게** 추출하세요.
+         - ⚠️ 없으면 **빈 문자열("")**. 구호를 지어내지 마세요. 작업에 어울리는 구호를 만들어 넣는 것도 금지입니다.
+           빈 칸은 작성자가 직접 채웁니다 — '외치지 않은 구호'가 인쇄되는 것보다 빈 칸이 낫습니다.
+      7. healthCheck (개인별 건강상태 이상 유무) + healthCheckQuote:
+         - 건강 상태를 **실제로 확인하는 대화가 있었을 때만** 그 결과를 적으세요.
+           예: "전원 이상 없음", "김씨 감기 기운 — 경작업 배치", "1명 허리 통증 호소"
+         - healthCheckQuote: 그 판단의 **근거가 된 녹음 원문 문구를 그대로 복사**해 넣으세요.
+         - 건강 이야기가 아예 없으면 **둘 다 빈 문자열("")**. ⚠️ 묻지도 않은 것을 "전원 이상 없음"으로
+           적지 마세요 — '확인 안 함'과 '확인해서 이상 없음'은 다른 기록입니다.
+      8. ppeCheck (개인 보호구 착용 상태) + ppeCheckQuote:
+         - 녹음에서 **실제로 언급된 보호구만** 쉼표로 나열.
+           예: "안전모, 안전대, 방진마스크", "안전모 미착용 1명 — 즉시 착용 지시"
+         - ppeCheckQuote: 보호구가 언급된 **녹음 원문 문구를 그대로 복사**.
+         - 보호구 언급이 없으면 **둘 다 빈 문자열("")**. 종류를 지어내지 마세요.
+
+      ⚠️ 6·7·8과 위험요인 대책은 서버가 녹음 원문과 대조합니다. 원문에서 근거를 찾지 못하면
+         그 칸은 **빈 칸으로 비워져 나갑니다.** 추측으로 채우면 결국 지워지니, 애초에 비워 두세요.
 
       [효율화] 각 항목은 핵심만 간결하게(최대 1~2줄) 작성하세요.
     `;
@@ -115,17 +134,26 @@ export async function POST(request: Request) {
                       type: "string",
                       description: "이 위험이 언급된 녹음 원문 문구를 그대로 복사(10~40자). 원문에 없으면 서버가 이 행을 삭제한다.",
                     },
+                    measureQuote: {
+                      type: "string",
+                      description: "measure의 근거가 된 녹음 원문 문구를 그대로 복사. measure가 빈 문자열이면 이것도 빈 문자열. 근거가 원문에 없으면 서버가 measure를 지운다.",
+                    },
                   },
-                  required: ["factor", "level", "measure", "quote"],
+                  required: ["factor", "level", "measure", "quote", "measureQuote"],
                 },
               },
               instructions: {
                 type: "string",
                 description: "근로자와 실제 주고받은 협의·질의응답·건의만 (hazards 재나열 금지, 없으면 빈 문자열). 항목 구분은 줄바꿈.",
               },
-              safetyPhrase: { type: "string", description: "오늘의 안전구호" },
+              safetyPhrase: {
+                type: "string",
+                description: "녹음에서 들린 안전구호를 그대로. 없으면 빈 문자열 — 지어내지 말 것(서버가 원문과 대조해 지운다).",
+              },
               healthCheck: { type: "string", description: "건강상태 확인 결과 (확인 대화가 없었으면 빈 문자열)" },
+              healthCheckQuote: { type: "string", description: "healthCheck의 근거가 된 원문 문구 그대로. 없으면 빈 문자열." },
               ppeCheck: { type: "string", description: "언급된 보호구만 쉼표 나열 (언급 없으면 빈 문자열)" },
+              ppeCheckQuote: { type: "string", description: "ppeCheck의 근거가 된 원문 문구 그대로. 없으면 빈 문자열." },
             },
             required: [
               "processName",
@@ -135,7 +163,9 @@ export async function POST(request: Request) {
               "instructions",
               "safetyPhrase",
               "healthCheck",
+              "healthCheckQuote",
               "ppeCheck",
+              "ppeCheckQuote",
             ],
           },
         },
@@ -190,7 +220,15 @@ export async function POST(request: Request) {
       const hit = grams.filter((g) => normText.includes(g)).length;
       return hit / grams.length >= QUOTE_MIN_OVERLAP;
     };
+    /**
+     * 근거를 못 대면 칸을 비운다(2026-08-22 Chris 지시: "못찾거나 판독 못했으면 못했다고 해야해").
+     * 값이 있는데 인용이 원문에 없으면 → 빈 문자열. 작성자가 검토 화면에서 직접 채운다.
+     * 위험요인(행 삭제)과 달리 이 칸들은 **비우기**만 한다 — 행이 아니라 필드라 지울 게 없다.
+     */
+    const keepIfGrounded = (value: string, quote: string) =>
+      value && quoteFound(quote) ? value : "";
     let droppedHazards = 0;
+    let clearedFields = 0;
 
     const hazards = Array.isArray(input.hazards)
       ? (input.hazards as unknown[])
@@ -199,9 +237,10 @@ export async function POST(request: Request) {
             factor: clean(h.factor),
             level: ["상", "중", "하"].includes(str(h.level)) ? str(h.level) : "중",
             // 대책은 실제 언급된 것만(2026-08-14 Chris 확정 — 할루시네이션 차단).
+            // 2026-08-22: 프롬프트만으로는 계속 채워져 나와서 근거 인용 대조를 붙였다.
             // 비어 있으면 검토 화면에서 작성자가 채운다. AI의 개선 제안은 문서가 아니라
             // 저장 후 피드백(점수·총평) 화면으로 옮겨졌다.
-            measure: clean(h.measure),
+            measure: keepIfGrounded(clean(h.measure), str(h.measureQuote)),
             quote: str(h.quote),
           }))
           .filter((h) => h.factor) // 요인 없는 행은 문서에 빈 줄만 만든다
@@ -224,16 +263,29 @@ export async function POST(request: Request) {
       workContent: clean(input.workContent),
       hazards,
       instructions: clean(input.instructions),
-      safetyPhrase: clean(input.safetyPhrase) || "안전제일!",
-      // 빈 문자열이면 앱이 기존 기본값('해당없음' / '안전모, 안전화')을 유지한다 —
-      // 여기서 서버가 기본값을 대신 채우면 '확인 안 함'이 '이상 없음'으로 둔갑한다.
-      healthCheck: clean(input.healthCheck),
-      ppeCheck: clean(input.ppeCheck),
+      // ⚠️ 여기에 기본값을 넣지 말 것. 2026-08-22까지 `|| "안전제일!"`이 있었고, 그래서
+      // 아무도 외치지 않은 구호가 법정 서식에 인쇄됐다. 구호 자체가 원문 인용이므로
+      // 별도 quote 없이 값 자체를 원문과 대조한다.
+      safetyPhrase: keepIfGrounded(clean(input.safetyPhrase), clean(input.safetyPhrase)),
+      // 근거 인용이 원문에 없으면 빈 문자열로 내보낸다 — 앱은 빈 문자열을 그대로 반영해
+      // 칸을 비운다. '확인 안 함'이 '이상 없음'으로 둔갑하는 경로를 서버에서 끊는다.
+      healthCheck: keepIfGrounded(clean(input.healthCheck), str(input.healthCheckQuote)),
+      ppeCheck: keepIfGrounded(clean(input.ppeCheck), str(input.ppeCheckQuote)),
     };
+    for (const [k, v] of [
+      ["safetyPhrase", input.safetyPhrase],
+      ["healthCheck", input.healthCheck],
+      ["ppeCheck", input.ppeCheck],
+    ] as const) {
+      if (clean(v) && !result[k]) clearedFields++;
+    }
+    if (clearedFields > 0) {
+      console.log(`[minutes] 원문 근거 없는 항목 ${clearedFields}개 비움`);
+    }
 
     // 빈 결과는 캐시하지 않는다 — 재시도 여지를 남긴다
     if (result.workContent || hazards.length > 0) {
-      await setAiCache(user.id, "minutes", inputHash, result);
+      await setAiCache(user.id, AI_CACHE_KIND, inputHash, result);
     }
 
     return NextResponse.json(result);
