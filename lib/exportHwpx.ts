@@ -9,6 +9,7 @@
 //                               본문 <hc:img binaryItemIDRef="…">가 그 id를 참조
 // - 표 구성·항목·강조는 exportDocx.ts(docx 빌더)와 동일하게 재현한다.
 // - 텍스트 문서 생성 경로는 Node에서도 동작(브라우저 전용 API는 이미지 로드 경로에만 존재).
+import { photoList } from "@/lib/storageSign"
 import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import JSZip from "jszip"
 import {
@@ -647,13 +648,32 @@ function transcriptParas(doc: HwpxDoc, raw?: string | null): string[] {
 
 // ---------------- TBM 회의록 (exportDocx.minutesChildren과 동일 표 구성) ----------------
 
+/**
+ * 현장 사진 문단 — 여러 장이면 한 장씩 이어 붙인다(2026-08-22).
+ * 한 장일 때 크기(680×780)를 유지하고 나머지를 뒤에 쌓는다 — 세로·가로가 섞이면
+ * 어떤 격자를 잡아도 한쪽이 찌그러지므로 한글이 쪽을 알아서 넘기게 둔다.
+ */
+function photoParas(doc: HwpxDoc, photos: (LoadedImage | null)[]) {
+    const ok = photos.filter((p): p is LoadedImage => !!p)
+    if (ok.length === 0) {
+        return [para(doc, { align: "CENTER", char: { bold: true, color: C.gray500 }, text: "등록된 현장 사진이 없습니다." })]
+    }
+    return ok.flatMap((img, n) => [
+        para(doc, { align: "CENTER", runsXml: picRunXml(doc, img, 680, 780) }),
+        ...(ok.length > 1
+            ? [para(doc, { align: "CENTER", char: { color: C.gray500, size: 18 }, text: `${n + 1} / ${ok.length}` })]
+            : []),
+    ])
+}
+
 async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadStats, first: boolean): Promise<void> {
     const m = item.minutes
     const parts = item.participants || []
 
-    const [leaderSig, photo, ...partSigs] = await Promise.all([
+    const photoSrcs = photoList(m)
+    const [leaderSig, photos, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
-        loadImage(m.photo_url, stats, { photo: true }),
+        Promise.all(photoSrcs.map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -768,11 +788,7 @@ async function addMinutes(doc: HwpxDoc, item: MinutesDocItem, stats: ImageLoadSt
 
     // --- 다음 쪽: 현장 사진 (교육일지와 같은 규격) ---
     doc.paras.push(para(doc, { align: "CENTER", breakBefore: true, char: { bold: true, size: 44 }, text: "현 장 사 진" }))
-    doc.paras.push(
-        photo
-            ? para(doc, { align: "CENTER", runsXml: picRunXml(doc, photo, 680, 780) })
-            : para(doc, { align: "CENTER", char: { bold: true, color: C.gray500 }, text: "등록된 현장 사진이 없습니다." })
-    )
+    doc.paras.push(...photoParas(doc, photos))
 
     // 원문은 이 건의 맨 뒤 — 다음 건도 쪽 나눔으로 시작하므로 건끼리 섞이지 않는다
     doc.paras.push(...transcriptParas(doc, m.raw_transcript))
@@ -784,10 +800,11 @@ async function addEducation(doc: HwpxDoc, item: EducationDocItem, stats: ImageLo
     const log = item.log
     const parts = item.participants || []
 
-    const [instructorSig, photo, ...partSigs] = await Promise.all([
+    const photoSrcs = photoList(log)
+    const [instructorSig, photos, ...partSigs] = await Promise.all([
         // 뷰와 동일: 검토 확인 서명 우선, 없으면 실시자 서명
         loadImage(log.confirmation_signature || log.instructor_signature, stats),
-        loadImage(log.photo_url, stats, { photo: true }),
+        Promise.all(photoSrcs.map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -914,9 +931,7 @@ async function addEducation(doc: HwpxDoc, item: EducationDocItem, stats: ImageLo
     // --- PAGE 3: 교육 사진 ---
     doc.paras.push(title("교 육 사 진", true))
     doc.paras.push(
-        photo
-            ? para(doc, { align: "CENTER", runsXml: picRunXml(doc, photo, 680, 780) })
-            : para(doc, { align: "CENTER", char: { bold: true, color: C.gray500 }, text: "등록된 현장 사진이 없습니다." })
+        ...photoParas(doc, photos)
     )
     doc.paras.push(footerPara(doc, log.company_name))
 

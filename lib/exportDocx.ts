@@ -3,6 +3,7 @@
 // - MinutesView / ReportView의 표 구조·항목·강조를 docx Table로 재현
 // - Packer.toBlob 사용 (Node Buffer 등 서버 전용 API 금지)
 // - 서명/사진 로드 실패는 이미지만 생략 — 문서 생성 자체는 계속 진행
+import { photoList } from "@/lib/storageSign"
 import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import {
     AlignmentType,
@@ -50,6 +51,8 @@ export interface MinutesDocData {
     instructions?: string | null
     hazards?: MinutesHazard[] | null
     photo_url?: string | null
+    /** 여러 장(2026-08-22). 비어 있으면 photo_url 한 장으로 되돌아간다 — lib/storageSign.photoList */
+    photo_urls?: string[] | null
     raw_transcript?: string | null
 }
 
@@ -77,6 +80,8 @@ export interface EducationDocData {
     education_content?: string | null
     remarks?: string | null
     photo_url?: string | null
+    /** 여러 장(2026-08-22). 비어 있으면 photo_url 한 장으로 되돌아간다 — lib/storageSign.photoList */
+    photo_urls?: string[] | null
     raw_transcript?: string | null
 }
 
@@ -312,15 +317,41 @@ function timeRange(start?: string | null, end?: string | null): string {
     return `${start?.slice(0, 5) || ""} ~ ${end?.slice(0, 5) || ""}`
 }
 
+/**
+ * 현장 사진 문단 — 여러 장이면 한 장씩 이어 붙인다(2026-08-22).
+ * 한 장일 때의 크기(680×780)를 그대로 두고 나머지를 뒤에 쌓는 쪽을 골랐다. 한 페이지에
+ * 여러 장을 격자로 넣으려면 각 사진의 실제 비율을 알아야 하는데, 세로·가로가 섞이면
+ * 어느 규격을 잡아도 한쪽이 찌그러진다. 워드가 페이지를 알아서 넘기게 두는 편이 안전하다.
+ */
+function photoParagraphs(photos: (LoadedImage | null)[]): Paragraph[] {
+    const ok = photos.filter((p): p is LoadedImage => !!p)
+    if (ok.length === 0) {
+        return [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 200, after: 200 },
+            children: [run("등록된 현장 사진이 없습니다.", { bold: true, color: C.gray500 })],
+        })]
+    }
+    return ok.map((img, i) => new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 200, after: 200 },
+        children: [
+            imageRun(img, 680, 780),
+            ...(ok.length > 1 ? [run(`\n${i + 1} / ${ok.length}`, { color: C.gray500, size: 18 })] : []),
+        ],
+    }))
+}
+
 // ---------------- TBM 회의록 (MinutesView 재현) ----------------
 
 async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Promise<(Paragraph | Table)[]> {
     const m = item.minutes
     const parts = item.participants || []
 
-    const [leaderSig, photo, ...partSigs] = await Promise.all([
+    const photoSrcs = photoList(m)
+    const [leaderSig, photos, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
-        loadImage(m.photo_url, stats, { photo: true }),
+        Promise.all(photoSrcs.map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -440,11 +471,7 @@ async function minutesChildren(item: MinutesDocItem, stats: ImageLoadStats): Pro
             spacing: { after: 400 },
             children: [run("현 장 사 진", { bold: true, size: 44 })],
         }),
-        new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 200, after: 200 },
-            children: photo ? [imageRun(photo, 680, 780)] : [run("등록된 현장 사진이 없습니다.", { bold: true, color: C.gray500 })],
-        }),
+        ...photoParagraphs(photos),
     ]
 
     return [table(grid([15, 35, 15, 35]), rows), ...photoPage, ...transcriptParas(m.raw_transcript)]
@@ -456,10 +483,11 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
     const log = item.log
     const parts = item.participants || []
 
-    const [instructorSig, photo, ...partSigs] = await Promise.all([
+    const photoSrcs = photoList(log)
+    const [instructorSig, photos, ...partSigs] = await Promise.all([
         // 뷰와 동일: 검토 확인 서명 우선, 없으면 실시자 서명
         loadImage(log.confirmation_signature || log.instructor_signature, stats),
-        loadImage(log.photo_url, stats, { photo: true }),
+        Promise.all(photoSrcs.map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -599,12 +627,8 @@ async function educationChildren(item: EducationDocItem, stats: ImageLoadStats):
     // --- PAGE 3: 교육 사진 ---
     children.push(pageBreak())
     children.push(title("교 육 사 진"))
-    children.push(new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 200, after: 200 },
-        // 본문 폭 약 680px — 사진을 비율 유지로 최대한 크게
-        children: photo ? [imageRun(photo, 680, 780)] : [run("등록된 현장 사진이 없습니다.", { bold: true, color: C.gray500 })],
-    }))
+    // 본문 폭 약 680px — 사진을 비율 유지로 최대한 크게. 여러 장이면 한 장씩 이어 붙인다.
+    children.push(...photoParagraphs(photos))
     children.push(footer(log.company_name))
 
     // --- 마지막 페이지: 음성 원문 (원문이 있을 때만) ---

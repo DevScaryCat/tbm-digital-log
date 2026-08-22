@@ -5,6 +5,7 @@
 // - 서명/사진은 exportDocx의 loadImage를 재사용 — 실패 집계도 동일해서 호출부 UX가 갈라지지 않는다.
 // - exceljs는 무겁기 때문에 이 모듈 자체를 호출부에서 `await import("@/lib/exportXlsx")`로
 //   동적 로드하는 것을 전제로 한다(정적 재노출·사이드이펙트 없음 → 코드 스플리팅 안전).
+import { photoList } from "@/lib/storageSign"
 import ExcelJS from "exceljs"
 import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import {
@@ -268,9 +269,9 @@ async function fillMinutesSheet(
     const m = item.minutes ?? {}
     const parts = item.participants ?? []
 
-    const [leaderSig, photo, ...partSigs] = await Promise.all([
+    const [leaderSig, photos, ...partSigs] = await Promise.all([
         loadImage(m.leader_signature, stats),
-        loadImage(m.photo_url, stats, { photo: true }),
+        Promise.all(photoList(m).map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -396,12 +397,21 @@ async function fillMinutesSheet(
     ws.getRow(r).height = 28
     r++
     const M_PHOTO_ROWS = 12
-    mergeBox(ws, r, 1, r + M_PHOTO_ROWS - 1, 4,
-        photo ? "" : "등록된 현장 사진이 없습니다.",
-        photo ? { align: "center" } : { bold: true, color: C.gray500, align: "center" })
-    for (let i = 0; i < M_PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
-    if (photo) placeImage(wb, ws, photo, r, 1, 600, 460, 0.25)
-    r += M_PHOTO_ROWS
+    // 여러 장(2026-08-22) — 엑셀 이미지는 셀 좌표에 앉으므로 장마다 자기 병합 구역을 갖는다
+    const shots = photos.filter((v): v is NonNullable<typeof v> => !!v)
+    if (shots.length === 0) {
+        mergeBox(ws, r, 1, r + M_PHOTO_ROWS - 1, 4, "등록된 현장 사진이 없습니다.",
+            { bold: true, color: C.gray500, align: "center" })
+        for (let i = 0; i < M_PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
+        r += M_PHOTO_ROWS
+    } else {
+        for (const shot of shots) {
+            mergeBox(ws, r, 1, r + M_PHOTO_ROWS - 1, 4, "", { align: "center" })
+            for (let i = 0; i < M_PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
+            placeImage(wb, ws, shot, r, 1, 600, 460, 0.25)
+            r += M_PHOTO_ROWS
+        }
+    }
 
     appendTranscript(ws, r, 4, m.raw_transcript)
 }
@@ -417,10 +427,10 @@ async function fillEducationSheet(
     const log = item.log ?? {}
     const parts = item.participants ?? []
 
-    const [instructorSig, photo, ...partSigs] = await Promise.all([
+    const [instructorSig, photos, ...partSigs] = await Promise.all([
         // 뷰와 동일: 검토 확인 서명 우선, 없으면 실시자 서명
         loadImage(log.confirmation_signature || log.instructor_signature, stats),
-        loadImage(log.photo_url, stats, { photo: true }),
+        Promise.all(photoList(log).map((u) => loadImage(u, stats, { photo: true }))),
         ...parts.map((p) => loadImage(p.signature, stats)),
     ])
 
@@ -557,12 +567,21 @@ async function fillEducationSheet(
     ws.getRow(r).height = 28
     r++
     const PHOTO_ROWS = 12 // 12행 × 30pt ≈ 480px 높이의 사진 영역
-    mergeBox(ws, r, 1, r + PHOTO_ROWS - 1, 6,
-        photo ? "" : "등록된 현장 사진이 없습니다.",
-        photo ? { align: "center" } : { bold: true, color: C.gray500, align: "center" })
-    for (let i = 0; i < PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
-    if (photo) placeImage(wb, ws, photo, r, 1, 600, 460, 0.25)
-    r += PHOTO_ROWS
+    // 여러 장(2026-08-22) — 엑셀 이미지는 셀 좌표에 앉으므로 장마다 자기 병합 구역을 갖는다
+    const shots = photos.filter((v): v is NonNullable<typeof v> => !!v)
+    if (shots.length === 0) {
+        mergeBox(ws, r, 1, r + PHOTO_ROWS - 1, 6, "등록된 현장 사진이 없습니다.",
+            { bold: true, color: C.gray500, align: "center" })
+        for (let i = 0; i < PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
+        r += PHOTO_ROWS
+    } else {
+        for (const shot of shots) {
+            mergeBox(ws, r, 1, r + PHOTO_ROWS - 1, 6, "", { align: "center" })
+            for (let i = 0; i < PHOTO_ROWS; i++) ws.getRow(r + i).height = 30
+            placeImage(wb, ws, shot, r, 1, 600, 460, 0.25)
+            r += PHOTO_ROWS
+        }
+    }
 
     appendTranscript(ws, r, 6, log.raw_transcript)
 }

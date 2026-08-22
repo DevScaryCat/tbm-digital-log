@@ -41,3 +41,17 @@ export function signed<T extends string | null | undefined>(map: Record<string, 
   if (!url) return url
   return (map[url] ?? url) as T
 }
+
+/**
+ * 사진 URL 목록 정규화 — photo_urls(신규·여러 장)를 우선하고, 없으면 photo_url(구버전 한 장)로
+ * 되돌아간다. 2026-08-22에 여러 장을 도입하면서 기존 행은 photo_url만 갖고 있어서, 화면·출력이
+ * 두 컬럼을 매번 따로 분기하지 않도록 여기 한 곳에서 합친다.
+ */
+export function photoList(row: { photo_url?: string | null; photo_urls?: unknown }): string[] {
+  const many = Array.isArray(row?.photo_urls)
+    ? (row.photo_urls as unknown[]).filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : []
+  if (many.length > 0) return many
+  const one = typeof row?.photo_url === "string" ? row.photo_url.trim() : ""
+  return one ? [one] : []
+}
