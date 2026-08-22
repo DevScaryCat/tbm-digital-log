@@ -80,19 +80,30 @@ export async function sendOtpMessage(phone: string, code: string): Promise<void>
   const text = `[안톡] 인증번호 [${code}]를 입력해주세요. 타인에게 알려주지 마세요.`
 
   if (alimtalkLive()) {
-    await service.send({
-      to: phone,
-      from,
-      text,
-      kakaoOptions: {
-        pfId: process.env.SOLAPI_PFID!,
-        templateId: process.env.SOLAPI_OTP_TEMPLATE_ID!,
-        // 키는 템플릿의 치환자를 그대로 쓴다(솔라피 규격).
-        // 첫 실발송에서 인증번호 자리가 비어 나오면 이 키 형식부터 의심할 것.
-        variables: { "#{인증번호}": code },
-      },
-    })
-    return
+    try {
+      await service.send({
+        to: phone,
+        from,
+        text,
+        kakaoOptions: {
+          pfId: process.env.SOLAPI_PFID!,
+          templateId: process.env.SOLAPI_OTP_TEMPLATE_ID!,
+          // 키는 템플릿의 치환자를 그대로 쓴다(솔라피 규격).
+          // 첫 실발송에서 인증번호 자리가 비어 나오면 이 키 형식부터 의심할 것.
+          variables: { "#{인증번호}": code },
+        },
+      })
+      return
+    } catch (e) {
+      // ⚠️ 이 catch가 없으면 가입이 통째로 막힌다(2026-08-22 실사고).
+      // 템플릿 검수중인데 env를 미리 채워 넣자 모든 OTP가 알림톡으로 나갔고,
+      // 솔라피가 상태코드 1042("유효한 템플릿 아이디가 아닙니다")로 **접수 단계에서**
+      // 거부했다. 접수 실패라 kakaoOptions의 대체발송조차 타지 않는다 —
+      // 8/21 19시~8/22 14시 성공 0건, 실 차감 0원, 사용자는 "발송 실패"만 봤다.
+      // 알림톡은 어디까지나 표시용 개선이고 인증번호 전달이 본질이므로, 실패하면
+      // 조용히 SMS로 내려온다. 템플릿 미승인·PFID 오류·채널 정지 전부 여기서 걸린다.
+      console.error("[otp] 알림톡 발송 실패 — SMS로 대체합니다:", e)
+    }
   }
 
   await service.send({ to: phone, from, text })
