@@ -9,12 +9,22 @@ import { photoList } from "@/lib/storageSign"
 import ExcelJS from "exceljs"
 import { TRANSCRIPT_VISIBLE } from "./reportFlags"
 import {
-    loadImage,
+    loadImage as loadImageBrowser,
     type EducationDocItem,
     type ImageLoadStats,
     type LoadedImage,
     type MinutesDocItem,
 } from "./exportDocx"
+
+/**
+ * 이미지 로더 주입점(2026-08-22). 기본은 브라우저 canvas 판이고, 서버 라우트는
+ * loadImageNode를 넘긴다 — 같은 워크북 코드를 양쪽에서 그대로 쓰기 위한 유일한 갈래다.
+ */
+export type XlsxImageLoader = (
+    url: string | null | undefined,
+    stats: ImageLoadStats,
+    opts?: { photo?: boolean },
+) => Promise<LoadedImage | null>
 
 // ---------------- 공통 상수 ----------------
 
@@ -144,6 +154,10 @@ function placeImage(
 
 /** A4 세로 + 가로 1페이지 맞춤 + 여백. company가 있으면 인쇄 푸터에 현장명(ReportView 푸터 재현) */
 function setupPage(ws: ExcelJS.Worksheet, company?: string | null): void {
+    // 격자선을 끈다(2026-08-22) — "엑셀인데 PDF처럼 깔끔해야 한다"(Chris)에서 가장 크게
+    // 갈리는 지점이다. 격자가 보이면 표 바깥 여백까지 모눈종이로 읽혀 '스프레드시트'가 되고,
+    // 끄면 우리가 그린 테두리만 남아 서식 문서로 읽힌다. 화면(views)·인쇄 양쪽 모두 끈다.
+    ws.views = [{ showGridLines: false }]
     ws.pageSetup = {
         paperSize: 9, // A4
         orientation: "portrait",
@@ -151,6 +165,7 @@ function setupPage(ws: ExcelJS.Worksheet, company?: string | null): void {
         fitToWidth: 1,
         fitToHeight: 0, // 세로는 내용만큼 여러 페이지
         horizontalCentered: true,
+        showGridLines: false,
         margins: { left: 0.35, right: 0.35, top: 0.55, bottom: 0.55, header: 0.2, footer: 0.25 },
     }
     if (company) {
@@ -264,7 +279,8 @@ async function fillMinutesSheet(
     wb: ExcelJS.Workbook,
     ws: ExcelJS.Worksheet,
     item: MinutesDocItem,
-    stats: ImageLoadStats
+    stats: ImageLoadStats,
+    loadImage: XlsxImageLoader
 ): Promise<void> {
     const m = item.minutes ?? {}
     const parts = item.participants ?? []
@@ -422,7 +438,8 @@ async function fillEducationSheet(
     wb: ExcelJS.Workbook,
     ws: ExcelJS.Worksheet,
     item: EducationDocItem,
-    stats: ImageLoadStats
+    stats: ImageLoadStats,
+    loadImage: XlsxImageLoader
 ): Promise<void> {
     const log = item.log ?? {}
     const parts = item.participants ?? []
@@ -595,7 +612,9 @@ export interface XlsxBuildResult {
 }
 
 /** TBM 회의록 .xlsx — 1건 = 시트 1장, 일괄이면 건수만큼 시트 */
-export async function buildMinutesXlsx(items: MinutesDocItem[]): Promise<XlsxBuildResult> {
+export async function buildMinutesXlsx(items: MinutesDocItem[], loader?: XlsxImageLoader): Promise<XlsxBuildResult> {
+    // ⚠️ 모듈 전역에 담지 않는다 — 서버는 요청을 동시에 처리하므로 전역이면 서로 덮어쓴다
+    const loadImage = loader ?? loadImageBrowser
     const stats: ImageLoadStats = { failures: 0 }
     const wb = new ExcelJS.Workbook()
     wb.creator = "안톡"
@@ -603,7 +622,7 @@ export async function buildMinutesXlsx(items: MinutesDocItem[]): Promise<XlsxBui
     // 일괄 수백 건이 사진·서명 버퍼를 동시에 적재하면 모바일 탭이 OOM으로 죽을 수 있어 문서 단위 순차 처리
     for (const item of items) {
         const ws = wb.addWorksheet(sheetName("minutes", item.minutes?.date, used))
-        await fillMinutesSheet(wb, ws, item, stats)
+        await fillMinutesSheet(wb, ws, item, stats, loadImage)
     }
     const buf = await wb.xlsx.writeBuffer()
     return {
@@ -616,14 +635,45 @@ export async function buildMinutesXlsx(items: MinutesDocItem[]): Promise<XlsxBui
  * 안전보건교육일지 .xlsx — 건마다 일지·참석자 명단·사진을 한 시트에 세로로 구성.
  * (lib/reportXlsx.ts의 서버용 buildEducationXlsx와 이름 충돌을 피하려고 접미 2)
  */
-export async function buildEducationXlsx2(items: EducationDocItem[]): Promise<XlsxBuildResult> {
+export async function buildEducationXlsx2(items: EducationDocItem[], loader?: XlsxImageLoader): Promise<XlsxBuildResult> {
+    const loadImage = loader ?? loadImageBrowser
     const stats: ImageLoadStats = { failures: 0 }
     const wb = new ExcelJS.Workbook()
     wb.creator = "안톡"
     const used = new Map<string, number>()
     for (const item of items) {
         const ws = wb.addWorksheet(sheetName("education", item.log?.date, used))
-        await fillEducationSheet(wb, ws, item, stats)
+        await fillEducationSheet(wb, ws, item, stats, loadImage)
+    }
+    const buf = await wb.xlsx.writeBuffer()
+    return {
+        blob: new Blob([buf as unknown as ArrayBuffer], { type: XLSX_MIME }),
+        imageFailures: stats.failures,
+    }
+}
+
+/**
+ * 회의록 + 교육일지를 **한 통합문서**에 담는다(2026-08-22).
+ * 앱의 일괄 출력 화면은 기간 안의 두 문서가 섞여 있어서, 종류별로 파일을 두 개 내려주면
+ * 사용자가 둘을 짝지어 관리해야 한다. 시트 순서는 회의록 → 교육일지로 고정한다.
+ */
+export async function buildCombinedXlsx(
+    minutesItems: MinutesDocItem[],
+    eduItems: EducationDocItem[],
+    loader?: XlsxImageLoader,
+): Promise<XlsxBuildResult> {
+    const loadImage = loader ?? loadImageBrowser
+    const stats: ImageLoadStats = { failures: 0 }
+    const wb = new ExcelJS.Workbook()
+    wb.creator = "안톡"
+    const used = new Map<string, number>()
+    for (const item of minutesItems) {
+        const ws = wb.addWorksheet(sheetName("minutes", item.minutes?.date, used))
+        await fillMinutesSheet(wb, ws, item, stats, loadImage)
+    }
+    for (const item of eduItems) {
+        const ws = wb.addWorksheet(sheetName("education", item.log?.date, used))
+        await fillEducationSheet(wb, ws, item, stats, loadImage)
     }
     const buf = await wb.xlsx.writeBuffer()
     return {
