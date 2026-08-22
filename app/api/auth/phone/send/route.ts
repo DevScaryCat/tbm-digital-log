@@ -60,18 +60,30 @@ export async function POST(request: Request) {
     }
 
     const code = generateOtpCode()
-    const { error: insErr } = await admin.from("phone_otps").insert({
+    // 행을 먼저 만든다(발송했는데 검증할 행이 없는 상황을 막는다). 대신 발송이 실패하면
+    // 아래에서 되돌린다 — 안 그러면 한 번도 못 받은 사람이 일일 5회 한도만 까먹는다.
+    const { data: inserted, error: insErr } = await admin.from("phone_otps").insert({
       phone,
       code_hash: hashOtp(phone, code),
       purpose: `trial_gate:${ip}`, // IP 캡 집계를 위해 purpose에 IP를 함께 기록
       expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-    })
-    if (insErr) {
+    }).select("id").single()
+    if (insErr || !inserted) {
       console.error("phone_otps insert error:", insErr)
       return NextResponse.json({ error: "발송 준비에 실패했습니다." }, { status: 500 })
     }
 
-    await sendOtpMessage(phone, code)
+    try {
+      await sendOtpMessage(phone, code)
+    } catch (sendErr) {
+      // 발송 실패는 사용자 잘못이 아니다. 한도 집계에서 빼주지 않으면 실패가 쌓여
+      // "내일 다시 시도해주세요"로 막히고, 그때부터는 원인을 고쳐도 못 들어온다
+      // (2026-08-22: 01022521071이 정확히 이렇게 5/5로 잠겼다).
+      await admin.from("phone_otps").delete().eq("id", inserted.id)
+      // 원인 추적용 — 발신번호 미등록·잔액 부족·템플릿 오류가 전부 여기로 온다
+      console.error("phone send error (solapi):", sendErr)
+      return NextResponse.json({ error: "인증번호를 보내지 못했습니다. 잠시 후 다시 시도해주세요." }, { status: 502 })
+    }
     return NextResponse.json({ success: true })
   } catch (e) {
     console.error("phone send error:", e)
